@@ -179,3 +179,12 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v52** — a11y: 키보드 `:focus-visible` 포커스 링.
 - **v53** — 쉐도잉 자동 멈춤(로드맵 A): Loop 토글을 3-state 모드 cycle 로 확장 — 끔→🔁반복→⏸문장멈춤.
   pause 모드는 문장 끝에서 자동 정지(따라 말할 시간), autoPausedSent 로 gap 재정지 방지. [백필] 179/267, vocab 2265.
+- **v54** — transcript 헤더 반응형(flex-wrap, 좁은 화면에서 칩 줄바꿈, 검색창 min-width 130).
+
+## 현재 상태 (밤샘 후반, ~02:00)
+**핵심 빌드 v54까지 완료.** 쉐도잉(문장재분할·단어카라오케·음영·3모드 반복/멈춤·문장점프·속도)·
+즉시해설 패널(+발음)·Study 탭(탐색/4지선다/듣기/문장 + SRS)·시점 딥링크·실제 커버아트·로그인/
+NowPlaying/About·로딩스켈레톤·뷰전환·a11y(reduced-motion/focus)·perf(병렬쿼리/배터리게이트) 전부 라이브.
+유일한 진행작업 = **vocab 백필**(bpr9evhvt, claude+TTS, ~183/267, 약 1h 남음, 자율 진행).
+다음 실질 작업 = **annotate.py**(vocab 없는 표현까지 문장별 난이도 해설) — claude/CPU 경합 때문에
+**백필 완료 후** 착수. 그 전까진 모니터링 위주(60초 마이크로폴리시는 토큰 낭비라 주기 확대).
