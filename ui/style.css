@@ -1318,8 +1318,15 @@ body.logged-out #app-version { display: none; }
 .quiz-sum-actions { display: flex; flex-direction: column; gap: 10px; max-width: 280px; margin: 24px auto 0; }
 .study-cta-btn { padding: 14px; border: 0; border-radius: 14px; cursor: pointer; font-family: var(--font); font-size: 15px; font-weight: 700; background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
 .study-cta-btn.secondary { background: var(--surface); color: var(--tint); box-shadow: var(--shadow-card); }
-.study-quiz-row { display: flex; gap: 10px; margin: 2px 0 10px; }
-.study-quiz-row .study-quiz-btn { margin: 0; flex: 1; }
+.study-quiz-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; }
+.study-quiz-row .study-quiz-btn { margin: 0; flex: 1; min-width: 90px; font-size: 13.5px; padding: 12px 6px; }
+/* 문장 학습 덱 */
+.sent-card { background: var(--surface); border-radius: 18px; padding: 24px 20px; box-shadow: var(--shadow-card); margin: 8px 0 14px; cursor: pointer; }
+.sent-en { font-family: var(--font); font-size: 19px; line-height: 1.5; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
+.sent-spk { font-size: 15px; opacity: 0.65; }
+.sent-reveal { margin-top: 18px; padding-top: 16px; border-top: 0.5px solid var(--separator-thin); }
+.sent-term { font-family: var(--font); font-size: 18px; font-weight: 800; color: var(--tint); letter-spacing: -0.01em; }
+.sent-def { font-size: 14px; color: var(--text-2); margin-top: 6px; line-height: 1.45; }
 .quiz-bigspk {
   width: 92px; height: 92px; border-radius: 50%; border: 0; cursor: pointer;
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; font-size: 36px;

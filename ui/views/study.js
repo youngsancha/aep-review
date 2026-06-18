@@ -53,7 +53,8 @@ export async function renderStudy(root) {
       <input class="study-search" id="study-q" type="search" placeholder="🔍 표현·뜻 검색" value="${escapeHtml(q)}" />
       <div class="study-quiz-row">
         <button class="study-quiz-btn" id="study-quiz-read">🎯 4지선다</button>
-        <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기 퀴즈</button>
+        <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기</button>
+        <button class="study-quiz-btn" id="study-quiz-sent">💬 문장</button>
       </div>
     `;
   }
@@ -96,6 +97,7 @@ export async function renderStudy(root) {
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
+    root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
     if (sq) {
       let t = 0;
@@ -198,6 +200,66 @@ export async function renderStudy(root) {
       root.querySelector('#q-home').addEventListener('click', () => renderStudy(root));
     }
     paintQ();
+  }
+
+  // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
+  function startSentences() {
+    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
+      return;
+    }
+    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    let idx = 0, revealed = false;
+    prefetch(cards.slice(0, 6).map((c) => c.example_sentence));
+
+    function finishS() {
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">문장 완독! 📖</div>
+          <div class="quiz-sum-score">${cards.length}</div>
+          <div class="quiz-sum-pct">예문 학습 완료</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="s-again">다시</button>
+            <button class="study-cta-btn secondary" id="s-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#s-again').addEventListener('click', startSentences);
+      root.querySelector('#s-home').addEventListener('click', () => renderStudy(root));
+    }
+    function paintS() {
+      if (idx >= cards.length) return finishS();
+      const c = cards[idx];
+      revealed = false;
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">💬 문장</span></div>
+        <div class="sent-card" id="sent-card">
+          <div class="sent-en">${escapeHtml(c.example_sentence)} <span class="sent-spk">🔊</span></div>
+          <div class="sent-reveal" id="sent-reveal" hidden>
+            <div class="sent-term">${escapeHtml(c.term)}</div>
+            <div class="sent-def">${escapeHtml(c.definition || '')}</div>
+            ${(c.sentence_start_sec != null && c.episode_id) ? `<button class="srs-context-btn" id="sent-ctx" data-ep="${c.episode_id}" data-t="${Math.floor(c.sentence_start_sec)}">🎧 맥락에서 듣기</button>` : ''}
+          </div>
+        </div>
+        <button class="study-cta-btn" id="sent-action">뜻 보기</button>
+        <button class="quiz-exit" id="sent-exit">← Study 홈</button>`;
+      root.querySelector('#sent-card').addEventListener('click', () => speak(c.example_sentence));
+      requestAnimationFrame(() => speak(c.example_sentence));
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
+      root.querySelector('#sent-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sent-action').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!revealed) {
+          revealed = true;
+          root.querySelector('#sent-reveal').hidden = false;
+          e.target.textContent = '다음 ▸';
+          const cx = root.querySelector('#sent-ctx');
+          if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); location.hash = `#/episode/${cx.dataset.ep}/${cx.dataset.t}`; });
+        } else { idx++; paintS(); }
+      });
+    }
+    paintS();
   }
 
   if (!selected) {
