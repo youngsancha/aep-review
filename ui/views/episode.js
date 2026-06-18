@@ -21,6 +21,7 @@ export async function renderEpisode(root, idStr) {
   window.addEventListener('hashchange', () => document.body.classList.remove('on-episode'), { once: true });
 
   const segments = ep.transcript?.segments || [];
+  const sentences = resegment(segments);  // Whisper segment → 구두점 기준 진짜 문장
   const vocabs = ep.vocab || [];
 
   const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
@@ -50,7 +51,7 @@ export async function renderEpisode(root, idStr) {
         </div>
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
-          ${segments.length ? `
+          ${sentences.length ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
             <span>Transcript</span>
@@ -67,17 +68,17 @@ export async function renderEpisode(root, idStr) {
       </ul>
     ` : ''}
 
-    ${!segments.length && !ep.transcribed_at ? `<div class="empty">transcript pending</div>` : ''}
+    ${!sentences.length && !ep.transcribed_at ? `<div class="empty">transcript pending</div>` : ''}
   `;
 
   // Build transcript sheet (overlay) and attach to body — not inline.
   // Sheet must be in DOM BEFORE player wiring queries .tx-scroll/.tx-sent below.
   // Wrapped in try/catch so a broken transcript can't kill audio playback.
   let $sheet = null;
-  if (segments.length) {
+  if (sentences.length) {
     try {
       const wrap = document.createElement('div');
-      wrap.innerHTML = transcriptSheetHtml(segments).trim();
+      wrap.innerHTML = transcriptSheetHtml(sentences).trim();
       $sheet = wrap.firstElementChild;
       document.body.appendChild($sheet);
     } catch (err) {
@@ -376,9 +377,38 @@ export async function renderEpisode(root, idStr) {
   document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(1); });
 
   const off = player.on(refresh);
+
+  // === 단어 단위 따라가기 (karaoke) — rAF 로 timeupdate(4Hz)보다 부드럽게 ===
+  const wordTimed = Array.from(document.querySelectorAll('.tx-scroll .w'))
+    .map((el) => ({ el, s: parseFloat(el.dataset.s) }))
+    .filter((w) => Number.isFinite(w.s));
+  let lastWordIdx = -1;
+  function updateWord() {
+    if (!wordTimed.length) return;
+    const t = player.time;
+    let lo = 0, hi = wordTimed.length - 1, found = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
+    if (found === lastWordIdx) return;
+    if (lastWordIdx >= 0) wordTimed[lastWordIdx].el.classList.remove('cur');
+    if (found >= 0) wordTimed[found].el.classList.add('cur');
+    lastWordIdx = found;
+  }
+  let rafId = 0;
+  function rafLoop() { updateWord(); rafId = requestAnimationFrame(rafLoop); }
+  function startRaf() { if (!rafId) rafId = requestAnimationFrame(rafLoop); }
+  function stopRaf() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+  const offWord = player.on((ev) => {
+    if (ev === 'play') startRaf();
+    else if (ev === 'pause' || ev === 'ended') { stopRaf(); updateWord(); }
+  });
+  if (!player.paused) startRaf();
+  updateWord();
+
   // Cleanup on route change — detach player listener, remove sheet, restore body scroll
   window.addEventListener('hashchange', () => {
     off();
+    offWord();
+    stopRaf();
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
     document.body.classList.remove('on-episode');
@@ -526,6 +556,41 @@ function transcriptSheetHtml(segments) {
       </div>
     </div>
   `;
+}
+
+function resegment(segments) {
+  // Whisper segment 는 문장 경계를 무시한 ~5초 덩어리다. 단어 타임스탬프를 모아
+  // 구두점 기준으로 진짜 "문장"으로 재분할한다(정확한 start/end 보존) → 싱크·스크롤 정확도↑.
+  const words = [];
+  for (const seg of segments || []) {
+    if (seg.words && seg.words.length) {
+      for (const w of seg.words) {
+        if (w.word == null) continue;
+        words.push({ word: w.word, start: w.start ?? seg.start, end: w.end ?? seg.end });
+      }
+    } else if (seg.text) {
+      words.push({ word: seg.text, start: seg.start, end: seg.end });
+    }
+  }
+  if (!words.length) return segments || [];
+
+  const ENDS = /[.!?…]["')\]]?$/;
+  const out = [];
+  let cur = null;
+  for (const w of words) {
+    if (!cur) cur = { start: w.start, end: w.end, words: [] };
+    cur.words.push(w);
+    if (Number.isFinite(w.end)) cur.end = w.end;
+    const txt = (w.word || '').trim();
+    const tooLong = (cur.end - cur.start) > 14 || cur.words.length > 45;
+    if ((ENDS.test(txt) && cur.words.length >= 2) || tooLong) {
+      cur.text = cur.words.map((x) => x.word).join('').trim();
+      out.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) { cur.text = cur.words.map((x) => x.word).join('').trim(); out.push(cur); }
+  return out;
 }
 
 function groupIntoParagraphs(segments) {

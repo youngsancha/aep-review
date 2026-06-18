@@ -832,15 +832,20 @@ body.on-episode {
 
 .tx-para.played { color: rgba(60, 60, 67, 0.30); }
 .tx-para.active {
-  color: #000;
-  font-weight: 600;
+  color: var(--text-2);
+  font-weight: 500;
 }
 
-/* Sentences exist for click-to-seek + scroll targeting only — no visual diff */
+/* 현재 "문장"이 시각 강조의 주체 (Apple식): 또렷한 검정 + 굵게 */
 .tx-sent {
   border-radius: 6px;
   padding: 1px 0;
+  transition: color 0.15s ease;
 }
+.tx-sent.active { color: #000; font-weight: 600; }
+/* 현재 "단어" 카라오케 강조 — 문장 안에서 지나가는 단어를 따라감 */
+.tx-scroll .w { transition: color 0.12s ease; }
+.tx-sent.active .w.cur { color: var(--tint); }
 
 /* Words: just clickable, no visual treatment */
 .w { cursor: pointer; }
