@@ -1233,6 +1233,9 @@ a { color: var(--tint); }
 /* ========== 쉐도잉: 문장 반복(loop) 토글 ========== */
 /* 쉐도잉 문장 반복 토글 (헤더 칩) */
 .tx-loop-toggle { white-space: nowrap; }
+.tx-speed-toggle { min-width: 42px; font-variant-numeric: tabular-nums; }
+.tx-speed-toggle.on { background: var(--tint); color: #fff; }
+.tx-speed-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 .tx-loop-toggle.on,
 .tx-loop-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-loop-toggle.on:hover,

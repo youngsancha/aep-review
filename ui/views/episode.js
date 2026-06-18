@@ -390,6 +390,19 @@ export async function renderEpisode(root, idStr) {
     $loop.setAttribute('aria-pressed', loopSent ? 'true' : 'false');
   });
 
+  // 쉐도잉용 속도 조절 (시트 안에서 느리게 따라 말하기)
+  const SHEET_SPEEDS = [1, 0.85, 0.75, 1.25];
+  let sheetSpeedIdx = 0;
+  const $txSpeed = document.getElementById('tx-speed');
+  $txSpeed?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    sheetSpeedIdx = (sheetSpeedIdx + 1) % SHEET_SPEEDS.length;
+    const r = SHEET_SPEEDS[sheetSpeedIdx];
+    player.rate(r);
+    $txSpeed.textContent = (r === 1 ? '1×' : r + '×');
+    $txSpeed.classList.toggle('on', r !== 1);
+  });
+
   // 문장 단위 이전/다음 점프 (쉐도잉)
   function jumpSent(dir) {
     if (!sentRanges.length) return;
@@ -571,6 +584,7 @@ function transcriptSheetHtml(segments) {
           <div class="tx-search">
             <input id="tx-search" class="tx-search-input" type="search" placeholder="Search transcript..." />
             <button id="tx-loop" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Loop current sentence">🔁 Loop</button>
+            <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
           <div class="tx-scroll">
