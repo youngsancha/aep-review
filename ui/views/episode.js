@@ -445,6 +445,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let lastWordIdx = -1;
   function updateWord() {
     if (!wordTimed.length) return;
+    if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
     const t = player.time;
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }

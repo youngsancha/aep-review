@@ -173,3 +173,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v48** — 접근성: `prefers-reduced-motion` 대응(shimmer·트랜지션·smooth scroll 최소화). [백필] 169/267.
 - **v49** — 에피소드 About(설명) 섹션: Now Playing 에 에피소드 노트(태그 제거, 4줄 클램프, 탭하면
   펼치기). Apple Podcasts 의 에피소드 설명에 대응. 하니스에 about 렌더 검증 추가.
+- **v50** — 배터리/perf: 단어 카라오케 rAF 를 transcript 시트 열림 상태에서만 갱신(닫혀 있으면
+  숨은 요소 갱신 skip). 재열림 시 found≠lastWordIdx 로 자동 보정. [백필] 174/267.
