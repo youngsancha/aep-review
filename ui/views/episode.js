@@ -111,6 +111,7 @@ export async function renderEpisode(root, idStr) {
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
   let speedIdx = 0;
+  let loopSent = false;  // 쉐도잉: 현재 문장 자동 반복
 
   function refresh() {
     const dur = player.duration;
@@ -124,6 +125,14 @@ export async function renderEpisode(root, idStr) {
     const $miniPlay = document.getElementById('tx-mini-play');
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
+
+    // 쉐도잉 반복: 현재 문장 끝에 다다르면 그 문장 시작으로 되돌린다.
+    if (loopSent && lastActiveSent >= 0) {
+      const cur = sentRanges[lastActiveSent];
+      if (cur && Number.isFinite(cur.end) && player.time >= cur.end - 0.06) {
+        player.seek(cur.start + 0.01);
+      }
+    }
   }
 
   // Sentence-level tracking (one per Whisper segment).
@@ -330,6 +339,13 @@ export async function renderEpisode(root, idStr) {
     e.stopPropagation();
     player.skip(30);
   });
+  const $loop = document.getElementById('tx-loop');
+  $loop?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    loopSent = !loopSent;
+    $loop.classList.toggle('on', loopSent);
+    $loop.setAttribute('aria-pressed', loopSent ? 'true' : 'false');
+  });
 
   const off = player.on(refresh);
   // Cleanup on route change — detach player listener, remove sheet, restore body scroll
@@ -470,6 +486,10 @@ function transcriptSheetHtml(segments) {
           <button class="tx-mini-btn" id="tx-mini-fwd" aria-label="Forward 30s">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 10 15 10"/></svg>
             <span class="skip-num">30</span>
+          </button>
+          <button class="tx-mini-btn tx-loop-btn" id="tx-loop" aria-label="Loop current sentence" aria-pressed="false">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span class="skip-num">loop</span>
           </button>
         </div>
       </div>
