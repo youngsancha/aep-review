@@ -124,7 +124,8 @@ export async function renderEpisode(root, idStr, tStr) {
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
   let speedIdx = 0;
-  let loopSent = false;  // 쉐도잉: 현재 문장 자동 반복
+  let shadowMode = 'off';  // off | loop(문장 반복) | pause(문장 끝 자동 멈춤)
+  let autoPausedSent = -1;
 
   function refresh() {
     const dur = player.duration;
@@ -139,11 +140,12 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
 
-    // 쉐도잉 반복: 현재 문장 끝에 다다르면 그 문장 시작으로 되돌린다.
-    if (loopSent && lastActiveSent >= 0) {
+    // 쉐도잉 모드: 현재 문장 끝에서 반복(loop) 또는 자동 멈춤(pause, 따라 말할 시간)
+    if (shadowMode !== 'off' && lastActiveSent >= 0 && !player.paused) {
       const cur = sentRanges[lastActiveSent];
       if (cur && Number.isFinite(cur.end) && player.time >= cur.end - 0.06) {
-        player.seek(cur.start + 0.01);
+        if (shadowMode === 'loop') player.seek(cur.start + 0.01);
+        else if (lastActiveSent !== autoPausedSent) { player.pause(); autoPausedSent = lastActiveSent; }
       }
     }
   }
@@ -392,12 +394,22 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     player.skip(30);
   });
-  const $loop = document.getElementById('tx-loop');
-  $loop?.addEventListener('click', (e) => {
+  const SHADOW = [
+    { mode: 'off',   label: '🔁 쉐도잉',   on: false },
+    { mode: 'loop',  label: '🔁 반복',     on: true },
+    { mode: 'pause', label: '⏸ 문장멈춤', on: true },
+  ];
+  let shadowIdx = 0;
+  const $shadow = document.getElementById('tx-shadow');
+  $shadow?.addEventListener('click', (e) => {
     e.stopPropagation();
-    loopSent = !loopSent;
-    $loop.classList.toggle('on', loopSent);
-    $loop.setAttribute('aria-pressed', loopSent ? 'true' : 'false');
+    shadowIdx = (shadowIdx + 1) % SHADOW.length;
+    const s = SHADOW[shadowIdx];
+    shadowMode = s.mode;
+    autoPausedSent = -1;
+    $shadow.textContent = s.label;
+    $shadow.classList.toggle('on', s.on);
+    $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
   });
 
   // 쉐도잉용 속도 조절 (시트 안에서 느리게 따라 말하기)
@@ -602,7 +614,7 @@ function transcriptSheetHtml(segments) {
         <div class="tx-card">
           <div class="tx-search">
             <input id="tx-search" class="tx-search-input" type="search" placeholder="Search transcript..." />
-            <button id="tx-loop" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Loop current sentence">🔁 Loop</button>
+            <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
