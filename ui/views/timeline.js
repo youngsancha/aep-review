@@ -39,6 +39,7 @@ export async function renderTimeline(root) {
   });
 
   let html = heroHtml({total: items.length, ready, due});
+  html += featuredHtml(items[0]);  // 최신 에피소드 피처 카드 (pub_date desc 정렬의 첫 항목)
   for (const key of sortedKeys) {
     const eps = groups.get(key);
     html += `
@@ -53,8 +54,8 @@ export async function renderTimeline(root) {
   }
   root.innerHTML = html;
 
-  // Wire ▶ buttons — start playback inline (no nav)
-  document.querySelectorAll('.ep-row .ep-play').forEach((btn) => {
+  // Wire ▶ buttons — start playback inline (no nav). 행 ▶ 와 피처 카드 ▶ 동일 처리.
+  document.querySelectorAll('.ep-play, .feat-play').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -81,6 +82,7 @@ function skeletonHtml() {
 function heroHtml({total, ready, due}) {
   return `
     <div class="show-hero">
+      <div class="show-hero-bg" style="background-image:url('${SHOW_COVER}')"></div>
       <img class="show-hero-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
       <h1 class="show-hero-title">American English Podcast</h1>
       <p class="show-hero-host">Shana Thompson · Language Learning</p>
@@ -88,6 +90,33 @@ function heroHtml({total, ready, due}) {
         <span class="show-stat">${total} episodes</span>
         <span class="show-stat">${ready} ready</span>
         <span class="show-stat">${due} due</span>
+      </div>
+    </div>
+  `;
+}
+
+function featuredHtml(e) {
+  if (!e) return '';
+  const title = (e.title || '').replace(/^\d+\s*[-:.]\s*/, '');
+  const meta = [fmtDate(e.pub_date), e.duration_sec ? fmtDuration(e.duration_sec) : '', e.vocab_count ? `${e.vocab_count} vocab` : '']
+    .filter(Boolean).join(' · ');
+  const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
+  return `
+    <div class="section-h"><h2>최신 에피소드</h2></div>
+    <div class="feat-card">
+      <div class="feat-bg" style="background-image:url('${SHOW_COVER}')"></div>
+      <div class="feat-inner">
+        <img class="feat-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <div class="feat-body">
+          <div class="feat-label">▶ 최신화</div>
+          <a class="feat-title" href="#/episode/${e.id}">${escapeHtml(title)}</a>
+          <div class="feat-meta">${escapeHtml(meta)}</div>
+        </div>
+      </div>
+      ${desc ? `<p class="feat-desc">${escapeHtml(desc)}</p>` : ''}
+      <div class="feat-actions">
+        ${e.has_audio ? `<button class="feat-play" data-id="${e.id}">▶ 재생</button>` : ''}
+        <a class="feat-script" href="#/episode/${e.id}">스크립트로 보기 ›</a>
       </div>
     </div>
   `;

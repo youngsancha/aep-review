@@ -13,6 +13,7 @@ UI = Path(__file__).resolve().parent.parent / "ui"
 MOCKS = UI / "_mocks.js"
 HARNESS = UI / "_harness.html"
 STUDY_HARNESS = UI / "_harness_study.html"
+TIMELINE_HARNESS = UI / "_harness_timeline.html"
 
 MOCKS_JS = r"""
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -62,6 +63,21 @@ export async function expressionsByKind(kind) {
     episode_title:'211 - Test', known:false }));
 }
 export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
+export function cleanAudioUrl(u) { return u; }
+export async function listEpisodes() {
+  return [
+    { id:1, season:2, episode_no:12, title:'211 - The Latest One', pub_date:'2026-06-10', duration_sec:1700,
+      description:'<p>A <b>great</b> latest episode.</p>', has_audio:true, transcribed_at:'2026-01-01', vocab_count:12,
+      audio_url:'https://traffic.megaphone.fm/ABC123.mp3' },
+    { id:2, season:2, episode_no:11, title:'210 - Another', pub_date:'2026-06-01', duration_sec:1600,
+      description:'<p>desc two</p>', has_audio:true, transcribed_at:'2026-01-01', vocab_count:8,
+      audio_url:'https://traffic.megaphone.fm/DEF456.mp3' },
+    { id:3, season:1, episode_no:9, title:'9 - Older one', pub_date:'2025-12-01', duration_sec:1500,
+      description:'', has_audio:true, transcribed_at:null, vocab_count:0,
+      audio_url:'https://traffic.megaphone.fm/GHI789.mp3' },
+  ];
+}
+export async function srsStats() { return { total:1905, today_batch:50, today_review:40, today_new:10, backlog_new:0, learned:12 }; }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -90,10 +106,24 @@ STUDY_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
+TIMELINE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
+<script type="module">
+  import { renderTimeline } from '/views/timeline.js';
+  window.__ready=false;
+  renderTimeline(document.getElementById('app')).then(()=>{window.__ready=true;})
+    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
+</script></body></html>
+"""
+
+
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
     STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
+    TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
@@ -202,13 +232,26 @@ def main() -> int:
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True)
 
-            ok = ep_ok and study_ok
+            # === Timeline(Library) 회귀 ===
+            pg.goto("http://localhost:8123/_harness_timeline.html")
+            pg.wait_for_function("window.__ready===true", timeout=10000)
+            time.sleep(0.3)
+            tl_feat = pg.eval_on_selector_all(".feat-card", "els=>els.length")
+            tl_rows = pg.eval_on_selector_all(".ep-row", "els=>els.length")
+            tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
+            tl_featplay = bool(pg.query_selector(".feat-play"))
+            tl_err = pg.evaluate("window.__err||[]")
+            print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay, " err=", tl_err)
+            timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay and not tl_err)
+
+            ok = ep_ok and study_ok and timeline_ok
             b.close()
     finally:
         srv.terminate()
         MOCKS.unlink(missing_ok=True)
         HARNESS.unlink(missing_ok=True)
         STUDY_HARNESS.unlink(missing_ok=True)
+        TIMELINE_HARNESS.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

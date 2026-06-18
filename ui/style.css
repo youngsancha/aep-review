@@ -176,7 +176,20 @@ body.on-episode {
   padding: 8px 0 18px;
   text-align: center;
   position: relative;
+  isolation: isolate;
 }
+.show-hero-bg {
+  position: absolute; left: 50%; top: -56px; transform: translateX(-50%);
+  width: 130%; height: 300px;
+  background-size: cover; background-position: center;
+  filter: blur(60px) saturate(170%);
+  opacity: 0.5; z-index: 0; pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 38%, #000 35%, transparent 75%);
+  mask-image: radial-gradient(ellipse 60% 55% at 50% 38%, #000 35%, transparent 75%);
+}
+:root[data-theme="dark"] .show-hero-bg { opacity: 0.38; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .show-hero-bg { opacity: 0.38; } }
+.show-hero-cover, .show-hero-title, .show-hero-host, .show-hero-stats { position: relative; z-index: 1; }
 .show-hero-cover {
   width: 184px; height: 184px;
   border-radius: var(--radius-md);
@@ -184,6 +197,42 @@ body.on-episode {
   margin-bottom: 14px;
   background: var(--surface-2);
 }
+
+/* ── 최신 에피소드 피처 카드 ── */
+.feat-card {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 16px; margin-bottom: 14px;
+}
+.feat-bg {
+  position: absolute; inset: -40px; background-size: cover; background-position: center;
+  filter: blur(46px) saturate(160%); opacity: 0.22; z-index: 0; pointer-events: none;
+}
+.feat-inner { position: relative; z-index: 1; display: flex; gap: 14px; align-items: center; }
+.feat-cover { width: 74px; height: 74px; border-radius: 13px; box-shadow: var(--shadow-card); flex: 0 0 auto; object-fit: cover; }
+.feat-body { min-width: 0; }
+.feat-label { font-size: 11px; font-weight: 800; letter-spacing: 0.05em; color: var(--grad-2); text-transform: uppercase; }
+.feat-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-family: var(--font); font-weight: 800; font-size: 18px; line-height: 1.25;
+  color: var(--text); text-decoration: none; letter-spacing: -0.02em; margin: 3px 0 5px;
+}
+.feat-meta { font-size: 12.5px; color: var(--text-3); font-weight: 600; font-variant-numeric: tabular-nums; }
+.feat-desc {
+  position: relative; z-index: 1; font-size: 13.5px; color: var(--text-2); line-height: 1.5; margin: 12px 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.feat-actions { position: relative; z-index: 1; display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+.feat-play {
+  border: 0; cursor: pointer; color: #fff;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
+  font-family: var(--font); font-weight: 800; font-size: 15px;
+  padding: 11px 26px; border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(245, 64, 141, 0.32);
+  transition: transform 0.1s;
+}
+.feat-play:active { transform: scale(0.97); }
+.feat-script { color: var(--tint); font-weight: 700; font-size: 13.5px; text-decoration: none; }
 .show-hero-title {
   font-family: var(--font);
   font-weight: 700;
