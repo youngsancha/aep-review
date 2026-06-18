@@ -148,3 +148,7 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   하니스에 퀴즈 검증 추가(quiz_opts=4 PASS).
 - **v37** — Study 듣기 퀴즈(quiz mode 파라미터화): 🎧 발음만 듣고 4개 뜻 중 고르기(청취 훈련),
   답한 뒤 정답 표현 노출. 4지선다(읽기)와 나란히 두 버튼. [동기화] vocab 미추출 118개 백필 진행중.
+- **(ingest fix)** — `extract_vocab.call_claude`: claude CLI `--output-format json` 이 dict 가 아닌
+  메시지 배열(list)로 응답하는 버전에서 `.get()` 크래시 → list/dict 모두 처리. ep152 검증(vocab 12개).
+  이 버그로 vocab 미추출 118개가 막혀 있었음. fix 후 백필 재가동(백그라운드 bpr9evhvt, ~117개).
+- **v38** — 타임라인 NEW 뱃지: 최근 21일 내 발행 에피소드에 그라데이션 NEW 칩(동기화된 최신 강조).

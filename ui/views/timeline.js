@@ -91,6 +91,8 @@ function rowHtml(e) {
   const num = e.episode_no != null ? `#${e.episode_no}` : '';
   const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
   const chips = [];
+  const isNew = e.pub_date && (Date.now() - new Date(e.pub_date).getTime()) < 21 * 864e5;
+  if (isNew) chips.push('<span class="chip new-ep">NEW</span>');
   if (e.vocab_count > 0) chips.push(`<span class="chip vocab">${e.vocab_count} vocab</span>`);
   if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
 

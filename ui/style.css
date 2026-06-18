@@ -323,6 +323,7 @@ body.on-episode {
 .chip.audio  { background: var(--chip-audio-bg);  color: var(--chip-audio-tx);  }
 .chip.vocab  { background: var(--chip-vocab-bg);  color: var(--chip-vocab-tx);  }
 .chip.warn   { background: var(--chip-warn-bg);   color: var(--chip-warn-tx);   }
+.chip.new-ep { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
 .chip.word    { background: var(--chip-word-bg);    color: var(--chip-word-tx);    }
 .chip.idiom   { background: var(--chip-idiom-bg);   color: var(--chip-idiom-tx);   }
 .chip.collocation { background: var(--chip-coll-bg); color: var(--chip-coll-tx);  }
