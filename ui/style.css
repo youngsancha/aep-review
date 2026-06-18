@@ -1352,10 +1352,12 @@ body.logged-out #app-version { display: none; }
 
 /* 로딩 스켈레톤 (shimmer) */
 @keyframes skel-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-.skel-hero, .skel-thumb, .skel-line {
+.skel-hero, .skel-thumb, .skel-line, .skel-chip, .skel-x {
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--separator-thin) 37%, var(--surface-2) 63%);
   background-size: 200% 100%; animation: skel-shimmer 1.4s ease infinite; border-radius: 8px;
 }
+.skel-chip { display: inline-block; width: 92px; height: 34px; border-radius: 999px; margin-right: 8px; }
+.skel-x { height: 66px; border-radius: 14px; margin-bottom: 10px; }
 .skel-hero { height: 210px; border-radius: 18px; margin: 8px 0 20px; }
 .skel-row { display: flex; gap: 12px; padding: 12px 0; align-items: flex-start; }
 .skel-thumb { width: 60px; height: 60px; border-radius: 10px; flex: 0 0 auto; }

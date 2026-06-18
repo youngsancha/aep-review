@@ -8,7 +8,11 @@ const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
 
 export async function renderStudy(root) {
-  root.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  root.innerHTML = `
+    <div class="study-greet"><h2>Study</h2></div>
+    <div class="skel-hero" style="height:84px"></div>
+    <div class="study-kinds">${'<span class="skel-chip"></span>'.repeat(4)}</div>
+    ${'<div class="skel-x"></div>'.repeat(5)}`;
   let ov;
   try {
     ov = await studyOverview();
