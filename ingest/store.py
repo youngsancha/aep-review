@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -194,18 +195,38 @@ async def pregen_tts(texts: list[str], concurrency: int = 5) -> int:
         return 0
     bucket = client().storage.from_("tts")
     sem = asyncio.Semaphore(concurrency)
+    # storage3 의 httpx 클라이언트는 스레드 간 동시 호출이 안전하지 않다(HTTP/2 multiplex
+    # 를 여러 OS 스레드가 만지면 WinError 10035 / RemoteProtocolError). 합성(edge-tts)은
+    # 동시에 두되, 업로드는 이 lock 으로 직렬화해 공유 클라이언트를 한 번에 한 스레드만 쓴다.
+    upload_lock = asyncio.Lock()
+    done = 0
+
+    def _upload(key: str, data: bytes) -> None:
+        for attempt in range(3):  # 일시적 소켓/연결 오류 재시도
+            try:
+                bucket.upload(
+                    path=f"{key}.mp3", file=data,
+                    file_options={"content-type": "audio/mpeg", "upsert": "true"},
+                )
+                return
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(0.5 * (attempt + 1))
 
     async def worker(text: str, key: str) -> None:
+        nonlocal done
         async with sem:
             try:
                 data = await synth(text)
-                if data:
-                    await asyncio.to_thread(
-                        bucket.upload, path=f"{key}.mp3", file=data,
-                        file_options={"content-type": "audio/mpeg", "upsert": "true"},
-                    )
+                if not data:
+                    return
+                async with upload_lock:
+                    await asyncio.to_thread(_upload, key, data)
+                done += 1
             except Exception:
                 log.exception("TTS 실패: %r", text[:40])
 
     await asyncio.gather(*(worker(t, k) for t, k in todo))
-    return len(todo)
+    log.info("TTS 업로드: 성공 %d / 대상 %d", done, len(todo))
+    return done
