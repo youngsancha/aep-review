@@ -80,14 +80,15 @@ const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];
 
 // Study 홈 통계 — 전체 표현 수 / 학습(SRS reps>0) / 오늘 복습 대기 / 종류별 개수
 export async function studyOverview() {
-  const total = await _count('vocab_cards');
-  const learned = await _count('srs_cards', (q) => q.gt('reps', 0));
-  const due = await _count('srs_cards', (q) => q.lte('due_date', todayStr()));
-  const byKind = [];
-  for (const k of STUDY_KINDS) {
-    const c = await _count('vocab_cards', (q) => q.eq('kind', k));
-    byKind.push({ kind: k, total: c });
-  }
+  const today = todayStr();
+  // 7개 count 를 순차→병렬(Promise.all)로: 라운드트립 1회 분량으로 단축.
+  const [total, learned, due, ...kindCounts] = await Promise.all([
+    _count('vocab_cards'),
+    _count('srs_cards', (q) => q.gt('reps', 0)),
+    _count('srs_cards', (q) => q.lte('due_date', today)),
+    ...STUDY_KINDS.map((k) => _count('vocab_cards', (q) => q.eq('kind', k))),
+  ]);
+  const byKind = STUDY_KINDS.map((k, i) => ({ kind: k, total: kindCounts[i] }));
   return { total, learned, due, byKind };
 }
 
@@ -183,11 +184,13 @@ export async function srsStats() {
     return count || 0;
   };
 
-  const total = await run(base());
-  const dueReview = await run(base().lte('due_date', today).gt('reps', 0));
-  const dueNew = await run(base().lte('due_date', today).eq('reps', 0));
-  const backlogNew = await run(base().gt('due_date', today).eq('reps', 0));
-  const learned = await run(base().gt('reps', 0));
+  const [total, dueReview, dueNew, backlogNew, learned] = await Promise.all([
+    run(base()),
+    run(base().lte('due_date', today).gt('reps', 0)),
+    run(base().lte('due_date', today).eq('reps', 0)),
+    run(base().gt('due_date', today).eq('reps', 0)),
+    run(base().gt('reps', 0)),
+  ]);
 
   return {
     total,

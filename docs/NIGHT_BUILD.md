@@ -164,3 +164,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   [프로덕션 확인] 전 자산 200·배포 v41·백필 vocab 2013(158/267) 정상.
 - **v43** — 폴리시: 타임라인 로딩 스켈레톤(shimmer 플레이스홀더, 스피너 대체) — Apple급 로딩감.
   [백필] 160/267 진행.
+- **v44** — 성능: studyOverview(7 count)·srsStats(5 count) 순차→`Promise.all` 병렬화.
+  Study 홈·SRS 통계 로딩이 라운드트립 누적 대신 1회 분량으로 단축. [백필] 진행.
