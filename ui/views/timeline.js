@@ -7,6 +7,7 @@ import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 
 export async function renderTimeline(root) {
+  root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
   const items = await listEpisodes();
   const stats = await srsStats().catch(() => null);
 
@@ -70,6 +71,11 @@ export async function renderTimeline(root) {
       player.play();
     });
   });
+}
+
+function skeletonHtml() {
+  const row = '<div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div>';
+  return `<div class="skel-hero"></div>${Array(6).fill(row).join('')}`;
 }
 
 function heroHtml({total, ready, due}) {
