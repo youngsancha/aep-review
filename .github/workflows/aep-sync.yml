@@ -1,18 +1,19 @@
-# 매일 신규 에피소드 인제스트 → Supabase 에 write.
-# 결과(transcript/vocab/tts)는 Supabase Postgres + Storage 로 직접 들어간다(데이터 repo 없음).
+# Daily ingest of new episodes -> write to Supabase.
+# Results (transcript/vocab/tts) go straight into Supabase Postgres + Storage (no data repo).
 #
-# 필요한 repo secret:
-#   SUPABASE_URL          — 프로젝트 URL
-#   SUPABASE_SERVICE_KEY  — service_role 키 (RLS 우회)
+# Required repo secrets:
+#   SUPABASE_URL          - project URL
+#   SUPABASE_SERVICE_KEY  - service_role key (bypasses RLS)
 #
-# vocab 추출(claude CLI)은 CI 인증이 어려워 여기선 --no-vocab.
-# vocab+TTS 는 로컬(Claude Max)에서 `python -m ingest.cron_fetch` 로 별도 처리.
+# vocab extraction (claude CLI) is hard to auth in CI, so here we pass --no-vocab.
+# vocab + TTS are produced locally (Claude Max) via `python -m ingest.cron_fetch`.
 
 name: aep-sync
 
 on:
   schedule:
-    - cron: '0 16 * * *'   # 매일 UTC 16:00 (KST 01:00)
+    # daily 16:00 UTC (01:00 KST)
+    - cron: "0 16 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -33,20 +34,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           cache: pip
 
       - name: Install
         run: pip install -e .
 
-      # faster-whisper 모델 → 캐시
+      # cache the faster-whisper model
       - name: Cache whisper model
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
           key: faster-whisper-medium-en-v1
 
-      - name: Run cron fetch (CI: STT 만, vocab 은 로컬에서)
+      - name: Run cron fetch (CI does STT only; vocab runs locally)
         env:
           AEP_WHISPER_DEVICE: cpu
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
