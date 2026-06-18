@@ -233,6 +233,41 @@ body.on-episode {
 }
 .feat-play:active { transform: scale(0.97); }
 .feat-script { color: var(--tint); font-weight: 700; font-size: 13.5px; text-decoration: none; }
+
+/* ── 에피소드 검색 ── */
+.ep-search-wrap { margin: 8px 0 12px; }
+.ep-search {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 14px; font-size: 15px; font-family: var(--font);
+  border: 0.5px solid var(--separator); border-radius: 12px;
+  background: var(--surface-2); color: var(--text);
+}
+.ep-search:focus { outline: none; background: var(--tint-soft); }
+.ep-search::placeholder { color: var(--text-4); }
+
+/* ── 이어듣기 카드 ── */
+.cont-card {
+  display: flex; align-items: center; gap: 14px;
+  text-decoration: none; color: inherit;
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 14px 16px; margin-bottom: 14px;
+}
+.cont-card:active { background: var(--surface-2); }
+.cont-cover { width: 56px; height: 56px; border-radius: 11px; flex: 0 0 auto; object-fit: cover; box-shadow: var(--shadow-card); }
+.cont-body { flex: 1; min-width: 0; }
+.cont-title {
+  font-family: var(--font); font-weight: 700; font-size: 15px; color: var(--text); letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 7px;
+}
+.cont-bar { height: 5px; border-radius: 3px; background: var(--separator-thin); overflow: hidden; }
+.cont-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--grad-1), var(--grad-3)); border-radius: 3px; }
+.cont-meta { font-size: 11.5px; color: var(--text-3); margin-top: 5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cont-play {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 16px;
+  box-shadow: 0 4px 14px rgba(245, 64, 141, 0.3);
+}
 .show-hero-title {
   font-family: var(--font);
   font-weight: 700;

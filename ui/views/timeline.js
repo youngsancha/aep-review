@@ -1,7 +1,7 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
 import { listEpisodes, srsStats, cleanAudioUrl } from '/db.js';
-import { player } from '/player.js';
+import { player, getLatestProgress } from '/player.js';
 import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
@@ -25,37 +25,36 @@ export async function renderTimeline(root) {
   const ready = items.filter((e) => e.vocab_count > 0).length;
   const due = stats?.today_batch || 0;
 
-  // Group by season (descending)
-  const groups = new Map();
-  for (const e of items) {
-    const key = e.season != null ? `Season ${e.season}` : 'Other';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(e);
-  }
-  const sortedKeys = [...groups.keys()].sort((a, b) => {
-    const ax = parseInt(a.replace('Season ', '')) || -1;
-    const bx = parseInt(b.replace('Season ', '')) || -1;
-    return bx - ax;
-  });
-
   let html = heroHtml({total: items.length, ready, due});
-  html += featuredHtml(items[0]);  // 최신 에피소드 피처 카드 (pub_date desc 정렬의 첫 항목)
-  for (const key of sortedKeys) {
-    const eps = groups.get(key);
-    html += `
-      <div class="section-h">
-        <h2>${escapeHtml(key)}</h2>
-        <span class="count">${eps.length} episodes</span>
-      </div>
-      <div class="ep-list">
-        ${eps.map(rowHtml).join('')}
-      </div>
-    `;
-  }
+  html += continueHtml(getLatestProgress(), items);  // 이어듣기 (저장된 재생위치)
+  html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
+  html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 에피소드 검색" autocomplete="off" /></div>`;
+  html += `<div id="ep-groups">${groupsHtml(items)}</div>`;
   root.innerHTML = html;
 
-  // Wire ▶ buttons — start playback inline (no nav). 행 ▶ 와 피처 카드 ▶ 동일 처리.
-  document.querySelectorAll('.ep-play, .feat-play').forEach((btn) => {
+  wirePlay(root, items);
+
+  // 에피소드 검색 — 제목/설명 클라이언트 필터
+  const $s = root.querySelector('#ep-search');
+  if ($s) {
+    let timer = 0;
+    $s.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const q = $s.value.trim().toLowerCase();
+        const filtered = !q ? items : items.filter((e) =>
+          (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
+        const box = root.querySelector('#ep-groups');
+        box.innerHTML = filtered.length ? groupsHtml(filtered) : '<div class="empty">검색 결과가 없어요.</div>';
+        wirePlay(box, items);
+      }, 150);
+    });
+  }
+}
+
+// ▶ 버튼(행/피처) → 인라인 재생
+function wirePlay(scope, items) {
+  scope.querySelectorAll('.ep-play, .feat-play').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -72,6 +71,53 @@ export async function renderTimeline(root) {
       player.play();
     });
   });
+}
+
+// 시즌별(내림차순) 그룹 섹션 HTML
+function groupsHtml(list) {
+  const groups = new Map();
+  for (const e of list) {
+    const key = e.season != null ? `Season ${e.season}` : 'Other';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  }
+  const sortedKeys = [...groups.keys()].sort((a, b) => {
+    const ax = parseInt(a.replace('Season ', '')) || -1;
+    const bx = parseInt(b.replace('Season ', '')) || -1;
+    return bx - ax;
+  });
+  let html = '';
+  for (const key of sortedKeys) {
+    const eps = groups.get(key);
+    html += `
+      <div class="section-h">
+        <h2>${escapeHtml(key)}</h2>
+        <span class="count">${eps.length} episodes</span>
+      </div>
+      <div class="ep-list">${eps.map(rowHtml).join('')}</div>`;
+  }
+  return html;
+}
+
+// 이어듣기 카드 — 마지막으로 듣던 에피소드로 재개 (#/episode/:id → 저장위치에서 resume)
+function continueHtml(prog, items) {
+  if (!prog || !prog.id || !prog.t) return '';
+  const ep = items.find((e) => e.id === prog.id);
+  const title = (((ep && ep.title) || prog.title) || '').replace(/^\d+\s*[-:.]\s*/, '');
+  if (!title) return '';
+  const pct = prog.dur ? Math.min(100, Math.round((prog.t / prog.dur) * 100)) : 0;
+  const left = prog.dur ? Math.max(1, Math.round((prog.dur - prog.t) / 60)) : 0;
+  return `
+    <div class="section-h"><h2>이어듣기</h2></div>
+    <a class="cont-card" href="#/episode/${prog.id}">
+      <img class="cont-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+      <div class="cont-body">
+        <div class="cont-title">${escapeHtml(title)}</div>
+        <div class="cont-bar"><span style="width:${pct}%"></span></div>
+        <div class="cont-meta">${pct}% 들음 · ${left}분 남음</div>
+      </div>
+      <span class="cont-play">▶</span>
+    </a>`;
 }
 
 function skeletonHtml() {

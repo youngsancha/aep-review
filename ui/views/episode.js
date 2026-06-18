@@ -2,7 +2,7 @@
 import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
-import { player } from '/player.js';
+import { player, getProgress } from '/player.js';
 import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
@@ -637,6 +637,14 @@ export async function renderEpisode(root, idStr, tStr) {
     const go = () => { player.seek(seekTo + adOffset); player.play(); };
     if (player.duration) go();
     else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+  } else {
+    // 딥링크가 없으면 마지막 재생 위치에서 이어듣기 (저장된 audio 시각, 자동재생은 안 함)
+    const prog = getProgress(ep.id);
+    if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) {
+      const go = () => player.seek(prog.t);
+      if (player.duration) go();
+      else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+    }
   }
 
   refresh();

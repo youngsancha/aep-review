@@ -78,6 +78,8 @@ export async function listEpisodes() {
   ];
 }
 export async function srsStats() { return { total:1905, today_batch:50, today_review:40, today_new:10, backlog_new:0, learned:12 }; }
+export function getProgress() { return null; }
+export function getLatestProgress() { return { id:1, t:300, dur:1700, title:'211 - The Latest One', at:Date.now() }; }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -250,9 +252,18 @@ def main() -> int:
             tl_rows = pg.eval_on_selector_all(".ep-row", "els=>els.length")
             tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
             tl_featplay = bool(pg.query_selector(".feat-play"))
+            tl_cont = bool(pg.query_selector(".cont-card"))   # 이어듣기 카드(#15)
+            # 에피소드 검색(#15): 'older' 입력 시 1개로 필터
+            tl_search = None
+            if pg.query_selector("#ep-search"):
+                pg.fill("#ep-search", "older")
+                time.sleep(0.25)
+                tl_search = pg.eval_on_selector_all("#ep-groups .ep-row", "els=>els.length")
             tl_err = pg.evaluate("window.__err||[]")
-            print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay, " err=", tl_err)
-            timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay and not tl_err)
+            print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
+                  " cont=", tl_cont, " search_rows=", tl_search, " err=", tl_err)
+            timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
+                           and tl_cont and tl_search == 1 and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok
             b.close()

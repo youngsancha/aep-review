@@ -50,6 +50,33 @@ class Player {
 export const player = new Player();
 window.__player = player;  // debug
 
+// === 재생 위치 저장(이어듣기) — 에피소드별 audio 시각을 localStorage 에 (transcript 딥링크와 별개) ===
+const PROG_KEY = 'aep-progress';
+function loadMap() { try { return JSON.parse(localStorage.getItem(PROG_KEY) || '{}') || {}; } catch { return {}; } }
+function saveMap(m) { try { localStorage.setItem(PROG_KEY, JSON.stringify(m)); } catch (e) { /* quota */ } }
+export function getProgress(id) { const m = loadMap(); return m[id] || null; }
+export function getLatestProgress() {
+  const m = loadMap(); let best = null;
+  for (const id in m) { const e = m[id]; if (e && (!best || e.at > best.at)) best = { id: Number(id), ...e }; }
+  return best;
+}
+let _lastSave = 0;
+function saveProgress() {
+  const c = player.current; if (!c) return;
+  const t = player.time, dur = player.duration;
+  const m = loadMap();
+  if (dur && t > 5 && t < dur - 10) {
+    m[c.id] = { t, dur, title: c.title, at: Date.now() };
+    saveMap(m);
+  } else if (dur && t >= dur - 10 && m[c.id]) {  // 거의 끝까지 들음 → 완료(이어듣기에서 제거)
+    delete m[c.id]; saveMap(m);
+  }
+}
+player.on((ev) => {
+  if (ev === 'timeupdate') { const n = Date.now(); if (n - _lastSave > 5000) { _lastSave = n; saveProgress(); } }
+  else if (ev === 'pause' || ev === 'ended') { saveProgress(); }
+});
+
 // === Mini-player wiring ===
 const $mp     = document.getElementById('miniplayer');
 const $cover  = document.getElementById('mp-cover');
