@@ -61,7 +61,7 @@ export async function renderStudy(root) {
   function rowHtml(v) {
     const epTitle = (v.episode_title || '').replace(/^\d+\s*[-:.]\s*/, '');
     return `
-      <li class="study-x" data-ep="${v.episode_id}">
+      <li class="study-x" data-ep="${v.episode_id}" data-t="${v.sentence_start_sec != null ? Math.floor(v.sentence_start_sec) : ''}">
         <div class="study-x-top">
           <span class="study-x-term">${escapeHtml(v.term)}</span>
           <button class="study-x-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button>
@@ -83,7 +83,10 @@ export async function renderStudy(root) {
     root.querySelectorAll('.study-x-tts').forEach((b) =>
       b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
     root.querySelectorAll('.study-x').forEach((li) =>
-      li.addEventListener('click', () => { if (li.dataset.ep) location.hash = `#/episode/${li.dataset.ep}`; }));
+      li.addEventListener('click', () => {
+        if (!li.dataset.ep) return;
+        location.hash = li.dataset.t ? `#/episode/${li.dataset.ep}/${li.dataset.t}` : `#/episode/${li.dataset.ep}`;
+      }));
     prefetch([...root.querySelectorAll('.study-x-term')].slice(0, 8).map((e) => e.textContent));
   }
 

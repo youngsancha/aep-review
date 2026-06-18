@@ -152,3 +152,6 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   메시지 배열(list)로 응답하는 버전에서 `.get()` 크래시 → list/dict 모두 처리. ep152 검증(vocab 12개).
   이 버그로 vocab 미추출 118개가 막혀 있었음. fix 후 백필 재가동(백그라운드 bpr9evhvt, ~117개).
 - **v38** — 타임라인 NEW 뱃지: 최근 21일 내 발행 에피소드에 그라데이션 NEW 칩(동기화된 최신 강조).
+- **v39** — 에피소드 시점 딥링크 `#/episode/:id/:t`: Study 표현 탭 → 그 표현이 나온 정확한
+  지점부터 재생(loadedmetadata 후 seek). "팟캐스트 맥락에서 표현 이해"를 Study까지 연결.
+  [백필] vocab 1905→1941+ 증가 중(정상 작동 확인).

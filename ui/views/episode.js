@@ -14,7 +14,7 @@ const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" s
 
 const SPEEDS = [1, 1.25, 1.5, 0.85, 1];
 
-export async function renderEpisode(root, idStr) {
+export async function renderEpisode(root, idStr, tStr) {
   const id = parseInt(idStr, 10);
   const ep = await getEpisode(id);
   document.body.classList.add('on-episode');
@@ -511,6 +511,14 @@ export async function renderEpisode(root, idStr) {
     });
   });
   prefetch(vocabs.map((v) => v.term).filter(Boolean));
+
+  // 딥링크 #/episode/:id/:t — 그 시점부터 재생 (Study/SRS 에서 표현의 맥락으로 점프)
+  const seekTo = tStr != null ? parseFloat(tStr) : NaN;
+  if (Number.isFinite(seekTo) && seekTo > 0) {
+    const go = () => { player.seek(seekTo); player.play(); };
+    if (player.duration) go();
+    else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+  }
 
   refresh();
 }

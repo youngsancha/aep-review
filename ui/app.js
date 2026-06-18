@@ -18,7 +18,7 @@ if ($version) $version.textContent = 'v' + APP_VERSION;
 
 const ROUTES = [
   { re: /^#?\/$/,                    handler: renderTimeline, title: 'Episodes', tab: 'timeline', back: false },
-  { re: /^#?\/episode\/(\d+)$/,      handler: renderEpisode,  title: 'Episode',  tab: 'timeline', back: true  },
+  { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
   { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
 ];
