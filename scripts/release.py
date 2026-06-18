@@ -14,6 +14,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows 콘솔(cp949)에서 커밋 메시지의 em-dash 등 비ASCII 출력 시 크래시 방지.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "ui" / "index.html"
 SW = ROOT / "ui" / "service-worker.js"
