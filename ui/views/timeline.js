@@ -1,7 +1,8 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
-import { listEpisodes, srsStats } from '/db.js';
+import { listEpisodes, srsStats, cleanAudioUrl } from '/db.js';
 import { player } from '/player.js';
+import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 
@@ -63,8 +64,8 @@ export async function renderTimeline(root) {
         id: ep.id,
         title: ep.title,
         show: 'American English Podcast',
-        cover: '/icons/icon-192.png',
-        src: ep.audio_url,
+        cover: SHOW_COVER_SM,
+        src: cleanAudioUrl(ep.audio_url),
       });
       player.play();
     });
@@ -74,7 +75,7 @@ export async function renderTimeline(root) {
 function heroHtml({total, ready, due}) {
   return `
     <div class="show-hero">
-      <img class="show-hero-cover" src="/icons/icon-512.png" alt="" onerror="this.src='/icons/icon-192.png'" />
+      <img class="show-hero-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
       <h1 class="show-hero-title">American English Podcast</h1>
       <p class="show-hero-host">Shana Thompson · Language Learning</p>
       <div class="show-hero-stats">
@@ -97,7 +98,7 @@ function rowHtml(e) {
   return `
     <a class="ep-row" href="#/episode/${e.id}">
       <div class="ep-thumb">
-        <img src="/icons/icon-192.png" alt="" />
+        <img src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         ${num ? `<span class="ep-num">${escapeHtml(num)}</span>` : ''}
       </div>
       <div class="ep-body">

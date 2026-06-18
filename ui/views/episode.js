@@ -3,6 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player } from '/player.js';
+import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -29,7 +30,7 @@ export async function renderEpisode(root, idStr) {
   root.innerHTML = `
     <div class="np-wrap">
       <div class="np-cover-wrap">
-        <img class="np-cover" src="/icons/icon-512.png" alt="" onerror="this.src='/icons/icon-192.png'" />
+        <img class="np-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
       </div>
       <div class="np-meta">
         <div class="np-show">${escapeHtml(showLabel)}</div>
@@ -99,7 +100,7 @@ export async function renderEpisode(root, idStr) {
     id: ep.id,
     title: (ep.title || '').replace(/^\d+\s*[-:.]\s*/, ''),
     show: 'American English Podcast',
-    cover: '/icons/icon-192.png',
+    cover: SHOW_COVER_SM,
     src: ep.audio_url,
   };
   player.load(track);
@@ -554,7 +555,7 @@ function transcriptSheetHtml(segments) {
     <div class="tx-sheet" aria-hidden="true">
       <div class="tx-sheet-backdrop"></div>
       <div class="tx-sheet-card">
-        <div class="tx-sheet-bg" style="background-image:url('/icons/icon-512.png')"></div>
+        <div class="tx-sheet-bg" style="background-image:url('${SHOW_COVER}')"></div>
         <div class="tx-sheet-header">
           <div class="tx-sheet-handle"></div>
           <h3>Transcript</h3>
