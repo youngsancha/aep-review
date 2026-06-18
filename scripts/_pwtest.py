@@ -49,8 +49,15 @@ export async function studyOverview() {
     {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };
 }
 export async function expressionsByKind(kind) {
-  return [{ id:1, term:'put up with', kind, definition:'to tolerate (참고 견디다)',
-            example_sentence:'Gotta just put up with it.', episode_id:1, sentence_start_sec:173, episode_title:'211 - Test' }];
+  const base = [
+    ['put up with','to tolerate (참고 견디다)'],
+    ['fill in the gap','to provide missing info (빈칸을 채우다)'],
+    ['jump right into','to start immediately (바로 시작하다)'],
+    ['cover it up','to hide wrongdoing (은폐하다)'],
+    ['suffer from','to be affected by (~을 앓다)'],
+  ];
+  return base.map((b,i) => ({ id:i+1, term:b[0], kind, definition:b[1],
+    example_sentence:'...', episode_id:1, sentence_start_sec:100+i, episode_title:'211 - Test' }));
 }
 """
 
@@ -127,8 +134,13 @@ def main() -> int:
             study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             study_err = pg.evaluate("window.__err||[]")
-            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " err=", study_err)
-            study_ok = (study_x > 0 and study_chips == 4 and not study_err)
+            quiz_opts = 0
+            if pg.query_selector("#study-quiz"):
+                pg.click("#study-quiz")
+                time.sleep(0.3)
+                quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
+            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts, " err=", study_err)
+            study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err)
 
             ok = ep_ok and study_ok
             b.close()

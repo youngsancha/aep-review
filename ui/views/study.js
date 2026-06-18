@@ -51,6 +51,7 @@ export async function renderStudy(root) {
           </button>`).join('')}
       </div>
       <input class="study-search" id="study-q" type="search" placeholder="🔍 표현·뜻 검색" value="${escapeHtml(q)}" />
+      <button class="study-quiz-btn" id="study-quiz">🎯 4지선다 퀴즈</button>
     `;
   }
 
@@ -87,6 +88,8 @@ export async function renderStudy(root) {
     root.innerHTML = heroHtml() + '<div id="study-list"></div>';
     root.querySelectorAll('.study-kind-chip').forEach((b) =>
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
+    const qz = root.querySelector('#study-quiz');
+    if (qz) qz.addEventListener('click', startQuiz);
     const sq = root.querySelector('#study-q');
     if (sq) {
       let t = 0;
@@ -117,6 +120,70 @@ export async function renderStudy(root) {
     }
     listEl.innerHTML = listHtml();
     wireList();
+  }
+
+  // ── 4지선다 퀴즈 (현재 종류의 표현으로 능동 회상) ──
+  const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
+  function startQuiz() {
+    const pool = items.filter((v) => v.term && v.definition);
+    if (pool.length < 4) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">퀴즈를 만들 표현이 부족해요(4개 이상 필요).</div>';
+      return;
+    }
+    const N = Math.min(10, pool.length);
+    const qs = _shuffle(pool).slice(0, N).map((correct) => {
+      const others = _shuffle(pool.filter((x) => x.id !== correct.id)).slice(0, 3);
+      return { correct, options: _shuffle([correct, ...others]) };
+    });
+    let idx = 0, score = 0, answered = false;
+
+    function paintQ() {
+      if (idx >= qs.length) return finishQ();
+      const c = qs[idx].correct;
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${qs.length}</span><span class="quiz-score">${score}점</span></div>
+        <div class="quiz-prompt">
+          <div class="quiz-def">${escapeHtml(c.definition)}</div>
+          <button class="quiz-spk" id="q-spk" aria-label="발음 듣기">🔊 발음 힌트</button>
+          <div class="quiz-q">알맞은 표현을 고르세요</div>
+        </div>
+        <div class="quiz-opts">
+          ${qs[idx].options.map((o) => `<button class="quiz-opt" data-ok="${o.id === c.id ? '1' : '0'}">${escapeHtml(o.term)}</button>`).join('')}
+        </div>
+        <button class="quiz-exit" id="q-exit">← Study 홈</button>`;
+      root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
+      root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
+    }
+    function answerQ(btn, c) {
+      if (answered) return;
+      answered = true;
+      const ok = btn.dataset.ok === '1';
+      if (ok) { score++; btn.classList.add('right'); }
+      else { btn.classList.add('wrong'); root.querySelectorAll('.quiz-opt').forEach((b) => { if (b.dataset.ok === '1') b.classList.add('right'); }); }
+      if (navigator.vibrate) navigator.vibrate(ok ? 12 : [20, 40, 20]);
+      speak(c.term);
+      root.querySelectorAll('.quiz-opt').forEach((b) => { b.disabled = true; });
+      setTimeout(() => { idx++; answered = false; paintQ(); }, ok ? 650 : 1450);
+    }
+    function finishQ() {
+      const pct = Math.round((score / qs.length) * 100);
+      const msg = pct >= 80 ? '훌륭해요! 🎉' : pct >= 50 ? '잘했어요! 💪' : '다시 도전! 🔥';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${score}/${qs.length}</div>
+          <div class="quiz-sum-pct">정답률 ${pct}%</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="q-again">다시 풀기</button>
+            <button class="study-cta-btn secondary" id="q-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#q-again').addEventListener('click', startQuiz);
+      root.querySelector('#q-home').addEventListener('click', () => renderStudy(root));
+    }
+    paintQ();
   }
 
   if (!selected) {

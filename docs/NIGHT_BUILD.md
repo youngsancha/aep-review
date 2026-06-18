@@ -75,7 +75,8 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
 - [x] **Study 탭 v1** (v35): aep 데이터(vocab_cards)에 맞춰 — 통계 히어로(학습/전체/복습대기)
       + 종류별(idiom/phrasal verb/collocation/word) 칩 탐색 + 검색 + 표현 발음(🔊) +
       탭→에피소드 점프 + "오늘 복습" CTA→#/srs. 탭바 3번째 탭(📚). 헤드리스 검증 추가.
-- [ ] (확장) 퀴즈/4지선다, 테마별 코스, 문장 학습 덱
+- [x] Study 4지선다 퀴즈 (v36): 뜻 보고 알맞은 표현 고르기, 발음 힌트·정오답 색·점수·요약 (study.js 인라인)
+- [ ] (확장) 테마별 코스, 문장 학습 덱, 듣기 퀴즈
 
 ### F. 원클릭 동기화 + 최신화
 - [ ] 최신 에피소드까지 인제스트 — **RSS 267 vs DB 264 → 신규 3개**(확인됨, 인제스트 필요)
@@ -141,3 +142,6 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   studyOverview()/expressionsByKind(). 통계 히어로 + 종류별 칩 탐색 + 검색 + 발음 + 에피소드 점프
   + 복습 CTA. 탭바 3탭(Library/Study/Review)로 확장. app.js 라우트 `#/study`, importmap·SW·CSS 추가.
   헤드리스 하니스에 study 페이지 검증 추가(표현/칩 렌더·에러0 PASS).
+- **v36** — Study 4지선다 퀴즈(study.js 인라인 모드): 현재 종류 표현으로 능동 회상(뜻→표현),
+  발음 힌트·정오답 색·진행/점수·요약(다시/홈). 신규 3개 에피소드 동기화 완료(264→267, 전부 STT).
+  하니스에 퀴즈 검증 추가(quiz_opts=4 PASS).
