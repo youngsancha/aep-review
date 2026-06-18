@@ -76,7 +76,8 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
 
 ### F. 원클릭 동기화 + 최신화
 - [ ] 최신 에피소드까지 인제스트 — **RSS 267 vs DB 264 → 신규 3개**(확인됨, 인제스트 필요)
-- [ ] 앱 내 "동기화" 버튼 → GitHub Actions workflow_dispatch 트리거(원클릭)
+- [x] 동기화 버튼 UX: 탭=Supabase 최신 데이터 새로고침(스핀 애니메이션 + 완료 토스트), 길게=로그아웃 (v34)
+- [ ] (확장) 버튼 → GitHub Actions workflow_dispatch 트리거(실제 신규 fetch) — 토큰은 Supabase Edge Function 경유 필요
 
 ### G. 오디오 소스/싱크 (중요 발견)
 RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다. 요청마다 **동적 광고**가
@@ -131,3 +132,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   쉐도잉 중 어려운 표현을 바로 듣고 따라 말하기. SRS는 이미 정교(3단계·드래그채점) → 유지.
 - **v33** — 트랜스크립트 시트 헤더에 속도 칩(1×/0.85×/0.75×/1.25×) → player.rate(). 어려운 문장을
   느리게 틀어 정확히 따라 말하기. 미니플레이어는 이미 정교(frosted·그라데이션 진행바) → 유지.
+- **v34** — 원클릭 동기화 UX: ↻ 탭 시 스핀 애니메이션 + "최신 상태로 동기화됨" 토스트(공용 toast()).
+  서버리스라 실제 fetch 는 cron/로컬, 버튼은 Supabase 최신 데이터 pull. (실제 트리거는 Edge Function 후속)

@@ -92,9 +92,13 @@ $back.addEventListener('click', () => history.back());
 let _syncHold = null;
 function refreshData() {
   $sync.disabled = true;
-  $sync.textContent = '⟳';
+  $sync.classList.add('syncing');
   Promise.resolve(route()).finally(() => {
-    setTimeout(() => { $sync.disabled = false; $sync.textContent = '↻'; }, 300);
+    setTimeout(() => {
+      $sync.disabled = false;
+      $sync.classList.remove('syncing');
+      toast('최신 상태로 동기화됨');
+    }, 350);
   });
 }
 async function signOut() {
@@ -111,6 +115,21 @@ $sync.addEventListener('pointerdown', () => {
 );
 
 // === Shared utils ===
+let _toastTimer = null;
+export function toast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
 export async function api(path, opts) {
   const r = await fetch(path, opts);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
