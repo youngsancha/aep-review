@@ -42,7 +42,8 @@ export async function getEpisode(id){
     definition:'to provide a missing piece of information (빈칸을 채우다)',
     example_sentence:'fill in the gap', sentence_start_sec:70, sentence_end_sec:75 }];
   return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
-           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01', vocab, transcript };
+           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01',
+           description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
 }
 export async function studyOverview() {
   return { total:1905, learned:12, due:50, byKind:[
@@ -105,6 +106,7 @@ def main() -> int:
             pg.goto("http://localhost:8123/_harness.html")
             pg.wait_for_function("window.__ready===true", timeout=10000)
             n_sent = pg.eval_on_selector_all(".tx-sent", "els=>els.length")
+            about = pg.eval_on_selector_all(".np-about-text", "els=>els.length")
             if pg.query_selector("#np-play"):
                 pg.click("#np-play")
             sheet_open = None
@@ -124,8 +126,9 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
+            print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
-                     and notes_show is True and "fill in the gap" in (notes_text or ""))
+                     and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

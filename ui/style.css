@@ -1365,6 +1365,15 @@ body.logged-out #app-version { display: none; }
 .skel-line { height: 11px; }
 .skel-line.w40 { width: 40%; } .skel-line.w60 { width: 60%; } .skel-line.w90 { width: 90%; }
 
+/* 에피소드 About(설명) */
+.np-about { margin: 6px 0 4px; }
+.np-about-text {
+  font-family: var(--font); font-size: 14px; line-height: 1.55; color: var(--text-2);
+  margin: 0; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.np-about-text.expanded { -webkit-line-clamp: unset; }
+
 /* ========== 접근성: 모션 최소화 선호 ========== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

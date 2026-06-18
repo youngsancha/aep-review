@@ -63,6 +63,13 @@ export async function renderEpisode(root, idStr, tStr) {
       ` : `<div class="empty">audio not downloaded yet</div>`}
     </div>
 
+    ${ep.description ? `
+      <div class="np-about">
+        <div class="section-h"><h2>About</h2></div>
+        <p class="np-about-text" id="np-about-text">${escapeHtml(stripTags(ep.description))}</p>
+      </div>
+    ` : ''}
+
     ${vocabs.length ? `
       <div class="section-h"><h2>Vocabulary</h2><span class="count">${vocabs.length}</span></div>
       <ul class="vocab-list">
@@ -91,6 +98,9 @@ export async function renderEpisode(root, idStr, tStr) {
 
   // openSheet/closeSheet/escClose defined below, after state vars.
   let escClose = () => {};
+
+  // About 설명 펼치기/접기 (audio 유무와 무관하게 동작하도록 early-return 앞에 둠)
+  document.getElementById('np-about-text')?.addEventListener('click', (e) => e.currentTarget.classList.toggle('expanded'));
 
   if (!ep.audio_url) {
     return; // no playback wiring needed
@@ -623,6 +633,10 @@ function transcriptSheetHtml(segments) {
       </div>
     </div>
   `;
+}
+
+function stripTags(s) {
+  return String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function resegment(segments) {

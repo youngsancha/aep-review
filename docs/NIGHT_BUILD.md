@@ -171,3 +171,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v47** — PWA manifest 점검: theme_color 옛 파랑(#1F3A6D)→브랜드 #cc6cff(index meta 와 통일),
   background_color #F2F2F7, categories education. PWA 상태바·앱스위처 색 일관. [백필] 168/267.
 - **v48** — 접근성: `prefers-reduced-motion` 대응(shimmer·트랜지션·smooth scroll 최소화). [백필] 169/267.
+- **v49** — 에피소드 About(설명) 섹션: Now Playing 에 에피소드 노트(태그 제거, 4줄 클램프, 탭하면
+  펼치기). Apple Podcasts 의 에피소드 설명에 대응. 하니스에 about 렌더 검증 추가.
