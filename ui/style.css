@@ -1271,3 +1271,12 @@ a { color: var(--tint); }
   font-family: var(--font); font-size: 13.5px; line-height: 1.45;
   color: var(--text-2); margin-top: 4px;
 }
+.tx-note-tts {
+  margin-left: auto; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 0; background: var(--tint-soft); color: var(--tint);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform 0.1s;
+}
+.tx-note-tts:active { transform: scale(0.9); }

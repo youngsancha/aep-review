@@ -161,6 +161,11 @@ export async function renderEpisode(root, idStr) {
     if (vi >= 0) vNotes[vi].push(v);
   }
   const $notes = $sheet ? $sheet.querySelector('.tx-notes') : null;
+  // 해설 패널의 표현 탭 → 발음 재생 (쉐도잉 중 어려운 표현을 바로 듣고 따라하기)
+  if ($notes) $notes.addEventListener('click', (e) => {
+    const b = e.target.closest('.tx-note-tts');
+    if (b) { e.stopPropagation(); speak(b.dataset.text); }
+  });
   function renderNotes(idx) {
     if (!$notes) return;
     const ns = (idx >= 0 && vNotes[idx]) ? vNotes[idx] : [];
@@ -171,7 +176,7 @@ export async function renderEpisode(root, idStr) {
     }
     $notes.innerHTML = ns.map((v) => `
       <div class="tx-note">
-        <div class="tx-note-term"><span>${escapeHtml(v.term)}</span><span class="tx-note-kind">${escapeHtml((v.kind || 'word').replace('_', ' '))}</span></div>
+        <div class="tx-note-term"><span>${escapeHtml(v.term)}</span><span class="tx-note-kind">${escapeHtml((v.kind || 'word').replace('_', ' '))}</span><button class="tx-note-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button></div>
         ${v.definition ? `<div class="tx-note-def">${escapeHtml(v.definition)}</div>` : ''}
       </div>`).join('');
     $notes.classList.add('show');

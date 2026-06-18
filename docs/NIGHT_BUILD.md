@@ -52,7 +52,7 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
       재생 시 하단 frosted 패널에 term+kind+한국어해설 표시(`.tx-notes`) (v28)
 - [ ] (확장) 인제스트 `annotate.py`: 문장별 난이도 표현 추출(claude) → `annotations/{id}.json`
       → vocab에 없는 표현까지 커버. 264개 배치(백그라운드).
-- [ ] 패널 내 표현 탭 → TTS 발음 / 단어카드 추가
+- [x] 패널 내 표현 🔊 탭 → TTS 발음 재생 (v32). (단어카드는 vocab=이미 SRS 카드라 자동 포함)
 
 ### C. 전체 UI 고도화 (최우선)
 - [ ] **전 화면·메뉴 디테일 감사**(사용자 지시): timeline/episode/srs/login/miniplayer/tabbar 하나씩 점검·수정
@@ -126,3 +126,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   (`cron_fetch --rss-limit 30 --limit 5`: RSS→STT→vocab→TTS, Supabase write).
 - **v31** — 로그인 화면 미화: 실제 아트워크 커버(116px·글로우)·tint radial 그라데이션 배경·
   세로 중앙정렬·타이포 보강. 콘텐츠 z-index 정리로 글로우가 텍스트를 덮지 않게.
+- **v32** — 즉시 해설 패널 인터랙션: 각 표현에 🔊 버튼(위임 클릭) → speak() 발음 재생.
+  쉐도잉 중 어려운 표현을 바로 듣고 따라 말하기. SRS는 이미 정교(3단계·드래그채점) → 유지.
