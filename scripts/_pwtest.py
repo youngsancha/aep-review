@@ -135,8 +135,8 @@ def main() -> int:
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             study_err = pg.evaluate("window.__err||[]")
             quiz_opts = 0
-            if pg.query_selector("#study-quiz"):
-                pg.click("#study-quiz")
+            if pg.query_selector("#study-quiz-read"):
+                pg.click("#study-quiz-read")
                 time.sleep(0.3)
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
             print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts, " err=", study_err)

@@ -1317,6 +1317,17 @@ body.logged-out #app-version { display: none; }
 .quiz-sum-actions { display: flex; flex-direction: column; gap: 10px; max-width: 280px; margin: 24px auto 0; }
 .study-cta-btn { padding: 14px; border: 0; border-radius: 14px; cursor: pointer; font-family: var(--font); font-size: 15px; font-weight: 700; background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
 .study-cta-btn.secondary { background: var(--surface); color: var(--tint); box-shadow: var(--shadow-card); }
+.study-quiz-row { display: flex; gap: 10px; margin: 2px 0 10px; }
+.study-quiz-row .study-quiz-btn { margin: 0; flex: 1; }
+.quiz-bigspk {
+  width: 92px; height: 92px; border-radius: 50%; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; font-size: 36px;
+  box-shadow: 0 8px 24px rgba(245, 64, 141, 0.34);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.quiz-bigspk:active { transform: scale(0.96); }
+.quiz-reveal { margin-top: 16px; font-family: var(--font); font-size: 19px; font-weight: 800; color: var(--tint); letter-spacing: -0.01em; }
+.quiz-opt-def { text-align: left; font-size: 14.5px; font-weight: 600; line-height: 1.4; }
 
 /* ========== Misc ========== */
 a { color: var(--tint); }

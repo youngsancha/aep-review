@@ -51,7 +51,10 @@ export async function renderStudy(root) {
           </button>`).join('')}
       </div>
       <input class="study-search" id="study-q" type="search" placeholder="🔍 표현·뜻 검색" value="${escapeHtml(q)}" />
-      <button class="study-quiz-btn" id="study-quiz">🎯 4지선다 퀴즈</button>
+      <div class="study-quiz-row">
+        <button class="study-quiz-btn" id="study-quiz-read">🎯 4지선다</button>
+        <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기 퀴즈</button>
+      </div>
     `;
   }
 
@@ -88,8 +91,8 @@ export async function renderStudy(root) {
     root.innerHTML = heroHtml() + '<div id="study-list"></div>';
     root.querySelectorAll('.study-kind-chip').forEach((b) =>
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
-    const qz = root.querySelector('#study-quiz');
-    if (qz) qz.addEventListener('click', startQuiz);
+    root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
+    root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
     const sq = root.querySelector('#study-q');
     if (sq) {
       let t = 0;
@@ -124,7 +127,7 @@ export async function renderStudy(root) {
 
   // ── 4지선다 퀴즈 (현재 종류의 표현으로 능동 회상) ──
   const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
-  function startQuiz() {
+  function startQuiz(mode = 'read') {
     const pool = items.filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
@@ -141,18 +144,22 @@ export async function renderStudy(root) {
     function paintQ() {
       if (idx >= qs.length) return finishQ();
       const c = qs[idx].correct;
+      const optLabel = (o) => (mode === 'listen' ? (o.definition || '') : (o.term || ''));
+      const promptHtml = mode === 'listen'
+        ? `<button class="quiz-bigspk" id="q-spk" aria-label="다시 듣기">🔊</button>
+           <div class="quiz-q">듣고 알맞은 뜻을 고르세요</div>`
+        : `<div class="quiz-def">${escapeHtml(c.definition)}</div>
+           <button class="quiz-spk" id="q-spk" aria-label="발음 듣기">🔊 발음 힌트</button>
+           <div class="quiz-q">알맞은 표현을 고르세요</div>`;
       root.innerHTML = `
         <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${qs.length}</span><span class="quiz-score">${score}점</span></div>
-        <div class="quiz-prompt">
-          <div class="quiz-def">${escapeHtml(c.definition)}</div>
-          <button class="quiz-spk" id="q-spk" aria-label="발음 듣기">🔊 발음 힌트</button>
-          <div class="quiz-q">알맞은 표현을 고르세요</div>
-        </div>
+        <div class="quiz-prompt">${promptHtml}</div>
         <div class="quiz-opts">
-          ${qs[idx].options.map((o) => `<button class="quiz-opt" data-ok="${o.id === c.id ? '1' : '0'}">${escapeHtml(o.term)}</button>`).join('')}
+          ${qs[idx].options.map((o) => `<button class="quiz-opt${mode === 'listen' ? ' quiz-opt-def' : ''}" data-ok="${o.id === c.id ? '1' : '0'}">${escapeHtml(optLabel(o))}</button>`).join('')}
         </div>
         <button class="quiz-exit" id="q-exit">← Study 홈</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
+      if (mode === 'listen') requestAnimationFrame(() => speak(c.term));
       root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
     }
@@ -165,7 +172,11 @@ export async function renderStudy(root) {
       if (navigator.vibrate) navigator.vibrate(ok ? 12 : [20, 40, 20]);
       speak(c.term);
       root.querySelectorAll('.quiz-opt').forEach((b) => { b.disabled = true; });
-      setTimeout(() => { idx++; answered = false; paintQ(); }, ok ? 650 : 1450);
+      if (mode === 'listen') {  // 듣기 퀴즈: 답한 뒤 정답 표현을 노출
+        const pr = root.querySelector('.quiz-prompt');
+        if (pr) pr.insertAdjacentHTML('beforeend', `<div class="quiz-reveal">${escapeHtml(c.term)}</div>`);
+      }
+      setTimeout(() => { idx++; answered = false; paintQ(); }, ok ? 750 : 1600);
     }
     function finishQ() {
       const pct = Math.round((score / qs.length) * 100);
