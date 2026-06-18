@@ -72,6 +72,7 @@ export async function renderStudy(root) {
         <button class="study-quiz-btn" id="study-quiz-read">🎯 4지선다</button>
         <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기</button>
         <button class="study-quiz-btn" id="study-quiz-dict">✍️ 받아쓰기</button>
+        <button class="study-quiz-btn" id="study-quiz-speak">🎤 스피킹</button>
         <button class="study-quiz-btn" id="study-quiz-sent">💬 문장</button>
       </div>
     `;
@@ -145,6 +146,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
+    root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
     if (sq) {
@@ -414,6 +416,132 @@ export async function renderStudy(root) {
       }
     }
     paintD();
+  }
+
+  // ── 스피킹(Speaking) — 듣고 따라 말하기. Web Speech 인식으로 발음을 글로 받아 채점, 미지원시 녹음 후 비교(스피킹) ──
+  function startSpeaking() {
+    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    let idx = 0, scoreSum = 0, scored = 0;
+    prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
+
+    function finishSp() {
+      const avg = scored ? Math.round(scoreSum / scored) : 0;
+      const msg = !scored ? '연습 완료! 🎤' : avg >= 80 ? '원어민급 발음! 🌟' : avg >= 55 ? '좋아요, 더 또렷하게! 💪' : '천천히 따라 말해봐요 🔁';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${scored ? avg + '점' : cards.length}</div>
+          <div class="quiz-sum-pct">${scored ? '평균 발음 정확도' : '문장 따라 말하기 완료'}</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="sp-again">다시</button>
+            <button class="study-cta-btn secondary" id="sp-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#sp-again').addEventListener('click', startSpeaking);
+      root.querySelector('#sp-home').addEventListener('click', () => renderStudy(root));
+    }
+
+    function paintSp() {
+      if (idx >= cards.length) return finishSp();
+      const c = cards[idx];
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">🎤 스피킹</span></div>
+        <div class="speak-card">
+          <div class="speak-label">🎯 듣고 따라 말하세요</div>
+          <div class="speak-target" id="sp-target">${escapeHtml(c.example_sentence)} <span class="speak-spk">🔊</span></div>
+          ${c.definition ? `<div class="speak-def">${escapeHtml(c.definition)}</div>` : ''}
+        </div>
+        <button class="speak-mic" id="sp-mic"><span class="speak-mic-ico">🎤</span><span id="sp-mic-label">말하기</span></button>
+        <div class="speak-hint" id="sp-hint">${SR ? '버튼을 누르고 또렷하게 말해보세요' : '⚠️ 음성 인식 미지원 브라우저 — 녹음 후 직접 비교해요 (Chrome·Android 권장)'}</div>
+        <div id="sp-result"></div>
+        <div class="dict-actions"><button class="study-cta-btn secondary" id="sp-skip">넘어가기</button></div>
+        <button class="quiz-exit" id="sp-exit">← Study 홈</button>`;
+      root.querySelector('#sp-target').addEventListener('click', () => speak(c.example_sentence));
+      requestAnimationFrame(() => speak(c.example_sentence));
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
+      root.querySelector('#sp-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sp-skip').addEventListener('click', () => { idx++; paintSp(); });
+      const mic = root.querySelector('#sp-mic');
+      if (SR) wireRecognition(mic, c); else wireRecorder(mic, c);
+    }
+
+    function showResult(said, c) {
+      const sc = Math.round(scoreText(said, c.example_sentence) * 100);
+      scoreSum += sc; scored++;
+      const cls = sc >= 80 ? 'correct' : sc >= 55 ? 'partial' : 'wrong';
+      root.querySelector('#sp-result').innerHTML = `
+        <div class="dict-result ${cls}">
+          <div class="dict-score">발음 정확도 ${sc}점</div>
+          <div class="dict-answer">${diffHtml(said, c.example_sentence)}</div>
+          <div class="speak-heard">인식: “${escapeHtml(said || '—')}”</div>
+          <button class="study-cta-btn" id="sp-next">다음 →</button>
+        </div>`;
+      root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
+    }
+
+    function wireRecognition(mic, c) {
+      let listening = false, rec = null;
+      const label = () => root.querySelector('#sp-mic-label');
+      function reset() { listening = false; mic.classList.remove('listening'); const l = label(); if (l) l.textContent = '말하기'; }
+      mic.addEventListener('click', () => {
+        if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+        rec = new SR();
+        rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+        listening = true; mic.classList.add('listening');
+        const l = label(); if (l) l.textContent = '듣는 중…';
+        rec.onresult = (e) => { reset(); showResult((e.results[0][0].transcript || '').trim(), c); };
+        rec.onerror = (e) => { reset(); const h = root.querySelector('#sp-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해주세요' : '인식 실패 — 다시 시도'; };
+        rec.onend = () => { if (listening) reset(); };
+        try { rec.start(); } catch (e) { reset(); }
+      });
+    }
+
+    function wireRecorder(mic, c) {
+      let recorder = null, chunks = [], recording = false;
+      const label = () => root.querySelector('#sp-mic-label');
+      mic.addEventListener('click', async () => {
+        if (recording) { try { recorder && recorder.stop(); } catch (e) {} return; }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const h = root.querySelector('#sp-hint'); if (h) h.textContent = '이 브라우저는 녹음을 지원하지 않아요.';
+          mic.disabled = true; return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          recorder = new MediaRecorder(stream); chunks = [];
+          recorder.ondataavailable = (e) => chunks.push(e.data);
+          recorder.onstop = () => {
+            stream.getTracks().forEach((t) => t.stop());
+            const url = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+            recording = false; mic.classList.remove('listening');
+            const l = label(); if (l) l.textContent = '다시 녹음';
+            root.querySelector('#sp-result').innerHTML = `
+              <div class="dict-result partial">
+                <div class="dict-score">내 발음 vs 원문</div>
+                <audio class="speak-audio" controls src="${url}"></audio>
+                <div class="dict-actions">
+                  <button class="study-cta-btn secondary" id="sp-orig">🔊 원문</button>
+                  <button class="study-cta-btn" id="sp-next">다음 →</button>
+                </div>
+              </div>`;
+            root.querySelector('#sp-orig').addEventListener('click', () => speak(c.example_sentence));
+            root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
+          };
+          recorder.start(); recording = true; mic.classList.add('listening');
+          const l = label(); if (l) l.textContent = '녹음 중… (탭하면 종료)';
+        } catch (e) {
+          const h = root.querySelector('#sp-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
+        }
+      });
+    }
+
+    paintSp();
   }
 
   if (!selected) {

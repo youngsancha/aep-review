@@ -219,6 +219,15 @@ def main() -> int:
                 dict_ok = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check") and pg.query_selector("#d-spk"))
                 pg.click("#d-exit") if pg.query_selector("#d-exit") else None
                 time.sleep(0.2)
+            # 스피킹(#13): 모드 진입 시 타깃문장/마이크 버튼이 뜨는지 (마이크는 누르지 않음)
+            speak_ok = None
+            if pg.query_selector("#study-quiz-speak"):
+                pg.click("#study-quiz-speak")
+                time.sleep(0.3)
+                speak_ok = bool(pg.query_selector(".speak-card") and pg.query_selector("#sp-mic")
+                                and pg.query_selector("#sp-target") and pg.query_selector("#sp-hint"))
+                pg.click("#sp-exit") if pg.query_selector("#sp-exit") else None
+                time.sleep(0.2)
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             quiz_opts = 0
             if pg.query_selector("#study-quiz-read"):
@@ -227,10 +236,11 @@ def main() -> int:
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
             study_err = pg.evaluate("window.__err||[]")
             print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
-                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked, " dict_ok=", dict_ok, " err=", study_err)
+                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked,
+                  " dict_ok=", dict_ok, " speak_ok=", speak_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
-                        and known_before != known_after and dict_ok is True)
+                        and known_before != known_after and dict_ok is True and speak_ok is True)
 
             # === Timeline(Library) 회귀 ===
             pg.goto("http://localhost:8123/_harness_timeline.html")
