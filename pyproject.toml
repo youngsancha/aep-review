@@ -1,0 +1,28 @@
+[project]
+name = "aep-review"
+version = "0.1.0"
+description = "American English Podcast (Shana) 복습 PWA — RSS + faster-whisper + claude-agent-sdk"
+requires-python = ">=3.11"
+dependencies = [
+    "supabase>=2.4",
+    "feedparser>=6.0",
+    "httpx>=0.28",
+    "faster-whisper>=1.0",
+    "claude-agent-sdk>=0.1",
+    "python-dotenv>=1.0",
+    "edge-tts>=7.0",
+    # 아래 fastapi/uvicorn 은 레거시 로컬 서버(api/)용 — 클라우드 배포엔 불필요
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.20",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["api*", "ingest*"]

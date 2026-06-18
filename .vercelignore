@@ -1,0 +1,14 @@
+# Vercel 은 ui/ 정적 파일만 서빙한다. 파이썬/데이터/로그는 업로드 불필요.
+api/
+ingest/
+scripts/
+supabase/
+data/
+logs/
+*.db
+*.egg-info/
+__pycache__/
+.github/
+.env
+.env.*
+pyproject.toml
