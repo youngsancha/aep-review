@@ -1330,6 +1330,15 @@ body.logged-out #app-version { display: none; }
 .quiz-reveal { margin-top: 16px; font-family: var(--font); font-size: 19px; font-weight: 800; color: var(--tint); letter-spacing: -0.01em; }
 .quiz-opt-def { text-align: left; font-size: 14.5px; font-weight: 600; line-height: 1.4; }
 
+/* SRS 예문 → 에피소드 맥락 점프 */
+.srs-context-btn {
+  margin: 12px auto 0; display: block;
+  border: 0; background: var(--tint-soft); color: var(--tint);
+  font-family: var(--font); font-size: 12.5px; font-weight: 700;
+  padding: 8px 16px; border-radius: 999px; cursor: pointer;
+}
+.srs-context-btn:active { transform: scale(0.96); }
+
 /* ========== Misc ========== */
 a { color: var(--tint); }
 

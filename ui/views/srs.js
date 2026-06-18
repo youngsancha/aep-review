@@ -126,6 +126,7 @@ export async function renderSrs(root) {
                 <div class="srs-example" ${startSec ? `data-start="${startSec}"` : ''}>
                   ${escapeHtml(example)}
                 </div>
+                ${(startSec && c.episode_id) ? `<button class="srs-context-btn" data-ep="${c.episode_id}" data-t="${Math.floor(startSec)}">🎧 맥락에서 듣기</button>` : ''}
               ` : ''}
             ` : ''}
 
@@ -197,6 +198,11 @@ export async function renderSrs(root) {
       if (exEl) exEl.addEventListener('click', (e) => {
         e.stopPropagation();
         speak(exEl.textContent.trim());
+      });
+      const ctxBtn = root.querySelector('.srs-context-btn');
+      if (ctxBtn) ctxBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        location.hash = `#/episode/${ctxBtn.dataset.ep}/${ctxBtn.dataset.t}`;
       });
       attachBookFlip(card, (dir) => {
         if (dir === 'right') grade('good');
