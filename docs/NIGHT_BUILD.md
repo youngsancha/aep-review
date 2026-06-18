@@ -71,8 +71,11 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
 - [ ] 단어→에피소드 문장 컨텍스트 점프 강화
 
 ### E. 영어 스터디모드 (chcn-review 참고)
-- [ ] chcn-review 스터디모드 UX 조사(폴더 위치 확인 필요)
-- [ ] 미국 실생활 표현/단어 테마별 학습 코스
+- [x] chcn-review study.js 조사(급수그리드·세션·브라우즈·퀴즈·성조·통계·문장덱 — /api 백엔드 기반)
+- [x] **Study 탭 v1** (v35): aep 데이터(vocab_cards)에 맞춰 — 통계 히어로(학습/전체/복습대기)
+      + 종류별(idiom/phrasal verb/collocation/word) 칩 탐색 + 검색 + 표현 발음(🔊) +
+      탭→에피소드 점프 + "오늘 복습" CTA→#/srs. 탭바 3번째 탭(📚). 헤드리스 검증 추가.
+- [ ] (확장) 퀴즈/4지선다, 테마별 코스, 문장 학습 덱
 
 ### F. 원클릭 동기화 + 최신화
 - [ ] 최신 에피소드까지 인제스트 — **RSS 267 vs DB 264 → 신규 3개**(확인됨, 인제스트 필요)
@@ -134,3 +137,7 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   느리게 틀어 정확히 따라 말하기. 미니플레이어는 이미 정교(frosted·그라데이션 진행바) → 유지.
 - **v34** — 원클릭 동기화 UX: ↻ 탭 시 스핀 애니메이션 + "최신 상태로 동기화됨" 토스트(공용 toast()).
   서버리스라 실제 fetch 는 cron/로컬, 버튼은 Supabase 최신 데이터 pull. (실제 트리거는 Edge Function 후속)
+- **v35** — 영어 Study 탭(사용자 요청, chcn-review 참고): `ui/views/study.js` + db.js
+  studyOverview()/expressionsByKind(). 통계 히어로 + 종류별 칩 탐색 + 검색 + 발음 + 에피소드 점프
+  + 복습 CTA. 탭바 3탭(Library/Study/Review)로 확장. app.js 라우트 `#/study`, importmap·SW·CSS 추가.
+  헤드리스 하니스에 study 페이지 검증 추가(표현/칩 렌더·에러0 PASS).

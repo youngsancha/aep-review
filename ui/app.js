@@ -2,6 +2,7 @@
 import { renderTimeline } from '/views/timeline.js';
 import { renderEpisode } from '/views/episode.js';
 import { renderSrs } from '/views/srs.js';
+import { renderStudy } from '/views/study.js';
 import { renderLogin } from '/views/login.js';
 import { supabase } from '/supabase.js';
 
@@ -18,6 +19,7 @@ if ($version) $version.textContent = 'v' + APP_VERSION;
 const ROUTES = [
   { re: /^#?\/$/,                    handler: renderTimeline, title: 'Episodes', tab: 'timeline', back: false },
   { re: /^#?\/episode\/(\d+)$/,      handler: renderEpisode,  title: 'Episode',  tab: 'timeline', back: true  },
+  { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
 ];
 

@@ -12,6 +12,7 @@ from pathlib import Path
 UI = Path(__file__).resolve().parent.parent / "ui"
 MOCKS = UI / "_mocks.js"
 HARNESS = UI / "_harness.html"
+STUDY_HARNESS = UI / "_harness_study.html"
 
 MOCKS_JS = r"""
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -43,6 +44,14 @@ export async function getEpisode(id){
   return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
            duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01', vocab, transcript };
 }
+export async function studyOverview() {
+  return { total:1905, learned:12, due:50, byKind:[
+    {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };
+}
+export async function expressionsByKind(kind) {
+  return [{ id:1, term:'put up with', kind, definition:'to tolerate (참고 견디다)',
+            example_sentence:'Gotta just put up with it.', episode_id:1, sentence_start_sec:173, episode_title:'211 - Test' }];
+}
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -58,9 +67,23 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
+STUDY_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
+<script type="module">
+  import { renderStudy } from '/views/study.js';
+  window.__ready=false;
+  renderStudy(document.getElementById('app')).then(()=>{window.__ready=true;})
+    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
+</script></body></html>
+"""
+
+
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
+    STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
@@ -94,13 +117,26 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
-            ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
-                  and notes_show is True and "fill in the gap" in (notes_text or ""))
+            ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
+                     and notes_show is True and "fill in the gap" in (notes_text or ""))
+
+            # === Study 뷰 회귀 ===
+            pg.goto("http://localhost:8123/_harness_study.html")
+            pg.wait_for_function("window.__ready===true", timeout=10000)
+            time.sleep(0.3)
+            study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
+            study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
+            study_err = pg.evaluate("window.__err||[]")
+            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " err=", study_err)
+            study_ok = (study_x > 0 and study_chips == 4 and not study_err)
+
+            ok = ep_ok and study_ok
             b.close()
     finally:
         srv.terminate()
         MOCKS.unlink(missing_ok=True)
         HARNESS.unlink(missing_ok=True)
+        STUDY_HARNESS.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

@@ -67,6 +67,42 @@ async function fetchTranscript(id, transcribedAt) {
   }
 }
 
+// ─────────────────────────── Study (표현 탐색 허브) ───────────────────────────
+async function _count(table, build) {
+  let q = supabase.from(table).select('*', { count: 'exact', head: true });
+  if (build) q = build(q);
+  const { count, error } = await q;
+  if (error) throw new Error(error.message);
+  return count || 0;
+}
+
+const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];
+
+// Study 홈 통계 — 전체 표현 수 / 학습(SRS reps>0) / 오늘 복습 대기 / 종류별 개수
+export async function studyOverview() {
+  const total = await _count('vocab_cards');
+  const learned = await _count('srs_cards', (q) => q.gt('reps', 0));
+  const due = await _count('srs_cards', (q) => q.lte('due_date', todayStr()));
+  const byKind = [];
+  for (const k of STUDY_KINDS) {
+    const c = await _count('vocab_cards', (q) => q.eq('kind', k));
+    byKind.push({ kind: k, total: c });
+  }
+  return { total, learned, due, byKind };
+}
+
+// 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
+export async function expressionsByKind(kind, limit = 800) {
+  const { data, error } = await supabase
+    .from('vocab_cards')
+    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, episodes(title)')
+    .eq('kind', kind)
+    .order('term', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data || []).map((v) => ({ ...v, episode_title: v.episodes?.title || '' }));
+}
+
 // ─────────────────────────── SRS ───────────────────────────
 const GRADE_TO_Q = { again: 0, hard: 3, good: 4, easy: 5 };
 

@@ -12,7 +12,7 @@
   <title>American English Podcast 복습</title>
 
   <script>
-    window.APP_VERSION = '34';
+    window.APP_VERSION = '35';
     (function () {
       const v = '?v=' + window.APP_VERSION;
       const css = document.createElement('link');
@@ -22,7 +22,7 @@
       const paths = [
         '/app.js', '/tts.js', '/player.js',
         '/config.js', '/supabase.js', '/db.js',
-        '/views/timeline.js', '/views/episode.js', '/views/srs.js', '/views/login.js',
+        '/views/timeline.js', '/views/episode.js', '/views/srs.js', '/views/study.js', '/views/login.js',
       ];
       const map = {imports: {}};
       paths.forEach((p) => { map.imports[p] = p + v; });
@@ -67,8 +67,9 @@
   </div>
 
   <nav id="tabbar">
-    <a href="#/"    data-tab="timeline"><span class="icon">🎧</span><span class="label">Library</span></a>
-    <a href="#/srs" data-tab="srs"><span class="icon">🗂️</span><span class="label">Review</span></a>
+    <a href="#/"      data-tab="timeline"><span class="icon">🎧</span><span class="label">Library</span></a>
+    <a href="#/study" data-tab="study"><span class="icon">📚</span><span class="label">Study</span></a>
+    <a href="#/srs"   data-tab="srs"><span class="icon">🗂️</span><span class="label">Review</span></a>
   </nav>
 </body>
 </html>
