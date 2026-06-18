@@ -39,8 +39,10 @@ export async function renderSrs(root) {
   if (!initial.length) {
     root.innerHTML = `
       <div class="empty srs-done">
-        <p class="srs-done-title">All caught up</p>
-        <p class="srs-done-sub">No cards due today. Come back tomorrow — or sync new episodes.</p>
+        <div class="srs-done-emoji">🎉</div>
+        <p class="srs-done-title">오늘 복습 완료!</p>
+        <p class="srs-done-sub">예정된 카드가 없어요. Study 탭에서 표현을 더 탐색하거나<br/>퀴즈·문장 학습으로 익혀보세요.</p>
+        <a class="btn primary srs-done-cta" href="#/study">📚 Study 탐색하기</a>
       </div>`;
     return;
   }
