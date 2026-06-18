@@ -37,8 +37,11 @@ export const player = new MockPlayer(); window.__player = player;
 const PUB = 'https://lbcvuztpyaapyckxmqhk.supabase.co/storage/v1/object/public/transcripts/1.json';
 export async function getEpisode(id){
   const transcript = await (await fetch(PUB)).json();
+  const vocab = [{ id:1, term:'fill in the gap', kind:'idiom',
+    definition:'to provide a missing piece of information (빈칸을 채우다)',
+    example_sentence:'fill in the gap', sentence_start_sec:70, sentence_end_sec:75 }];
   return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
-           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01', vocab:[], transcript };
+           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01', vocab, transcript };
 }
 """
 
@@ -80,13 +83,19 @@ def main() -> int:
                 sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')")
                 if pg.query_selector("#tx-mini-play"):
                     pg.click("#tx-mini-play")
+            # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
+            pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)
+            notes_show = pg.eval_on_selector(".tx-notes", "el=>el.classList.contains('show')") if pg.query_selector(".tx-notes") else None
+            notes_text = pg.eval_on_selector(".tx-notes", "el=>el.textContent") if pg.query_selector(".tx-notes") else ""
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
             print("sentences=", n_sent, " sheet_open=", sheet_open)
+            print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
-            ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls))
+            ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
+                  and notes_show is True and "fill in the gap" in (notes_text or ""))
             b.close()
     finally:
         srv.terminate()

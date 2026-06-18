@@ -1212,3 +1212,37 @@ a { color: var(--tint); }
 .tx-loop-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-loop-toggle.on:hover,
 .tx-loop-toggle[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
+
+/* ========== 즉시 해설 패널 (쉐도잉 중 현재 문장의 어려운 표현) ========== */
+.tx-notes {
+  position: absolute;
+  left: 12px; right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 90px);  /* 컨트롤 알약 위 */
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  padding: 11px 15px;
+  z-index: 2;
+  max-height: 36vh; overflow-y: auto;
+  opacity: 0; transform: translateY(10px) scale(0.98);
+  transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.tx-notes.show { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.tx-note + .tx-note { margin-top: 9px; padding-top: 9px; border-top: 0.5px solid var(--separator-thin); }
+.tx-note-term {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font); font-weight: 700; font-size: 15.5px;
+  color: var(--text); letter-spacing: -0.01em;
+}
+.tx-note-kind {
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--tint); background: var(--tint-soft);
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
+.tx-note-def {
+  font-family: var(--font); font-size: 13.5px; line-height: 1.45;
+  color: var(--text-2); margin-top: 4px;
+}

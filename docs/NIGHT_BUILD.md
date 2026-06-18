@@ -48,10 +48,11 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
 - [ ] 단어 탭 → 즉석 뜻/발음(현재 단어 하이라이트와 결합)
 
 ### B. 즉시 해설 패널
-- [ ] db.js: `annotations/{id}.json` fetch → `ep.annotations`
-- [ ] transcript 하단 고정 패널: 활성 문장의 표현/단어 + 한국어 해설 실시간 표시
-- [ ] 인제스트 `annotate.py`: 트랜스크립트 → 문장별 난이도 표현 추출(claude) → Storage 업로드
-- [ ] 264개 에피소드 배치 생성(백그라운드, 여러 반복에 걸쳐)
+- [x] **기존 vocab 재활용** v1: 각 vocab을 example 시점이 속한 문장에 매핑 → 그 문장
+      재생 시 하단 frosted 패널에 term+kind+한국어해설 표시(`.tx-notes`) (v28)
+- [ ] (확장) 인제스트 `annotate.py`: 문장별 난이도 표현 추출(claude) → `annotations/{id}.json`
+      → vocab에 없는 표현까지 커버. 264개 배치(백그라운드).
+- [ ] 패널 내 표현 탭 → TTS 발음 / 단어카드 추가
 
 ### C. 전체 UI 고도화 (최우선)
 - [ ] **전 화면·메뉴 디테일 감사**(사용자 지시): timeline/episode/srs/login/miniplayer/tabbar 하나씩 점검·수정
@@ -109,3 +110,7 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   ② 요청마다 동적광고로 스트림 길이 변동(ep6 1650s vs 트랜스크립트 1531s) → 타임스탬프 어긋남.
   수정: `db.js cleanAudioUrl()` 로 megaphone 직접 URL 추출(1홉)해 재생. 재사용 검증 하니스
   `scripts/_pwtest.py` 추가(자기완결형, ui/ 비오염). 싱크 완전해결(재STT)은 G 항목으로 후속.
+- **v28** — 즉시 해설 패널(사용자 최우선 학습기능): 기존 vocab(claude 추출, 영+한 정의,
+  타임스탬프 보유)을 각 표현의 example 시점이 속한 문장에 매핑. 그 문장이 재생되면 하단
+  frosted 카드(`.tx-notes`)에 term·kind칩·한국어 해설이 슬라이드업. 신규 파이프라인 없이
+  바로 동작. 하니스에 패널 검증 추가(seek 71s→패널 표시 확인, PASS).

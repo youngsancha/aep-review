@@ -147,6 +147,35 @@ export async function renderEpisode(root, idStr) {
   const paraEls = Array.from(document.querySelectorAll('.tx-para'));
   // Cache offsetTop now (stable until DOM mutates) — survives scroll animations.
   const paraTops = paraEls.map((el) => el.offsetTop);
+
+  // 즉시 해설: 각 vocab(어려운 표현)을 그 example 시점이 속한 문장에 매핑 → 그 문장이
+  // 재생될 때 하단 패널에 term + 한국어 해설을 띄운다(쉐도잉하며 바로 이해).
+  const vNotes = sentRanges.map(() => []);
+  for (const v of vocabs) {
+    const t = v.sentence_start_sec;
+    if (t == null) continue;
+    let vi = -1;
+    for (let i = 0; i < sentRanges.length; i++) { if (sentRanges[i].start <= t) vi = i; else break; }
+    if (vi >= 0) vNotes[vi].push(v);
+  }
+  const $notes = $sheet ? $sheet.querySelector('.tx-notes') : null;
+  function renderNotes(idx) {
+    if (!$notes) return;
+    const ns = (idx >= 0 && vNotes[idx]) ? vNotes[idx] : [];
+    if (!ns.length) {
+      $notes.classList.remove('show');
+      $notes.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    $notes.innerHTML = ns.map((v) => `
+      <div class="tx-note">
+        <div class="tx-note-term"><span>${escapeHtml(v.term)}</span><span class="tx-note-kind">${escapeHtml((v.kind || 'word').replace('_', ' '))}</span></div>
+        ${v.definition ? `<div class="tx-note-def">${escapeHtml(v.definition)}</div>` : ''}
+      </div>`).join('');
+    $notes.classList.add('show');
+    $notes.setAttribute('aria-hidden', 'false');
+  }
+
   let lastActiveSent = -1;
   let lastActivePara = -1;
   let userScrolledUntil = 0;     // suspend auto-follow until this timestamp
@@ -195,6 +224,7 @@ export async function renderEpisode(root, idStr) {
     }
     if (idx >= 0) sentRanges[idx].el.classList.add('active');
     lastActiveSent = idx;
+    renderNotes(idx);  // 현재 문장의 어려운 표현 해설을 하단 패널에
 
     const scroll = document.querySelector('.tx-scroll');
     const txCard = document.querySelector('.tx-card');
@@ -541,6 +571,7 @@ function transcriptSheetHtml(segments) {
           </div>
         </div>
         <button class="tx-live-badge" type="button" aria-label="Resume auto-follow">↓ Now playing</button>
+        <div class="tx-notes" aria-hidden="true"></div>
         <div class="tx-sheet-controls">
           <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
