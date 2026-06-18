@@ -1,0 +1,100 @@
+"""로그인 없이 episode 뷰를 헤드리스로 자가검증하는 재사용 하니스.
+
+db/player/tts 를 목으로 치환(importmap)하고 공개 transcript(1.json)를 실제로 불러와
+renderEpisode 를 띄운 뒤, 런타임 에러·문장수·재생 버튼 동작을 확인한다.
+픽스처(_mocks.js/_harness.html)는 실행 중에만 ui/ 에 만들고 끝나면 지운다(배포 오염 방지).
+
+    python scripts/_pwtest.py
+"""
+import subprocess, sys, time
+from pathlib import Path
+
+UI = Path(__file__).resolve().parent.parent / "ui"
+MOCKS = UI / "_mocks.js"
+HARNESS = UI / "_harness.html"
+
+MOCKS_JS = r"""
+export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+export const fmtTime = (s) => { s = Math.max(0, s | 0); const m = (s / 60) | 0; const ss = s % 60; return m + ':' + String(ss).padStart(2, '0'); };
+export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
+export const fmtDuration = (s) => Math.round(s / 60) + ' min';
+export const speak = () => {};
+export const prefetch = () => {};
+const calls = []; window.__calls = calls; window.__err = window.__err || [];
+class MockPlayer {
+  constructor(){this.audio={};this._t=0;this._paused=true;this.listeners=new Set();}
+  load(t){calls.push(['load',t&&t.id]);this.current=t;}
+  play(){calls.push(['play']);this._paused=false;this._emit('play');}
+  pause(){calls.push(['pause']);this._paused=true;this._emit('pause');}
+  toggle(){calls.push(['toggle']);this._paused?this.play():this.pause();}
+  seek(t){calls.push(['seek',t]);this._t=t;this._emit('timeupdate');}
+  rate(r){calls.push(['rate',r]);} skip(d){calls.push(['skip',d]);this._t=Math.max(0,this._t+d);}
+  on(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
+  _emit(ev){for(const fn of this.listeners){try{fn(ev,this);}catch(e){window.__err.push('listener:'+e);}}}
+  get paused(){return this._paused;} get time(){return this._t;} get duration(){return 1700;}
+}
+export const player = new MockPlayer(); window.__player = player;
+const PUB = 'https://lbcvuztpyaapyckxmqhk.supabase.co/storage/v1/object/public/transcripts/1.json';
+export async function getEpisode(id){
+  const transcript = await (await fetch(PUB)).json();
+  return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
+           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01', vocab:[], transcript };
+}
+"""
+
+HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
+<script type="module">
+  import { renderEpisode } from '/views/episode.js';
+  window.__ready=false;
+  renderEpisode(document.getElementById('app'),'1').then(()=>{window.__ready=true;})
+    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
+</script></body></html>
+"""
+
+
+def main() -> int:
+    MOCKS.write_text(MOCKS_JS, encoding="utf-8")
+    HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
+    srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    errs = []
+    ok = True
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            b = p.chromium.launch(); pg = b.new_page()
+            pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
+            pg.on("pageerror", lambda e: errs.append("PAGEERROR: " + str(e)))
+            pg.goto("http://localhost:8123/_harness.html")
+            pg.wait_for_function("window.__ready===true", timeout=10000)
+            n_sent = pg.eval_on_selector_all(".tx-sent", "els=>els.length")
+            if pg.query_selector("#np-play"):
+                pg.click("#np-play")
+            sheet_open = None
+            if pg.query_selector("#np-tx-btn"):
+                pg.click("#np-tx-btn"); time.sleep(0.4)
+                sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')")
+                if pg.query_selector("#tx-mini-play"):
+                    pg.click("#tx-mini-play")
+            time.sleep(0.3)
+            calls = pg.evaluate("window.__calls||[]")
+            werr = pg.evaluate("window.__err||[]")
+            print("sentences=", n_sent, " sheet_open=", sheet_open)
+            print("PLAYER CALLS=", calls)
+            print("window.__err=", werr, " CONSOLE=", errs)
+            ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls))
+            b.close()
+    finally:
+        srv.terminate()
+        MOCKS.unlink(missing_ok=True)
+        HARNESS.unlink(missing_ok=True)
+    print("RESULT:", "PASS" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

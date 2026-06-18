@@ -21,6 +21,17 @@ export async function listEpisodes() {
   return data || [];
 }
 
+// 광고 리다이렉트 체인(podtrac/pscrb/swap.fm…)을 벗겨 megaphone CDN 직접 URL 로.
+// RSS audio_url 은 6단계 302 광고 추적 래퍼라 모바일에서 재생 시작이 느리고/불안정하며,
+// 요청마다 동적 광고가 끼어 길이가 달라져 트랜스크립트 타임스탬프와 어긋난다.
+// 다행히 최종 megaphone 경로가 원본 문자열 끝에 그대로 박혀 있어 정규식으로 추출 가능.
+const _MEGAPHONE = /(traffic\.megaphone\.fm\/[A-Za-z0-9_-]+\.mp3)/;
+export function cleanAudioUrl(u) {
+  if (!u) return u;
+  const m = u.match(_MEGAPHONE);
+  return m ? 'https://' + m[1] : u;
+}
+
 // GET /api/episodes/{id} 대체 → { ...episode, vocab, transcript }
 export async function getEpisode(id) {
   const { data: ep, error } = await supabase
@@ -40,6 +51,7 @@ export async function getEpisode(id) {
     if (bn == null) return -1;
     return an - bn || a.id - b.id;
   });
+  ep.audio_url = cleanAudioUrl(ep.audio_url);  // 광고 래퍼 제거 → 직접 CDN 재생
   ep.transcript = await fetchTranscript(id, ep.transcribed_at);
   return ep;
 }
