@@ -170,3 +170,4 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v46** — 폴리시: Now Playing Transcript 버튼을 채워진 그라데이션 CTA 로 부각(쉐도잉 진입 유도).
 - **v47** — PWA manifest 점검: theme_color 옛 파랑(#1F3A6D)→브랜드 #cc6cff(index meta 와 통일),
   background_color #F2F2F7, categories education. PWA 상태바·앱스위처 색 일관. [백필] 168/267.
+- **v48** — 접근성: `prefers-reduced-motion` 대응(shimmer·트랜지션·smooth scroll 최소화). [백필] 169/267.

@@ -1365,6 +1365,16 @@ body.logged-out #app-version { display: none; }
 .skel-line { height: 11px; }
 .skel-line.w40 { width: 40%; } .skel-line.w60 { width: 60%; } .skel-line.w90 { width: 90%; }
 
+/* ========== 접근성: 모션 최소화 선호 ========== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ========== Misc ========== */
 a { color: var(--tint); }
 
