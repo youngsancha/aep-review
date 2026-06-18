@@ -1378,6 +1378,11 @@ body.logged-out #app-version { display: none; }
 }
 .np-about-text.expanded { -webkit-line-clamp: unset; }
 
+/* ========== 접근성: 키보드 포커스 링 ========== */
+button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--tint); outline-offset: 2px; border-radius: 8px;
+}
+
 /* ========== 접근성: 모션 최소화 선호 ========== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
