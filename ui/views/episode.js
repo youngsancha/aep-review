@@ -195,11 +195,11 @@ export async function renderEpisode(root, idStr) {
     if (idx >= 0) sentRanges[idx].el.classList.add('active');
     lastActiveSent = idx;
 
-    // paragraph active + scroll on paragraph change only
-    const newPara = idx >= 0 ? paraEls.indexOf(sentRanges[idx].paraEl) : -1;
-    const txCard = document.querySelector('.tx-card');
     const scroll = document.querySelector('.tx-scroll');
+    const txCard = document.querySelector('.tx-card');
 
+    // 문단 played/active 표시 (시각용)
+    const newPara = idx >= 0 ? paraEls.indexOf(sentRanges[idx].paraEl) : -1;
     if (newPara !== lastActivePara) {
       paraEls.forEach((p, i) => {
         p.classList.toggle('active', i === newPara);
@@ -207,19 +207,24 @@ export async function renderEpisode(root, idStr) {
         else if (i >= newPara) p.classList.remove('played');
       });
       lastActivePara = newPara;
-
-      const userActive = Date.now() < userScrolledUntil;
-      if (newPara >= 0 && scroll && !userActive && Date.now() > autoScrollUntil) {
-        const target = paraTops[newPara] - scroll.clientHeight * 0.30;
-        const clamped = Math.max(0, target);
-        if (Math.abs(clamped - scroll.scrollTop) > 40) {
-          autoScrollUntil = Date.now() + 700;
-          scroll.scrollTo({ top: clamped, behavior: 'smooth' });
-        }
-      }
-      txCard?.classList.toggle('live', !userActive);
-      txCard?.classList.toggle('no-follow', userActive);
     }
+
+    // 핵심: 현재 "문장"을 매 문장 전환마다 상단 ~32% 위치로 부드럽게 고정 → 음성과 시선 일치.
+    const userActive = Date.now() < userScrolledUntil;
+    if (idx >= 0 && scroll && !userActive && Date.now() > autoScrollUntil) {
+      const sentEl = sentRanges[idx].el;
+      const rect = sentEl.getBoundingClientRect();
+      const cont = scroll.getBoundingClientRect();
+      const elTop = rect.top - cont.top + scroll.scrollTop;
+      const target = elTop - scroll.clientHeight * 0.32;
+      const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
+      if (Math.abs(clamped - scroll.scrollTop) > 8) {
+        autoScrollUntil = Date.now() + 600;
+        scroll.scrollTo({ top: clamped, behavior: 'smooth' });
+      }
+    }
+    txCard?.classList.toggle('live', !userActive);
+    txCard?.classList.toggle('no-follow', userActive);
   }
 
   // Detect REAL user-initiated scrolling via wheel/touch — not via 'scroll' event,
@@ -347,6 +352,29 @@ export async function renderEpisode(root, idStr) {
     $loop.setAttribute('aria-pressed', loopSent ? 'true' : 'false');
   });
 
+  // 문장 단위 이전/다음 점프 (쉐도잉)
+  function jumpSent(dir) {
+    if (!sentRanges.length) return;
+    let idx = lastActiveSent >= 0 ? lastActiveSent : findActiveSentIdx(player.time);
+    if (idx < 0) idx = 0;
+    let target;
+    if (dir < 0) {
+      const cur = sentRanges[idx];
+      // 현재 문장을 1초 이상 진행했으면 그 문장 처음으로, 아니면 이전 문장으로
+      target = (cur && player.time > cur.start + 1.0) ? idx : idx - 1;
+    } else {
+      target = idx + 1;
+    }
+    target = Math.max(0, Math.min(sentRanges.length - 1, target));
+    const sel = sentRanges[target];
+    if (!sel) return;
+    player.seek(sel.start + 0.01);
+    player.play();
+    scrollSentToCenter(sel.el);
+  }
+  document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(-1); });
+  document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(1); });
+
   const off = player.on(refresh);
   // Cleanup on route change — detach player listener, remove sheet, restore body scroll
   window.addEventListener('hashchange', () => {
@@ -468,6 +496,7 @@ function transcriptSheetHtml(segments) {
         <div class="tx-card">
           <div class="tx-search">
             <input id="tx-search" class="tx-search-input" type="search" placeholder="Search transcript..." />
+            <button id="tx-loop" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Loop current sentence">🔁 Loop</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
           <div class="tx-scroll">
@@ -476,6 +505,9 @@ function transcriptSheetHtml(segments) {
         </div>
         <button class="tx-live-badge" type="button" aria-label="Resume auto-follow">↓ Now playing</button>
         <div class="tx-sheet-controls">
+          <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
+          </button>
           <button class="tx-mini-btn" id="tx-mini-back" aria-label="Back 15s">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3.5-7.1"/><polyline points="3 4 3 10 9 10"/></svg>
             <span class="skip-num">15</span>
@@ -487,9 +519,8 @@ function transcriptSheetHtml(segments) {
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 10 15 10"/></svg>
             <span class="skip-num">30</span>
           </button>
-          <button class="tx-mini-btn tx-loop-btn" id="tx-loop" aria-label="Loop current sentence" aria-pressed="false">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            <span class="skip-num">loop</span>
+          <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next sentence">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>
           </button>
         </div>
       </div>
@@ -500,20 +531,30 @@ function transcriptSheetHtml(segments) {
 function groupIntoParagraphs(segments) {
   const out = [];
   let cur = null;
+  const endsSentence = (txt) => /[.!?…]["')\]]?\s*$/.test((txt || '').trim());
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
     const prev = i > 0 ? segments[i - 1] : null;
     const gap = prev ? s.start - prev.end : 0;
-    const sentenceEnd = prev && /[.!?…"']\s*$/.test(prev.text || '');
-    const tooLong = cur && (s.end - cur.start) > 25;
-    const breakHere = !cur || (sentenceEnd && gap > 0.4) || gap > 1.4 || tooLong;
-    if (breakHere) {
-      cur = { start: s.start, end: s.end, segments: [s] };
+    const prevEnds = prev && endsSentence(prev.text);
+    const paraLen = cur && prev ? prev.end - cur.start : 0;
+
+    // 자연스러운 단락: 문장 끝에서 2~3문장마다, 또는 큰 쉼에서만 끊는다(절 중간 금지).
+    let brk = false;
+    if (!cur) brk = true;
+    else if (prevEnds && (cur._sents >= 2 || paraLen > 9)) brk = true;
+    else if (prevEnds && gap > 0.5) brk = true;
+    else if (gap > 1.6) brk = true;
+    else if (paraLen > 16) brk = true;  // 안전 상한
+
+    if (brk) {
+      cur = { start: s.start, end: s.end, segments: [s], _sents: 0 };
       out.push(cur);
     } else {
       cur.segments.push(s);
       cur.end = s.end;
     }
+    if (endsSentence(s.text)) cur._sents++;
   }
   return out;
 }

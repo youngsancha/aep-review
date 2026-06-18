@@ -531,8 +531,8 @@ body.on-episode {
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   border-radius: 999px;
-  padding: 8px 14px;
-  display: flex; align-items: center; gap: 22px;
+  padding: 8px 16px;
+  display: flex; align-items: center; gap: 16px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0,0,0,0.05);
   z-index: 2;
 }
@@ -1199,7 +1199,9 @@ body.logged-out #app-version { display: none; }
 a { color: var(--tint); }
 
 /* ========== 쉐도잉: 문장 반복(loop) 토글 ========== */
-.tx-loop-btn .skip-num { font-size: 9px; letter-spacing: 0.04em; text-transform: uppercase; }
-.tx-loop-btn.on { color: var(--tint); }
-.tx-loop-btn.on svg { filter: drop-shadow(0 0 7px rgba(195, 70, 213, 0.6)); }
-.tx-loop-btn.on .skip-num { color: var(--tint); font-weight: 700; }
+/* 쉐도잉 문장 반복 토글 (헤더 칩) */
+.tx-loop-toggle { white-space: nowrap; }
+.tx-loop-toggle.on,
+.tx-loop-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
+.tx-loop-toggle.on:hover,
+.tx-loop-toggle[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
