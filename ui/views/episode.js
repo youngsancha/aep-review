@@ -26,6 +26,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const vocabs = ep.vocab || [];
 
   const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
+  const txTitle = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
 
   root.innerHTML = `
     <div class="np-wrap">
@@ -87,7 +88,7 @@ export async function renderEpisode(root, idStr, tStr) {
   if (sentences.length) {
     try {
       const wrap = document.createElement('div');
-      wrap.innerHTML = transcriptSheetHtml(sentences).trim();
+      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel).trim();
       $sheet = wrap.firstElementChild;
       document.body.appendChild($sheet);
     } catch (err) {
@@ -684,7 +685,7 @@ function bindSheetDrag($sheet, closeSheet) {
   document.addEventListener('mouseup', end);
 }
 
-function transcriptSheetHtml(segments) {
+function transcriptSheetHtml(segments, title, sub) {
   segments.forEach((s, i) => { s._idx = i; });
   const paras = groupIntoParagraphs(segments);
   const body = paras.map((para) => {
@@ -703,7 +704,8 @@ function transcriptSheetHtml(segments) {
         <div class="tx-sheet-bg" style="background-image:url('${SHOW_COVER}')"></div>
         <div class="tx-sheet-header">
           <div class="tx-sheet-handle"></div>
-          <h3>Transcript</h3>
+          <h3 class="tx-sheet-title">${escapeHtml(title || 'Transcript')}</h3>
+          ${sub ? `<div class="tx-sheet-sub">${escapeHtml(sub)}</div>` : ''}
           <button class="tx-sheet-close" aria-label="Close">×</button>
         </div>
         <div class="tx-card">

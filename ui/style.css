@@ -611,7 +611,7 @@ body.on-episode {
   z-index: 2;
 }
 .tx-mini-btn {
-  width: 42px; height: 42px;
+  width: 46px; height: 46px;
   border-radius: 50%; border: 0;
   background: transparent;
   color: var(--text);
@@ -623,12 +623,12 @@ body.on-episode {
 .tx-mini-btn:hover { background: var(--hover); }
 .tx-mini-btn .skip-num {
   position: absolute;
-  font-size: 9.5px; font-weight: 700;
+  font-size: 10.5px; font-weight: 800;
   color: var(--text);
   pointer-events: none;
 }
 .tx-mini-play {
-  width: 52px; height: 52px;
+  width: 58px; height: 58px;
   border-radius: 50%; border: 0;
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   color: white;
@@ -665,6 +665,12 @@ body.on-episode {
   color: var(--text);
   letter-spacing: -0.01em;
   margin: 4px 0 0;
+  padding: 0 42px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-sheet-sub {
+  font-size: 11px; font-weight: 600; color: var(--text-3);
+  margin-top: 3px; letter-spacing: 0.02em;
 }
 .tx-sheet-close {
   position: absolute; right: 12px; top: 50%;
