@@ -130,15 +130,34 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
     if proc.returncode != 0:
         raise RuntimeError(f"claude CLI failed rc={proc.returncode}: {proc.stderr[:500]}")
 
-    # claude --output-format json 의 응답: {"result": "...", "session_id": ...}
+    # claude --output-format json 응답: 보통 {"result": ...} dict 이지만, CLI 버전에 따라
+    # 메시지/이벤트 배열(list)로 오기도 한다 → 둘 다 처리.
     try:
         envelope = json.loads(proc.stdout)
     except json.JSONDecodeError:
-        # 가끔 plain text 로 떨어지면 그대로 result 처리
         envelope = {"result": proc.stdout}
+    return _parse_vocab_json(_result_text(envelope, proc.stdout))
 
-    text = envelope.get("result") or proc.stdout
-    return _parse_vocab_json(text)
+
+def _result_text(envelope: Any, raw: str) -> str:
+    if isinstance(envelope, dict):
+        return envelope.get("result") or raw
+    if isinstance(envelope, list):
+        # type=="result" 항목 우선 (claude CLI 최종 결과 이벤트)
+        for it in reversed(envelope):
+            if isinstance(it, dict) and it.get("type") == "result" and isinstance(it.get("result"), str):
+                return it["result"]
+        # 없으면 마지막 assistant 메시지의 text 블록 수집
+        for it in reversed(envelope):
+            if isinstance(it, dict):
+                msg = it.get("message")
+                if isinstance(msg, dict) and isinstance(msg.get("content"), list):
+                    txt = "".join(c.get("text", "") for c in msg["content"]
+                                  if isinstance(c, dict) and c.get("type") == "text")
+                    if txt.strip():
+                        return txt
+        return raw
+    return raw
 
 
 def _parse_vocab_json(text: str) -> dict[str, Any]:
