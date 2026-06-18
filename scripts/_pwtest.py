@@ -175,6 +175,13 @@ def main() -> int:
                 time.sleep(0.2)
                 calib_off = pg.eval_on_selector(".tx-sheet", "el=>!el.classList.contains('calibrating')")
                 off_val = pg.evaluate("parseFloat(localStorage.getItem('aep-aoff-1')||'NaN')")
+            # 글자 크기(#17): A＋ 클릭 시 .tx-card 의 --tx-scale 증가
+            fs_ok = None
+            if pg.query_selector("#tx-fs-up"):
+                _b = pg.eval_on_selector(".tx-card", "el=>parseFloat(getComputedStyle(el).getPropertyValue('--tx-scale'))||1")
+                pg.click("#tx-fs-up"); time.sleep(0.1)
+                _a = pg.eval_on_selector(".tx-card", "el=>parseFloat(getComputedStyle(el).getPropertyValue('--tx-scale'))||1")
+                fs_ok = _a > _b
             # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지
             pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
             time.sleep(0.1)
@@ -188,7 +195,7 @@ def main() -> int:
             print("sentences=", n_sent, " sheet_open=", sheet_open)
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("trans_ok=", trans_ok)
-            print("calib_on=", calib_on, " calib_off=", calib_off, " offset_saved=", off_val)
+            print("calib_on=", calib_on, " calib_off=", calib_off, " offset_saved=", off_val, " fs_ok=", fs_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -196,7 +203,7 @@ def main() -> int:
                      and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
                      and trans_ok == "(테스트 번역)"
                      and calib_on is True and calib_off is True and off_val is not None
-                     and dark_ok)
+                     and fs_ok is True and dark_ok)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

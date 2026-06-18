@@ -908,6 +908,7 @@ body.on-episode {
 .tx-toggle:hover { background: var(--tint-soft); }
 .tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
+.tx-fs-btn { min-width: 36px; font-variant-numeric: tabular-nums; }
 
 .tx-scroll {
   max-height: 70vh;
@@ -921,7 +922,7 @@ body.on-episode {
 
 .tx-para {
   font-family: "New York", ui-serif, Charter, "Iowan Old Style", "Apple Garamond", Georgia, "Times New Roman", serif;
-  font-size: 28px;
+  font-size: calc(28px * var(--tx-scale, 1));
   line-height: 1.4;
   letter-spacing: -0.018em;
   color: var(--text-3);

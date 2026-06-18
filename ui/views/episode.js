@@ -521,6 +521,19 @@ export async function renderEpisode(root, idStr, tStr) {
     $calib.setAttribute('aria-pressed', 'true');
   });
 
+  // 글자 크기 조절 (#17) — 읽기 영역 스케일을 localStorage 에 저장
+  const FS_KEY = 'aep-tx-scale';
+  let txScale = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
+  const $txCardEl = $sheet ? $sheet.querySelector('.tx-card') : null;
+  function applyTxScale() {
+    txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
+    if ($txCardEl) $txCardEl.style.setProperty('--tx-scale', String(txScale));
+    try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
+  }
+  applyTxScale();
+  document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
+  document.getElementById('tx-fs-dn')?.addEventListener('click', (e) => { e.stopPropagation(); txScale -= 0.1; applyTxScale(); });
+
   // 문장 단위 이전/다음 점프 (쉐도잉)
   function jumpSent(dir) {
     if (!sentRanges.length) return;
@@ -723,6 +736,8 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-calib" class="tx-toggle tx-calib-toggle" aria-pressed="false" aria-label="오디오에 싱크 맞추기">🎯 싱크</button>
+            <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
+            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
           <div class="tx-scroll">
