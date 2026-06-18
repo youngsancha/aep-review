@@ -389,8 +389,15 @@ export async function renderEpisode(root, idStr) {
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
-    if (lastWordIdx >= 0) wordTimed[lastWordIdx].el.classList.remove('cur');
-    if (found >= 0) wordTimed[found].el.classList.add('cur');
+    // 현재 단어(cur) 이동
+    if (lastWordIdx >= 0 && wordTimed[lastWordIdx]) wordTimed[lastWordIdx].el.classList.remove('cur');
+    if (found >= 0 && wordTimed[found]) wordTimed[found].el.classList.add('cur');
+    // 지나간 단어(spoken) 음영 — 변경된 구간만 토글
+    if (found > lastWordIdx) {
+      for (let i = Math.max(0, lastWordIdx); i < found; i++) wordTimed[i].el.classList.add('spoken');
+    } else if (found < lastWordIdx) {
+      for (let i = Math.max(0, found); i <= lastWordIdx && i < wordTimed.length; i++) wordTimed[i].el.classList.remove('spoken');
+    }
     lastWordIdx = found;
   }
   let rafId = 0;

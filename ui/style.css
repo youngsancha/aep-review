@@ -843,9 +843,11 @@ body.on-episode {
   transition: color 0.15s ease;
 }
 .tx-sent.active { color: #000; font-weight: 600; }
-/* 현재 "단어" 카라오케 강조 — 문장 안에서 지나가는 단어를 따라감 */
-.tx-scroll .w { transition: color 0.12s ease; }
-.tx-sent.active .w.cur { color: var(--tint); }
+/* 문장 안 단어 음영 (Apple식): 다음 단어 흐림 → 현재 tint → 지나간 단어 진함 */
+.tx-scroll .w { transition: color 0.22s ease; }
+.tx-sent.active .w { color: var(--text-3); }       /* 아직 안 지난(다음) 단어 */
+.tx-sent.active .w.spoken { color: #000; }          /* 이미 지나간 단어 */
+.tx-sent.active .w.cur { color: var(--tint); }      /* 지금 말하는 단어 */
 
 /* Words: just clickable, no visual treatment */
 .w { cursor: pointer; }
