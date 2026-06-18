@@ -45,11 +45,11 @@ function killBrowserTTS() {
   } catch (e) {}
 }
 
-function browserFallback(text) {
+function browserFallback(text, playbackRate) {
   if (!('speechSynthesis' in window) || !text) return;
   killBrowserTTS();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US'; u.rate = 0.9;
+  u.lang = 'en-US'; u.rate = 0.9 * (playbackRate || 1);
   speechSynthesis.speak(u);
 }
 
@@ -79,6 +79,7 @@ export async function speak(text, opts = {}) {
   const url = await ttsUrl(text, voice, rate);
   if (myGen !== _gen) return;
   audio.src = url;
+  audio.playbackRate = opts.playbackRate || 1;  // 받아쓰기 "천천히" 등 슬로우 재생
 
   try {
     const playPromise = audio.play();
@@ -90,7 +91,7 @@ export async function speak(text, opts = {}) {
     if (myGen !== _gen) return;
     // Storage 에 없거나(404) 재생 실패 → 브라우저 TTS 폴백
     console.warn('tts play failed, fallback to browser TTS', e);
-    browserFallback(text);
+    browserFallback(text, opts.playbackRate);
   }
 }
 

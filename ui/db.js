@@ -78,30 +78,48 @@ async function _count(table, build) {
 
 const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];
 
-// Study 홈 통계 — 전체 표현 수 / 학습(SRS reps>0) / 오늘 복습 대기 / 종류별 개수
+// "알아요/마스터" 센티넬: interval_days >= 365 (markKnown 만 설정). 일반 SM-2 로는 잘 도달 안 함.
+const KNOWN_INTERVAL = 365;
+
+// Study 홈 통계 — 전체 표현 / 학습(reps>0) / 오늘 복습 / 알아요(마스터) / 종류별 개수
 export async function studyOverview() {
   const today = todayStr();
-  // 7개 count 를 순차→병렬(Promise.all)로: 라운드트립 1회 분량으로 단축.
-  const [total, learned, due, ...kindCounts] = await Promise.all([
+  const [total, learned, due, known, ...kindCounts] = await Promise.all([
     _count('vocab_cards'),
     _count('srs_cards', (q) => q.gt('reps', 0)),
     _count('srs_cards', (q) => q.lte('due_date', today)),
+    _count('srs_cards', (q) => q.gte('interval_days', KNOWN_INTERVAL)),
     ...STUDY_KINDS.map((k) => _count('vocab_cards', (q) => q.eq('kind', k))),
   ]);
   const byKind = STUDY_KINDS.map((k, i) => ({ kind: k, total: kindCounts[i] }));
-  return { total, learned, due, byKind };
+  return { total, learned, due, known, byKind };
+}
+
+// "알아요" — 해당 vocab 의 SRS 카드를 마스터(1년 뒤 복습) 상태로. 진도(known)에 즉시 반영된다.
+export async function markKnown(vocabId) {
+  const due = new Date();
+  due.setDate(due.getDate() + KNOWN_INTERVAL);
+  const { error } = await supabase
+    .from('srs_cards')
+    .update({ interval_days: KNOWN_INTERVAL, reps: 4, ease: 2.6, due_date: todayStr(due) })
+    .eq('vocab_id', vocabId);
+  if (error) throw new Error(error.message);
 }
 
 // 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
 export async function expressionsByKind(kind, limit = 800) {
   const { data, error } = await supabase
     .from('vocab_cards')
-    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, episodes(title)')
+    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, episodes(title), srs:srs_cards(interval_days)')
     .eq('kind', kind)
     .order('term', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return (data || []).map((v) => ({ ...v, episode_title: v.episodes?.title || '' }));
+  return (data || []).map((v) => ({
+    ...v,
+    episode_title: v.episodes?.title || '',
+    known: Array.isArray(v.srs) && v.srs.some((s) => (s.interval_days || 0) >= KNOWN_INTERVAL),
+  }));
 }
 
 // ─────────────────────────── SRS ───────────────────────────

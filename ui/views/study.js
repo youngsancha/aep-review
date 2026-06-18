@@ -1,7 +1,7 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml } from '/app.js';
-import { studyOverview, expressionsByKind } from '/db.js';
+import { studyOverview, expressionsByKind, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
@@ -25,22 +25,35 @@ export async function renderStudy(root) {
   let selected = kinds.length ? kinds[0].kind : null;
   let items = [];
   let q = '';
+  let knownCount = ov.known || 0;          // "알아요" 누적 (낙관적 갱신)
+  const RING_C = 2 * Math.PI * 34;          // 진도 링 둘레 (r=34)
+
+  function ringDash(pct) { return `${((pct / 100) * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`; }
 
   function heroHtml() {
-    const pct = ov.total ? Math.round((ov.learned / ov.total) * 100) : 0;
+    const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
     return `
       <div class="study-greet">
         <h2>Study</h2>
-        <div class="study-greet-sub">에피소드 속 실생활 표현 ${ov.total.toLocaleString()}개</div>
+        <div class="study-greet-sub">지금 알아야 할 실생활 표현 ${ov.total.toLocaleString()}개</div>
       </div>
-      <div class="study-hero">
-        <div class="study-hcol"><div class="study-hnum">${ov.learned}</div><div class="study-hlbl">학습</div></div>
-        <div class="study-hsep"></div>
-        <div class="study-hcol"><div class="study-hnum">${ov.total}</div><div class="study-hlbl">전체 표현</div></div>
-        <div class="study-hsep"></div>
-        <div class="study-hcol"><div class="study-hnum">${ov.due}</div><div class="study-hlbl">복습 대기</div></div>
+      <div class="study-progress-card">
+        <svg class="study-ring" viewBox="0 0 80 80" width="96" height="96" aria-hidden="true">
+          <circle class="study-ring-bg" cx="40" cy="40" r="34"></circle>
+          <circle class="study-ring-fg" id="study-ring-fg" cx="40" cy="40" r="34"
+                  stroke-dasharray="${ringDash(pct)}" transform="rotate(-90 40 40)"></circle>
+          <text x="40" y="38" class="study-ring-pct" id="study-ring-pct">${pct}%</text>
+          <text x="40" y="53" class="study-ring-sub">알아요</text>
+        </svg>
+        <div class="study-progress-meta">
+          <div class="study-progress-big"><b id="study-known-n">${knownCount.toLocaleString()}</b><span> / ${ov.total.toLocaleString()} 표현 마스터</span></div>
+          <div class="study-progress-pills">
+            <span class="study-pill">📚 학습 ${ov.learned.toLocaleString()}</span>
+            <span class="study-pill">🔁 복습 ${ov.due.toLocaleString()}</span>
+          </div>
+          <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
+        </div>
       </div>
-      <div class="study-ovbar"><span style="width:${pct}%"></span></div>
       ${ov.due > 0 ? `
         <a class="study-cta" href="#/srs">
           <div class="study-cta-t">🔁 오늘 복습 ${ov.due}개</div>
@@ -58,18 +71,30 @@ export async function renderStudy(root) {
       <div class="study-quiz-row">
         <button class="study-quiz-btn" id="study-quiz-read">🎯 4지선다</button>
         <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기</button>
+        <button class="study-quiz-btn" id="study-quiz-dict">✍️ 받아쓰기</button>
         <button class="study-quiz-btn" id="study-quiz-sent">💬 문장</button>
       </div>
     `;
   }
 
+  // "알아요" 누적을 헤더 링/막대/숫자에 즉시 반영
+  function applyKnown(delta) {
+    knownCount = Math.max(0, Math.min(ov.total, knownCount + delta));
+    const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
+    const n = root.querySelector('#study-known-n'); if (n) n.textContent = knownCount.toLocaleString();
+    const bar = root.querySelector('#study-known-bar'); if (bar) bar.style.width = pct + '%';
+    const ring = root.querySelector('#study-ring-fg'); if (ring) ring.setAttribute('stroke-dasharray', ringDash(pct));
+    const pctEl = root.querySelector('#study-ring-pct'); if (pctEl) pctEl.textContent = pct + '%';
+  }
+
   function rowHtml(v) {
     const epTitle = (v.episode_title || '').replace(/^\d+\s*[-:.]\s*/, '');
     return `
-      <li class="study-x" data-ep="${v.episode_id}" data-t="${v.sentence_start_sec != null ? Math.floor(v.sentence_start_sec) : ''}">
+      <li class="study-x${v.known ? ' known' : ''}" data-id="${v.id}" data-ep="${v.episode_id}" data-t="${v.sentence_start_sec != null ? Math.floor(v.sentence_start_sec) : ''}">
         <div class="study-x-top">
           <span class="study-x-term">${escapeHtml(v.term)}</span>
           <button class="study-x-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button>
+          <button class="study-x-know" data-id="${v.id}" aria-label="알아요로 표시">${v.known ? '✓ 알아요' : '알아요'}</button>
         </div>
         ${v.definition ? `<div class="study-x-def">${escapeHtml(v.definition)}</div>` : ''}
         ${epTitle ? `<div class="study-x-ep">${escapeHtml(epTitle)}</div>` : ''}
@@ -87,6 +112,24 @@ export async function renderStudy(root) {
   function wireList() {
     root.querySelectorAll('.study-x-tts').forEach((b) =>
       b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
+    root.querySelectorAll('.study-x-know').forEach((b) =>
+      b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const li = b.closest('.study-x');
+        if (!li || li.classList.contains('known')) return;  // 이미 알아요
+        const id = Number(b.dataset.id);
+        b.disabled = true;
+        try {
+          await markKnown(id);
+          li.classList.add('known');
+          b.textContent = '✓ 알아요';
+          const item = items.find((x) => x.id === id); if (item) item.known = true;
+          applyKnown(1);
+          if (navigator.vibrate) navigator.vibrate(10);
+        } catch (err) {
+          b.disabled = false;
+        }
+      }));
     root.querySelectorAll('.study-x').forEach((li) =>
       li.addEventListener('click', () => {
         if (!li.dataset.ep) return;
@@ -101,6 +144,7 @@ export async function renderStudy(root) {
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
+    root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
     if (sq) {
@@ -264,6 +308,112 @@ export async function renderStudy(root) {
       });
     }
     paintS();
+  }
+
+  // ── 받아쓰기(Dictation) — 듣고 그대로 타이핑 → 단어 단위 채점 + 차이 표시 (리스닝) ──
+  function normWords(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').split(/\s+/).filter(Boolean);
+  }
+  function wordEdit(a, b) {  // 단어 배열 간 Levenshtein
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    return dp[m][n];
+  }
+  function scoreText(user, ans) {
+    const a = normWords(user), b = normWords(ans);
+    if (!b.length) return 0;
+    return Math.max(0, 1 - wordEdit(a, b) / Math.max(a.length, b.length, 1));
+  }
+  function diffHtml(user, ans) {  // 정답 문장에서 맞춘/놓친 단어 표시
+    const got = new Set(normWords(user));
+    return ans.split(/(\s+)/).map((tok) => {
+      if (!tok.trim()) return tok;
+      const norm = tok.toLowerCase().replace(/[^a-z0-9']/g, '');
+      const ok = norm && got.has(norm);
+      return `<span class="dw ${ok ? 'hit' : 'miss'}">${escapeHtml(tok)}</span>`;
+    }).join('');
+  }
+  function startDictation() {
+    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
+      return;
+    }
+    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    let idx = 0, correct = 0;
+    prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
+
+    function finishD() {
+      const pct = Math.round((correct / cards.length) * 100);
+      const msg = pct >= 80 ? '귀가 트였어요! 👂' : pct >= 50 ? '점점 들려요! 💪' : '반복이 답! 🔁';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${correct}/${cards.length}</div>
+          <div class="quiz-sum-pct">받아쓰기 정확도 ${pct}%</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="d-again">다시</button>
+            <button class="study-cta-btn secondary" id="d-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#d-again').addEventListener('click', startDictation);
+      root.querySelector('#d-home').addEventListener('click', () => renderStudy(root));
+    }
+    function paintD() {
+      if (idx >= cards.length) return finishD();
+      const c = cards[idx];
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} 맞음</span></div>
+        <div class="dict-card">
+          <div class="dict-label">🎧 듣고 받아쓰기</div>
+          <button class="quiz-bigspk" id="d-spk" aria-label="다시 듣기">🔊</button>
+          <div class="dict-slow"><button class="dict-slow-btn" id="d-slow">🐢 천천히</button></div>
+        </div>
+        <textarea class="dict-input" id="d-in" rows="2" placeholder="들은 문장을 입력하세요" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done"></textarea>
+        <div class="dict-actions">
+          <button class="study-cta-btn secondary" id="d-skip">모르겠어요</button>
+          <button class="study-cta-btn" id="d-check">채점</button>
+        </div>
+        <div id="d-result"></div>
+        <button class="quiz-exit" id="d-exit">← Study 홈</button>`;
+      const input = root.querySelector('#d-in');
+      input.focus();
+      const replay = (pb) => speak(c.example_sentence, pb ? { playbackRate: pb } : undefined);
+      requestAnimationFrame(() => replay());
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
+      root.querySelector('#d-spk').addEventListener('click', () => replay());
+      root.querySelector('#d-slow').addEventListener('click', () => replay(0.62));
+      root.querySelector('#d-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#d-skip').addEventListener('click', () => reveal(0));
+      root.querySelector('#d-check').addEventListener('click', () => reveal(scoreText(input.value, c.example_sentence)));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) reveal(scoreText(input.value, c.example_sentence));
+      });
+
+      function reveal(score) {
+        if (score >= 0.9) correct++;
+        const cls = score >= 0.9 ? 'correct' : score >= 0.6 ? 'partial' : 'wrong';
+        const label = score >= 0.9 ? '정답! 🎉' : score >= 0.6 ? '거의 맞았어요' : '다시 들어보세요';
+        root.querySelector('#d-check').disabled = true;
+        root.querySelector('#d-skip').disabled = true;
+        input.disabled = true;
+        root.querySelector('#d-result').innerHTML = `
+          <div class="dict-result ${cls}">
+            <div class="dict-score">${Math.round(score * 100)}점 · ${label}</div>
+            <div class="dict-answer">${diffHtml(input.value, c.example_sentence)}</div>
+            ${c.definition ? `<div class="dict-def">${escapeHtml(c.term)} — ${escapeHtml(c.definition)}</div>` : ''}
+            <button class="study-cta-btn" id="d-next">다음 →</button>
+          </div>`;
+        root.querySelector('#d-next').addEventListener('click', () => { idx++; paintD(); });
+      }
+    }
+    paintD();
   }
 
   if (!selected) {

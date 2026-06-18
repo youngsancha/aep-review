@@ -1308,6 +1308,74 @@ body.logged-out #app-version { display: none; }
 }
 .study-quiz-btn:active { transform: scale(0.99); }
 
+/* ── Study 진도 카드 (알아요 링) ── */
+.study-progress-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--surface); border-radius: 18px; padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+}
+.study-ring { flex: 0 0 auto; }
+.study-ring-bg { fill: none; stroke: var(--separator-thin); stroke-width: 8; }
+.study-ring-fg {
+  fill: none; stroke: url(#g); stroke-width: 8; stroke-linecap: round;
+  stroke: var(--grad-2);
+  transition: stroke-dasharray 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.study-ring-pct { fill: var(--text); font: 800 16px var(--font); text-anchor: middle; letter-spacing: -0.02em; }
+.study-ring-sub { fill: var(--text-3); font: 700 8px var(--font); text-anchor: middle; text-transform: uppercase; letter-spacing: 0.08em; }
+.study-progress-meta { flex: 1; min-width: 0; }
+.study-progress-big { font-family: var(--font); color: var(--text-2); font-size: 14px; }
+.study-progress-big b { font-size: 26px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+.study-progress-pills { display: flex; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
+.study-pill { font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 5px 11px; border-radius: 999px; }
+
+/* ── "알아요" 마크 버튼 + 마스터된 행 ── */
+.study-x-know {
+  flex-shrink: 0; border: 0; cursor: pointer;
+  background: var(--surface-2); color: var(--text-3);
+  font-family: var(--font); font-size: 12px; font-weight: 800;
+  padding: 6px 12px; border-radius: 999px;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.study-x-know:active { transform: scale(0.92); }
+.study-x.known { opacity: 0.62; }
+.study-x.known .study-x-know { background: var(--chip-coll-bg); color: var(--chip-coll-tx); }
+
+/* ── 받아쓰기(Dictation) ── */
+.dict-card {
+  background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-card);
+  padding: 22px 16px; text-align: center; margin-bottom: 14px;
+}
+.dict-label { color: var(--text-3); font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+.dict-slow { margin-top: 14px; }
+.dict-slow-btn {
+  border: 0; background: var(--tint-soft); color: var(--tint); cursor: pointer;
+  font-family: var(--font); font-size: 12.5px; font-weight: 700; padding: 7px 14px; border-radius: 999px;
+}
+.dict-input {
+  width: 100%; box-sizing: border-box; resize: none;
+  font-family: var(--font); font-size: 16px; line-height: 1.5; color: var(--text);
+  border: 1.5px solid var(--separator); border-radius: 14px; padding: 13px 15px;
+  background: var(--surface-2);
+}
+.dict-input:focus { outline: none; border-color: var(--tint); background: var(--surface); }
+.dict-actions { display: flex; gap: 10px; margin-top: 12px; }
+.dict-actions .study-cta-btn { flex: 1; }
+.dict-result {
+  margin-top: 16px; padding: 16px; border-radius: 16px; text-align: center;
+  background: var(--surface); box-shadow: var(--shadow-card);
+  animation: pop-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dict-result.correct { box-shadow: 0 0 0 2px var(--chip-coll-tx) inset, var(--shadow-card); }
+.dict-result.partial { box-shadow: 0 0 0 2px var(--chip-warn-tx) inset, var(--shadow-card); }
+.dict-result.wrong   { box-shadow: 0 0 0 2px var(--chip-idiom-tx) inset, var(--shadow-card); }
+.dict-score { font-family: var(--font); font-size: 17px; font-weight: 800; color: var(--text); }
+.dict-answer { font-family: var(--font); font-size: 18px; line-height: 1.55; margin: 12px 0; letter-spacing: -0.01em; }
+.dict-answer .dw.hit  { color: var(--text); }
+.dict-answer .dw.miss { color: var(--chip-idiom-tx); background: var(--chip-idiom-bg); border-radius: 5px; padding: 0 3px; font-weight: 700; }
+.dict-def { font-size: 13.5px; color: var(--text-3); margin-bottom: 14px; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
 /* Study 4지선다 퀴즈 */
 .quiz-bar { display: flex; justify-content: space-between; align-items: center; margin: 6px 2px 16px; font-family: var(--font); font-weight: 700; }
 .quiz-count { color: var(--text-3); font-size: 13px; }

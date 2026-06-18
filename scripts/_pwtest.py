@@ -46,7 +46,7 @@ export async function getEpisode(id){
            description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
 }
 export async function studyOverview() {
-  return { total:1905, learned:12, due:50, byKind:[
+  return { total:1905, learned:12, due:50, known:240, byKind:[
     {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };
 }
 export async function expressionsByKind(kind) {
@@ -58,8 +58,10 @@ export async function expressionsByKind(kind) {
     ['suffer from','to be affected by (~을 앓다)'],
   ];
   return base.map((b,i) => ({ id:i+1, term:b[0], kind, definition:b[1],
-    example_sentence:'...', episode_id:1, sentence_start_sec:100+i, episode_title:'211 - Test' }));
+    example_sentence:'I had to '+b[0]+' all day long.', episode_id:1, sentence_start_sec:100+i,
+    episode_title:'211 - Test', known:false }));
 }
+export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -170,14 +172,35 @@ def main() -> int:
             time.sleep(0.3)
             study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
-            study_err = pg.evaluate("window.__err||[]")
+            ring_pct = pg.eval_on_selector("#study-ring-pct", "el=>el.textContent") if pg.query_selector("#study-ring-pct") else None
+            # 알아요 마크(#10): 버튼 클릭 → markKnown 호출 + 행 known + 카운트 증가
+            known_before = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
+            know_marked = known_after = None
+            if pg.query_selector(".study-x-know"):
+                pg.eval_on_selector(".study-x-know", "el=>el.click()")
+                time.sleep(0.3)
+                know_marked = pg.evaluate("(window.__known||[]).length>0")
+                known_after = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
+            # 받아쓰기(#13): 모드 진입 시 입력칸/채점 버튼이 뜨는지
+            dict_ok = None
+            if pg.query_selector("#study-quiz-dict"):
+                pg.click("#study-quiz-dict")
+                time.sleep(0.3)
+                dict_ok = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check") and pg.query_selector("#d-spk"))
+                pg.click("#d-exit") if pg.query_selector("#d-exit") else None
+                time.sleep(0.2)
+            study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             quiz_opts = 0
             if pg.query_selector("#study-quiz-read"):
                 pg.click("#study-quiz-read")
                 time.sleep(0.3)
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
-            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts, " err=", study_err)
-            study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err)
+            study_err = pg.evaluate("window.__err||[]")
+            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
+                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked, " dict_ok=", dict_ok, " err=", study_err)
+            study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err
+                        and ring_pct is not None and know_marked is True
+                        and known_before != known_after and dict_ok is True)
 
             ok = ep_ok and study_ok
             b.close()
