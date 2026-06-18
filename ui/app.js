@@ -40,6 +40,10 @@ async function route() {
       } catch (e) {
         $app.innerHTML = `<div class="empty error">Error: ${escapeHtml(String(e.message || e))}</div>`;
       }
+      // 뷰 전환 페이드인 (reflow 트릭으로 매 라우트마다 재시작; reduced-motion 에선 무시됨)
+      $app.classList.remove('view-enter');
+      void $app.offsetWidth;
+      $app.classList.add('view-enter');
       return;
     }
   }
