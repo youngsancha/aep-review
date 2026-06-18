@@ -58,7 +58,8 @@ Apple Podcasts를 **넘어서는** 영어 학습 앱. 핵심 차별점:
 - [ ] **전 화면·메뉴 디테일 감사**(사용자 지시): timeline/episode/srs/login/miniplayer/tabbar 하나씩 점검·수정
 - [ ] transport 버튼 아이콘/크기 추가 다듬기(−15/+30 곡선화살표, 햅틱 느낌)
 - [ ] 라이브러리(타임라인) 카드 리디자인 — 커버 아트·진행률·시즌 그룹
-- [ ] Now Playing 화면 비주얼 업그레이드(블러 배경·타이포·트랜지션)
+- [x] Now Playing 앰비언트 글로우(커버 뒤 블러 헤일로, Apple Music식) + 타이포 보강 (v30)
+- [ ] Now Playing 추가 트랜지션·재생 상태 모션
 - [x] 실제 커버 아트 사용 — RSS 채널 itunes:image(megaphone imgix)를 SHOW_COVER 상수로,
       timeline 히어로·썸네일·Now Playing·시트배경·미니플레이어 전부 적용 (v29).
       (에피소드별 이미지는 RSS 에 없어 쇼 아트워크 공유)
@@ -120,3 +121,6 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
   webp 자동)를 `config.js` SHOW_COVER/SHOW_COVER_SM 상수로. timeline 히어로·썸네일·Now Playing·
   시트배경·미니플레이어 전부 교체(폴백은 로컬 아이콘). timeline 인라인 재생도 cleanAudioUrl 적용.
   [발견] RSS 267 vs DB 264 → 신규 3개(F 항목).
+- **v30** — Now Playing 미화: 커버 뒤 블러 글로우(`.np-glow`, blur40·saturate1.5·radial 헤일로)로
+  깊이감, 제목 19→21px·트래킹 보강. 동시에 신규 3개 에피소드 인제스트 백그라운드 시작
+  (`cron_fetch --rss-limit 30 --limit 5`: RSS→STT→vocab→TTS, Supabase write).

@@ -30,6 +30,7 @@ export async function renderEpisode(root, idStr) {
   root.innerHTML = `
     <div class="np-wrap">
       <div class="np-cover-wrap">
+        <div class="np-glow" style="background-image:url('${SHOW_COVER}')"></div>
         <img class="np-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
       </div>
       <div class="np-meta">
