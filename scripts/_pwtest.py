@@ -221,6 +221,14 @@ def main() -> int:
                 dict_ok = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check") and pg.query_selector("#d-spk"))
                 pg.click("#d-exit") if pg.query_selector("#d-exit") else None
                 time.sleep(0.2)
+            # 빈칸 채우기(#16): 모드 진입 시 빈칸/입력/확인이 뜨는지
+            cloze_ok = None
+            if pg.query_selector("#study-quiz-cloze"):
+                pg.click("#study-quiz-cloze")
+                time.sleep(0.3)
+                cloze_ok = bool(pg.query_selector(".cloze-blank") and pg.query_selector("#cz-in") and pg.query_selector("#cz-check"))
+                pg.click("#cz-exit") if pg.query_selector("#cz-exit") else None
+                time.sleep(0.2)
             # 스피킹(#13): 모드 진입 시 타깃문장/마이크 버튼이 뜨는지 (마이크는 누르지 않음)
             speak_ok = None
             if pg.query_selector("#study-quiz-speak"):
@@ -239,10 +247,11 @@ def main() -> int:
             study_err = pg.evaluate("window.__err||[]")
             print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
                   " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked,
-                  " dict_ok=", dict_ok, " speak_ok=", speak_ok, " err=", study_err)
+                  " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
-                        and known_before != known_after and dict_ok is True and speak_ok is True)
+                        and known_before != known_after and dict_ok is True
+                        and cloze_ok is True and speak_ok is True)
 
             # === Timeline(Library) 회귀 ===
             pg.goto("http://localhost:8123/_harness_timeline.html")

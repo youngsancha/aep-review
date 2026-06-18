@@ -72,6 +72,7 @@ export async function renderStudy(root) {
         <button class="study-quiz-btn" id="study-quiz-read">🎯 4지선다</button>
         <button class="study-quiz-btn" id="study-quiz-listen">🎧 듣기</button>
         <button class="study-quiz-btn" id="study-quiz-dict">✍️ 받아쓰기</button>
+        <button class="study-quiz-btn" id="study-quiz-cloze">🧩 빈칸</button>
         <button class="study-quiz-btn" id="study-quiz-speak">🎤 스피킹</button>
         <button class="study-quiz-btn" id="study-quiz-sent">💬 문장</button>
       </div>
@@ -146,6 +147,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
+    root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
@@ -542,6 +544,94 @@ export async function renderStudy(root) {
     }
 
     paintSp();
+  }
+
+  // ── 빈칸 채우기(Cloze) — 예문에서 표현을 가리고 떠올려 입력 → 능동 회상 ──
+  function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function clozeBlank(ex, term, fill) {
+    // term 출현 위치를 fill 로, 나머지는 escapeHtml — 조각별로 안전 결합(센티넬 불필요).
+    const re = new RegExp(escapeRe(term), 'gi');
+    let out = '', last = 0, m;
+    while ((m = re.exec(ex)) !== null) {
+      out += escapeHtml(ex.slice(last, m.index)) + fill;
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    return out + escapeHtml(ex.slice(last));
+  }
+  function startCloze() {
+    const pool = items.filter((v) => v.example_sentence && v.term &&
+      v.example_sentence.toLowerCase().includes(v.term.toLowerCase()));
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">빈칸을 만들 예문이 아직 없어요.</div>';
+      return;
+    }
+    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    let idx = 0, correct = 0;
+    prefetch(cards.slice(0, 4).map((c) => c.term));
+
+    function finishC() {
+      const pct = Math.round((correct / cards.length) * 100);
+      const msg = pct >= 80 ? '표현이 손에 익었어요! 🧩' : pct >= 50 ? '좋아요! 💪' : '반복해서 익혀봐요 🔁';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${correct}/${cards.length}</div>
+          <div class="quiz-sum-pct">빈칸 정확도 ${pct}%</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="cz-again">다시</button>
+            <button class="study-cta-btn secondary" id="cz-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#cz-again').addEventListener('click', startCloze);
+      root.querySelector('#cz-home').addEventListener('click', () => renderStudy(root));
+    }
+    function paintC() {
+      if (idx >= cards.length) return finishC();
+      const c = cards[idx];
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} 맞음</span></div>
+        <div class="cloze-card">
+          <div class="dict-label">🧩 빈칸에 들어갈 표현은?</div>
+          <div class="cloze-sent">${clozeBlank(c.example_sentence, c.term, '<span class="cloze-blank">____</span>')} <span class="speak-spk" id="cz-spk">🔊</span></div>
+          ${c.definition ? `<div class="cloze-hint">뜻: ${escapeHtml(c.definition)}</div>` : ''}
+        </div>
+        <input class="dict-input" id="cz-in" type="text" placeholder="표현 입력" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" />
+        <div class="dict-actions">
+          <button class="study-cta-btn secondary" id="cz-skip">모르겠어요</button>
+          <button class="study-cta-btn" id="cz-check">확인</button>
+        </div>
+        <div id="cz-result"></div>
+        <button class="quiz-exit" id="cz-exit">← Study 홈</button>`;
+      const input = root.querySelector('#cz-in');
+      input.focus();
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].term]);
+      root.querySelector('#cz-spk').addEventListener('click', () => speak(c.example_sentence));  // 힌트로 문장 듣기(선택)
+      root.querySelector('#cz-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#cz-skip').addEventListener('click', () => reveal(0));
+      root.querySelector('#cz-check').addEventListener('click', () => reveal(scoreText(input.value, c.term)));
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') reveal(scoreText(input.value, c.term)); });
+
+      function reveal(score) {
+        if (score >= 0.85) correct++;
+        const cls = score >= 0.85 ? 'correct' : score >= 0.5 ? 'partial' : 'wrong';
+        const label = score >= 0.85 ? '정답! 🎉' : score >= 0.5 ? '거의 맞았어요' : '오답';
+        root.querySelector('#cz-check').disabled = true;
+        root.querySelector('#cz-skip').disabled = true;
+        input.disabled = true;
+        root.querySelector('#cz-result').innerHTML = `
+          <div class="dict-result ${cls}">
+            <div class="dict-score">${label} — <b>${escapeHtml(c.term)}</b></div>
+            <div class="dict-answer">${clozeBlank(c.example_sentence, c.term, `<b class="cloze-ans">${escapeHtml(c.term)}</b>`)}</div>
+            ${c.definition ? `<div class="dict-def">${escapeHtml(c.definition)}</div>` : ''}
+            <button class="study-cta-btn" id="cz-next">다음 →</button>
+          </div>`;
+        speak(c.term);
+        root.querySelector('#cz-next').addEventListener('click', () => { idx++; paintC(); });
+      }
+    }
+    paintC();
   }
 
   if (!selected) {
