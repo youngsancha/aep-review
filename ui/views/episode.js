@@ -218,22 +218,30 @@ export async function renderEpisode(root, idStr, tStr) {
     } catch (e) {
       row = sel(); if (row) row.textContent = '· 번역을 불러올 수 없어요 (네트워크)';
     }
-    // 다음 문장 미리 번역(부드러운 전환)
+    // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만
     const nxt = idx + 1;
-    if (showTrans && nxt < sentRanges.length && !_trCache[nxt]) {
+    if (showTrans && nxt < sentRanges.length && !_trCache[nxt] && !isEasySentence(nxt)) {
       const t2 = getSentText(nxt);
       if (t2) translateEnKo(t2).then((k) => { _trCache[nxt] = k; saveTrCache(ep.id, _trCache); }).catch(() => {});
     }
   }
+  // 현재 문장이 "easy" 인가 — 어려운 표현(vocab)이 있거나 흔치 않은 단어가 있으면 not-easy.
+  function isEasySentence(idx) {
+    if (idx < 0) return true;
+    if (vNotes[idx] && vNotes[idx].length) return false;  // 추출된 어려운 표현 포함
+    return easyByWords(getSentText(idx));
+  }
   function renderNotes(idx) {
     if (!$notes) return;
     const ns = (idx >= 0 && vNotes[idx]) ? vNotes[idx] : [];
-    if (!ns.length && !showTrans) {
+    // 번역카드는 showTrans 가 켜져 있고 "easy 가 아닌" 문장에서만 (조금이라도 어려우면 노출)
+    const wantTrans = showTrans && idx >= 0 && !isEasySentence(idx);
+    if (!ns.length && !wantTrans) {
       $notes.classList.remove('show');
       $notes.setAttribute('aria-hidden', 'true');
       return;
     }
-    const transBlock = (showTrans && idx >= 0)
+    const transBlock = wantTrans
       ? `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">한</span><span class="tx-trans-ko">…</span></div>`
       : '';
     $notes.innerHTML = transBlock + ns.map((v) => `
@@ -243,7 +251,7 @@ export async function renderEpisode(root, idStr, tStr) {
       </div>`).join('');
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
-    if (showTrans && idx >= 0) fillTranslation(idx);
+    if (wantTrans) fillTranslation(idx);
   }
 
   let lastActiveSent = -1;
@@ -740,6 +748,33 @@ function transcriptSheetHtml(segments) {
 
 function stripTags(s) {
   return String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// === 문장 난이도 판정 (#8) ===
+// "조금이라도 easy 가 아닌" 문장만 번역카드를 띄운다. 흔한 기초 단어로만 이뤄진 짧은 문장은 easy.
+// 길이≥4 인 단어 중 COMMON 목록에 없는 단어가 하나라도 있거나, 문장이 길면 not-easy 로 본다(번역 노출).
+const COMMON_EASY = new Set((
+  'the a an and or but so if then than that this these those there here when while because as of to in on ' +
+  'at by for with from into over under about after before up down out off again very just only also too not no ' +
+  'yes yeah okay ok well right sure i you he she it we they me him her us them my your his its our their mine ' +
+  'is am are was were be been being do does did done have has had having will would can could shall should may ' +
+  'might must want wants wanted need needs go goes went gone going get gets got gotten come comes came make makes ' +
+  'made take takes took know knows knew think thinks see sees saw look looks like likes feel feels say says said ' +
+  'tell told give gives gave find found use uses used work works call calls try keep let put mean means ' +
+  'good bad nice great big small long short high low new old same other more most much many some any each every ' +
+  'all both few little lot kind sort thing things people person man woman kid day days time year week now today ' +
+  'really pretty maybe always never often sometimes still even back away around down what who how why which whose ' +
+  'one two three first last next another such own way ways part lot bit'
+).split(/\s+/).filter(Boolean));
+
+function easyByWords(text) {
+  const words = String(text || '').toLowerCase().match(/[a-z']+/g) || [];
+  if (!words.length) return true;
+  if (words.length > 9) return false;                 // 긴 문장 → not easy
+  for (const w of words) {
+    if (w.length >= 4 && !COMMON_EASY.has(w)) return false;  // 흔치 않은 단어 포함 → not easy
+  }
+  return true;
 }
 
 // === EN→KO 문장 번역 (#8) — 무료 MyMemory API. 세션 메모리 + per-episode localStorage 캐시 ===

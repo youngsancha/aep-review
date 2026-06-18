@@ -130,7 +130,7 @@ def main() -> int:
             trans_ok = None
             if pg.query_selector("#tx-trans"):
                 pg.click("#tx-trans")
-                pg.evaluate("window.__player.seek(72)")
+                pg.evaluate("window.__player.seek(71)")  # vocab 문장(난이도 not-easy)에서 번역카드 노출
                 time.sleep(0.4)
                 trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
             # 싱크 보정(#7): 토글 → calibrating 클래스 → 문장 탭 → 해제 + offset 저장
