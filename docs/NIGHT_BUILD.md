@@ -124,3 +124,5 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v30** — Now Playing 미화: 커버 뒤 블러 글로우(`.np-glow`, blur40·saturate1.5·radial 헤일로)로
   깊이감, 제목 19→21px·트래킹 보강. 동시에 신규 3개 에피소드 인제스트 백그라운드 시작
   (`cron_fetch --rss-limit 30 --limit 5`: RSS→STT→vocab→TTS, Supabase write).
+- **v31** — 로그인 화면 미화: 실제 아트워크 커버(116px·글로우)·tint radial 그라데이션 배경·
+  세로 중앙정렬·타이포 보강. 콘텐츠 z-index 정리로 글로우가 텍스트를 덮지 않게.
