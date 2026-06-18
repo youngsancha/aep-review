@@ -26,6 +26,17 @@
   --shadow-pop:  0 6px 24px rgba(0, 0, 0, 0.12);
   --shadow-art:  0 8px 28px rgba(0, 0, 0, 0.18);
 
+  /* Chrome / glass surfaces (flip in dark theme) */
+  --topbar-bg:    rgba(248, 248, 250, 0.82);
+  --mini-bg:      rgba(255, 255, 255, 0.96);
+  --glass-sheet:  rgba(252, 252, 252, 0.74);   /* transcript sheet veil */
+  --glass-panel:  rgba(255, 255, 255, 0.86);   /* notes / translation card */
+  --glass-bar:    rgba(255, 255, 255, 0.78);   /* floating mini-controls */
+  --glass-input:  rgba(255, 255, 255, 0.55);
+  --glass-input-focus: rgba(255, 255, 255, 0.80);
+  --hover:        rgba(0, 0, 0, 0.06);
+  --sheet-radius-veil: 20px;
+
   /* Pastel chips for vocab kinds */
   --chip-word-bg:    #ECE6FF;  --chip-word-tx:    #5B3FD0;
   --chip-idiom-bg:   #FFE4EC;  --chip-idiom-tx:   #C72167;
@@ -72,7 +83,7 @@ body.on-episode {
 /* ========== Top bar (iOS large-title) ========== */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h);
-  background: rgba(248, 248, 250, 0.82);
+  background: var(--topbar-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.5px solid var(--separator);
@@ -526,7 +537,7 @@ body.on-episode {
 .tx-sheet-card::after {
   content: '';
   position: absolute; inset: 0;
-  background: rgba(252, 252, 252, 0.74);
+  background: var(--glass-sheet);
   -webkit-backdrop-filter: saturate(140%);
   backdrop-filter: saturate(140%);
   z-index: 0;
@@ -541,7 +552,7 @@ body.on-episode {
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom) + 18px);
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--glass-bar);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   border-radius: 999px;
@@ -560,7 +571,7 @@ body.on-episode {
   position: relative;
   padding: 0;
 }
-.tx-mini-btn:hover { background: rgba(0, 0, 0, 0.06); }
+.tx-mini-btn:hover { background: var(--hover); }
 .tx-mini-btn .skip-num {
   position: absolute;
   font-size: 9.5px; font-weight: 700;
@@ -633,12 +644,12 @@ body.on-episode {
   border-bottom-color: rgba(60, 60, 67, 0.10);
 }
 .tx-sheet-card .tx-search-input {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--glass-input);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 .tx-sheet-card .tx-search-input:focus {
-  background: rgba(255, 255, 255, 0.80);
+  background: var(--glass-input-focus);
 }
 .tx-sheet-card .tx-scroll {
   flex: 1; min-height: 0;
@@ -659,7 +670,7 @@ body.on-episode {
   left: 8px; right: 8px;
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 6px);
   height: var(--mini-h);
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--mini-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-radius: var(--radius-md);
@@ -1432,7 +1443,7 @@ a { color: var(--tint); }
   position: absolute;
   left: 12px; right: 12px;
   bottom: calc(env(safe-area-inset-bottom) + 90px);  /* 컨트롤 알약 위 */
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--glass-panel);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   border-radius: 16px;
@@ -1514,3 +1525,87 @@ a { color: var(--tint); }
   background: rgba(255, 159, 10, 0.18);
   box-shadow: 0 0 0 2px rgba(255, 159, 10, 0.5);
 }
+
+/* ========================================================================
+   다크 테마 (세련된 색감) — 명시적 [data-theme="dark"] 또는 시스템 자동
+   토큰만 갈아끼우면 변수 기반 UI 전체가 한 번에 전환된다.
+   ======================================================================== */
+:root[data-theme="dark"] {
+  --grad-1: #ff6b7e; --grad-2: #f558a0; --grad-3: #cf86ff;
+  --tint: #d99bff; --tint-hover: #ecc4ff;
+  --tint-soft: rgba(207, 134, 255, 0.20); --tint-soft-2: rgba(207, 134, 255, 0.32);
+
+  --bg: #0B0B10; --surface: #16161D; --surface-2: #20212A;
+  --separator: rgba(235, 235, 245, 0.18); --separator-thin: rgba(235, 235, 245, 0.09);
+
+  --text: #F5F5F7;
+  --text-2: rgba(235, 235, 245, 0.82);
+  --text-3: rgba(235, 235, 245, 0.55);
+  --text-4: rgba(235, 235, 245, 0.32);
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 6px 18px rgba(0,0,0,0.45);
+  --shadow-pop:  0 8px 30px rgba(0,0,0,0.62);
+  --shadow-art:  0 12px 34px rgba(0,0,0,0.62);
+
+  --topbar-bg: rgba(16, 16, 22, 0.80);
+  --mini-bg:   rgba(28, 28, 36, 0.92);
+  --glass-sheet: rgba(13, 13, 18, 0.80);
+  --glass-panel: rgba(30, 30, 39, 0.90);
+  --glass-bar:   rgba(38, 38, 48, 0.84);
+  --glass-input: rgba(255, 255, 255, 0.08);
+  --glass-input-focus: rgba(255, 255, 255, 0.14);
+  --hover: rgba(255, 255, 255, 0.10);
+
+  --chip-word-bg:#2A2347;    --chip-word-tx:#C9B6FF;
+  --chip-idiom-bg:#3A1E2C;   --chip-idiom-tx:#FF9DBE;
+  --chip-coll-bg:#10302A;    --chip-coll-tx:#5FE0C0;
+  --chip-phrasal-bg:#3A2614; --chip-phrasal-tx:#FFB877;
+  --chip-audio-bg:#16264A;   --chip-audio-tx:#8FB6FF;
+  --chip-warn-bg:#3A2E12;    --chip-warn-tx:#F4CE72;
+  --chip-vocab-bg: var(--tint-soft-2); --chip-vocab-tx: var(--tint-hover);
+
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --grad-1: #ff6b7e; --grad-2: #f558a0; --grad-3: #cf86ff;
+    --tint: #d99bff; --tint-hover: #ecc4ff;
+    --tint-soft: rgba(207, 134, 255, 0.20); --tint-soft-2: rgba(207, 134, 255, 0.32);
+
+    --bg: #0B0B10; --surface: #16161D; --surface-2: #20212A;
+    --separator: rgba(235, 235, 245, 0.18); --separator-thin: rgba(235, 235, 245, 0.09);
+
+    --text: #F5F5F7;
+    --text-2: rgba(235, 235, 245, 0.82);
+    --text-3: rgba(235, 235, 245, 0.55);
+    --text-4: rgba(235, 235, 245, 0.32);
+
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 6px 18px rgba(0,0,0,0.45);
+    --shadow-pop:  0 8px 30px rgba(0,0,0,0.62);
+    --shadow-art:  0 12px 34px rgba(0,0,0,0.62);
+
+    --topbar-bg: rgba(16, 16, 22, 0.80);
+    --mini-bg:   rgba(28, 28, 36, 0.92);
+    --glass-sheet: rgba(13, 13, 18, 0.80);
+    --glass-panel: rgba(30, 30, 39, 0.90);
+    --glass-bar:   rgba(38, 38, 48, 0.84);
+    --glass-input: rgba(255, 255, 255, 0.08);
+    --glass-input-focus: rgba(255, 255, 255, 0.14);
+    --hover: rgba(255, 255, 255, 0.10);
+
+    --chip-word-bg:#2A2347;    --chip-word-tx:#C9B6FF;
+    --chip-idiom-bg:#3A1E2C;   --chip-idiom-tx:#FF9DBE;
+    --chip-coll-bg:#10302A;    --chip-coll-tx:#5FE0C0;
+    --chip-phrasal-bg:#3A2614; --chip-phrasal-tx:#FFB877;
+    --chip-audio-bg:#16264A;   --chip-audio-tx:#8FB6FF;
+    --chip-warn-bg:#3A2E12;    --chip-warn-tx:#F4CE72;
+    --chip-vocab-bg: var(--tint-soft-2); --chip-vocab-tx: var(--tint-hover);
+
+    color-scheme: dark;
+  }
+}
+/* 다크에서는 시트 뒤 커버 블러를 살짝 가라앉혀 가독성↑ */
+:root[data-theme="dark"] .tx-sheet-bg { opacity: 0.5; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tx-sheet-bg { opacity: 0.5; } }
+/* 테마 토글 버튼 */
+#theme-btn { font-size: 18px; }

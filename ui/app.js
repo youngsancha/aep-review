@@ -120,6 +120,35 @@ $sync.addEventListener('pointerdown', () => {
   $sync.addEventListener(ev, () => { if (_syncHold) { clearTimeout(_syncHold); _syncHold = null; } })
 );
 
+// === 테마 (라이트/다크) — 기본 auto(시스템), 탭하면 명시적 전환 ===
+const $theme = document.getElementById('theme-btn');
+const _mql = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function effectiveTheme() {
+  const saved = localStorage.getItem('aep-theme');
+  if (saved === 'light' || saved === 'dark') return saved;
+  return _mql && _mql.matches ? 'dark' : 'light';
+}
+function applyTheme(pref) {
+  if (pref === 'light' || pref === 'dark') document.documentElement.setAttribute('data-theme', pref);
+  else document.documentElement.removeAttribute('data-theme');
+  const eff = effectiveTheme();
+  if ($theme) $theme.textContent = eff === 'dark' ? '☀️' : '🌙';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', eff === 'dark' ? '#0B0B10' : '#cc6cff');
+}
+$theme?.addEventListener('click', () => {
+  const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('aep-theme', next);
+  applyTheme(next);
+  toast(next === 'dark' ? '다크 테마' : '라이트 테마');
+});
+applyTheme(localStorage.getItem('aep-theme') || 'auto');
+// 자동(미설정) 모드에서 시스템 테마가 바뀌면 아이콘/상태바색 갱신
+_mql?.addEventListener?.('change', () => {
+  const saved = localStorage.getItem('aep-theme');
+  if (saved !== 'light' && saved !== 'dark') applyTheme('auto');
+});
+
 // === Shared utils ===
 let _toastTimer = null;
 export function toast(msg) {

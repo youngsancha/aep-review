@@ -141,8 +141,16 @@ def main() -> int:
                 time.sleep(0.2)
                 calib_off = pg.eval_on_selector(".tx-sheet", "el=>!el.classList.contains('calibrating')")
                 off_val = pg.evaluate("parseFloat(localStorage.getItem('aep-aoff-1')||'NaN')")
+            # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지
+            pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
+            time.sleep(0.1)
+            dark_bg = pg.eval_on_selector("body", "el=>getComputedStyle(el).backgroundColor")
+            m = __import__("re").findall(r"\d+", dark_bg or "")
+            dark_ok = bool(m) and (int(m[0]) + int(m[1]) + int(m[2]) < 120)
+            pg.evaluate("document.documentElement.removeAttribute('data-theme')")
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
+            print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
             print("sentences=", n_sent, " sheet_open=", sheet_open)
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("trans_ok=", trans_ok)
@@ -153,7 +161,8 @@ def main() -> int:
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
                      and trans_ok == "(테스트 번역)"
-                     and calib_on is True and calib_off is True and off_val is not None)
+                     and calib_on is True and calib_off is True and off_val is not None
+                     and dark_ok)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
