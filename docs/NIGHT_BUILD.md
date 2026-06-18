@@ -167,3 +167,6 @@ RSS audio_url 은 podtrac/pscrb/swap.fm 6단계 광고 리다이렉트 래퍼다
 - **v44** — 성능: studyOverview(7 count)·srsStats(5 count) 순차→`Promise.all` 병렬화.
   Study 홈·SRS 통계 로딩이 라운드트립 누적 대신 1회 분량으로 단축. [백필] 진행.
 - **v45** — 폴리시: Study 홈 로딩 스켈레톤(히어로·칩·리스트 shimmer, 타임라인과 일관). [백필] 163/267, 2073.
+- **v46** — 폴리시: Now Playing Transcript 버튼을 채워진 그라데이션 CTA 로 부각(쉐도잉 진입 유도).
+- **v47** — PWA manifest 점검: theme_color 옛 파랑(#1F3A6D)→브랜드 #cc6cff(index meta 와 통일),
+  background_color #F2F2F7, categories education. PWA 상태바·앱스위처 색 일관. [백필] 168/267.
