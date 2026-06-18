@@ -127,6 +127,23 @@ export async function renderEpisode(root, idStr, tStr) {
   let shadowMode = 'off';  // off | loop(문장 반복) | pause(문장 끝 자동 멈춤)
   let autoPausedSent = -1;
 
+  // === 광고 싱크 보정 (#7) ===
+  // 최근 에피소드는 시작부 동적 광고(DAI)로 스트리밍 audio 와 transcript 타임스탬프가 어긋난다.
+  // 모든 audio↔transcript 매핑을 txTime()=player.time-adOffset 로 보정하고, 탭-보정으로 1탭에 고정.
+  const OFFKEY = `aep-aoff-${ep.id}`;
+  let adOffset = parseFloat(localStorage.getItem(OFFKEY) || '0') || 0;
+  const txTime = () => player.time - adOffset;
+  function setOffset(v) {
+    adOffset = Math.max(-30, Math.min(600, Math.round(v * 100) / 100));
+    try { localStorage.setItem(OFFKEY, String(adOffset)); } catch (e) {}
+  }
+  let calibrating = false;
+
+  // === 현재 문장 번역 항상 표시 토글 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
+  let showTrans = false;
+  const _trCache = loadTrCache(ep.id);
+  let _trSeq = 0;
+
   function refresh() {
     const dur = player.duration;
     if (dur) {
@@ -143,8 +160,8 @@ export async function renderEpisode(root, idStr, tStr) {
     // 쉐도잉 모드: 현재 문장 끝에서 반복(loop) 또는 자동 멈춤(pause, 따라 말할 시간)
     if (shadowMode !== 'off' && lastActiveSent >= 0 && !player.paused) {
       const cur = sentRanges[lastActiveSent];
-      if (cur && Number.isFinite(cur.end) && player.time >= cur.end - 0.06) {
-        if (shadowMode === 'loop') player.seek(cur.start + 0.01);
+      if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
+        if (shadowMode === 'loop') player.seek(cur.start + 0.01 + adOffset);
         else if (lastActiveSent !== autoPausedSent) { player.pause(); autoPausedSent = lastActiveSent; }
       }
     }
@@ -178,21 +195,55 @@ export async function renderEpisode(root, idStr, tStr) {
     const b = e.target.closest('.tx-note-tts');
     if (b) { e.stopPropagation(); speak(b.dataset.text); }
   });
+  function getSentText(idx) {
+    const el = sentRanges[idx] && sentRanges[idx].el;
+    return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+  // showTrans 가 켜져 있으면 현재 문장의 한국어 번역을 비동기로 채운다(캐시 우선).
+  async function fillTranslation(idx) {
+    if (!$notes) return;
+    const sel = () => $notes.querySelector(`.tx-trans-row[data-idx="${idx}"] .tx-trans-ko`);
+    let row = sel();
+    if (!row) return;
+    const text = getSentText(idx);
+    if (!text) { row.textContent = ''; return; }
+    if (_trCache[idx]) { row.textContent = _trCache[idx]; return; }
+    const seq = ++_trSeq;
+    try {
+      const ko = await translateEnKo(text);
+      if (seq !== _trSeq) return;            // 더 최신 문장으로 넘어갔으면 폐기
+      row = sel(); if (!row) return;
+      row.textContent = ko || '(번역 없음)';
+      _trCache[idx] = ko; saveTrCache(ep.id, _trCache);
+    } catch (e) {
+      row = sel(); if (row) row.textContent = '· 번역을 불러올 수 없어요 (네트워크)';
+    }
+    // 다음 문장 미리 번역(부드러운 전환)
+    const nxt = idx + 1;
+    if (showTrans && nxt < sentRanges.length && !_trCache[nxt]) {
+      const t2 = getSentText(nxt);
+      if (t2) translateEnKo(t2).then((k) => { _trCache[nxt] = k; saveTrCache(ep.id, _trCache); }).catch(() => {});
+    }
+  }
   function renderNotes(idx) {
     if (!$notes) return;
     const ns = (idx >= 0 && vNotes[idx]) ? vNotes[idx] : [];
-    if (!ns.length) {
+    if (!ns.length && !showTrans) {
       $notes.classList.remove('show');
       $notes.setAttribute('aria-hidden', 'true');
       return;
     }
-    $notes.innerHTML = ns.map((v) => `
+    const transBlock = (showTrans && idx >= 0)
+      ? `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">한</span><span class="tx-trans-ko">…</span></div>`
+      : '';
+    $notes.innerHTML = transBlock + ns.map((v) => `
       <div class="tx-note">
         <div class="tx-note-term"><span>${escapeHtml(v.term)}</span><span class="tx-note-kind">${escapeHtml((v.kind || 'word').replace('_', ' '))}</span><button class="tx-note-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button></div>
         ${v.definition ? `<div class="tx-note-def">${escapeHtml(v.definition)}</div>` : ''}
       </div>`).join('');
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
+    if (showTrans && idx >= 0) fillTranslation(idx);
   }
 
   let lastActiveSent = -1;
@@ -234,7 +285,7 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function _highlightImpl() {
     if (!sentRanges.length) return;
-    const t = player.time;
+    const t = txTime();
     const idx = findActiveSentIdx(t);
     if (idx === lastActiveSent) return;
 
@@ -266,7 +317,8 @@ export async function renderEpisode(root, idStr, tStr) {
       const rect = sentEl.getBoundingClientRect();
       const cont = scroll.getBoundingClientRect();
       const elTop = rect.top - cont.top + scroll.scrollTop;
-      const target = elTop - scroll.clientHeight * 0.32;
+      // 현재 문장을 화면 상단 ~22% 에 고정 → 하단 번역/해설 카드와 한 화면에 함께 보이도록 위로 올림(#9)
+      const target = elTop - scroll.clientHeight * 0.22;
       const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
       if (Math.abs(clamped - scroll.scrollTop) > 8) {
         autoScrollUntil = Date.now() + 600;
@@ -307,12 +359,20 @@ export async function renderEpisode(root, idStr, tStr) {
       const w = e.target.closest('.w');
       const sent = e.target.closest('.tx-sent');
       const para = e.target.closest('.tx-para');
+      // 싱크 보정 모드(#7): 지금 들리는 문장을 탭 → 그 문장 시작이 현재 재생시점이 되도록 offset 고정
+      if (calibrating && (sent || para)) {
+        const base = parseFloat((sent || para).dataset.start);
+        setOffset(player.time - base);
+        endCalibrate();
+        highlightActiveSegment();
+        return;
+      }
       let seekTo = null;
       if (w)        seekTo = parseFloat(w.dataset.s);
       else if (sent) seekTo = parseFloat(sent.dataset.start);
       else if (para) seekTo = parseFloat(para.dataset.start);
       if (seekTo == null) return;
-      player.seek(seekTo);
+      player.seek(seekTo + adOffset);  // transcript 시각 → audio 시각
       player.play();
       scrollSentToCenter(sent || para);
     });
@@ -425,23 +485,50 @@ export async function renderEpisode(root, idStr, tStr) {
     $txSpeed.classList.toggle('on', r !== 1);
   });
 
+  // 한국어 번역 항상 표시 토글 (#8)
+  const $trans = document.getElementById('tx-trans');
+  $trans?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showTrans = !showTrans;
+    $trans.classList.toggle('on', showTrans);
+    $trans.setAttribute('aria-pressed', showTrans ? 'true' : 'false');
+    renderNotes(lastActiveSent);
+  });
+
+  // 오디오 싱크 보정 토글 (#7)
+  function endCalibrate() {
+    calibrating = false;
+    $sheet?.classList.remove('calibrating');
+    const b = document.getElementById('tx-calib');
+    if (b) { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
+  }
+  const $calib = document.getElementById('tx-calib');
+  $calib?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (calibrating) { endCalibrate(); return; }
+    calibrating = true;
+    $sheet?.classList.add('calibrating');
+    $calib.classList.add('on');
+    $calib.setAttribute('aria-pressed', 'true');
+  });
+
   // 문장 단위 이전/다음 점프 (쉐도잉)
   function jumpSent(dir) {
     if (!sentRanges.length) return;
-    let idx = lastActiveSent >= 0 ? lastActiveSent : findActiveSentIdx(player.time);
+    let idx = lastActiveSent >= 0 ? lastActiveSent : findActiveSentIdx(txTime());
     if (idx < 0) idx = 0;
     let target;
     if (dir < 0) {
       const cur = sentRanges[idx];
       // 현재 문장을 1초 이상 진행했으면 그 문장 처음으로, 아니면 이전 문장으로
-      target = (cur && player.time > cur.start + 1.0) ? idx : idx - 1;
+      target = (cur && txTime() > cur.start + 1.0) ? idx : idx - 1;
     } else {
       target = idx + 1;
     }
     target = Math.max(0, Math.min(sentRanges.length - 1, target));
     const sel = sentRanges[target];
     if (!sel) return;
-    player.seek(sel.start + 0.01);
+    player.seek(sel.start + 0.01 + adOffset);
     player.play();
     scrollSentToCenter(sel.el);
   }
@@ -458,7 +545,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function updateWord() {
     if (!wordTimed.length) return;
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
-    const t = player.time;
+    const t = txTime();
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
@@ -538,7 +625,7 @@ export async function renderEpisode(root, idStr, tStr) {
   // 딥링크 #/episode/:id/:t — 그 시점부터 재생 (Study/SRS 에서 표현의 맥락으로 점프)
   const seekTo = tStr != null ? parseFloat(tStr) : NaN;
   if (Number.isFinite(seekTo) && seekTo > 0) {
-    const go = () => { player.seek(seekTo); player.play(); };
+    const go = () => { player.seek(seekTo + adOffset); player.play(); };
     if (player.duration) go();
     else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
   }
@@ -614,8 +701,10 @@ function transcriptSheetHtml(segments) {
         <div class="tx-card">
           <div class="tx-search">
             <input id="tx-search" class="tx-search-input" type="search" placeholder="Search transcript..." />
+            <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
+            <button id="tx-calib" class="tx-toggle tx-calib-toggle" aria-pressed="false" aria-label="오디오에 싱크 맞추기">🎯 싱크</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
           <div class="tx-scroll">
@@ -623,6 +712,7 @@ function transcriptSheetHtml(segments) {
           </div>
         </div>
         <button class="tx-live-badge" type="button" aria-label="Resume auto-follow">↓ Now playing</button>
+        <div class="tx-calib-hint" aria-hidden="true">🎯 지금 <b>들리는 문장</b>을 탭하면 오디오와 싱크가 맞춰져요</div>
         <div class="tx-notes" aria-hidden="true"></div>
         <div class="tx-sheet-controls">
           <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
@@ -650,6 +740,28 @@ function transcriptSheetHtml(segments) {
 
 function stripTags(s) {
   return String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// === EN→KO 문장 번역 (#8) — 무료 MyMemory API. 세션 메모리 + per-episode localStorage 캐시 ===
+const _TR_MEM = new Map();
+async function translateEnKo(text) {
+  const key = text.slice(0, 480);  // API 길이 제한 여유
+  if (_TR_MEM.has(key)) return _TR_MEM.get(key);
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(key)}&langpair=en|ko`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('translate http ' + r.status);
+  const j = await r.json();
+  let ko = (j && j.responseData && j.responseData.translatedText) || '';
+  // MyMemory 가 가끔 따옴표/대문자 경고문을 섞어 보내므로 정리
+  if (/MYMEMORY WARNING/i.test(ko)) ko = '';
+  _TR_MEM.set(key, ko);
+  return ko;
+}
+function loadTrCache(epId) {
+  try { return JSON.parse(localStorage.getItem('aep-tr-' + epId) || '{}'); } catch { return {}; }
+}
+function saveTrCache(epId, obj) {
+  try { localStorage.setItem('aep-tr-' + epId, JSON.stringify(obj)); } catch (e) { /* quota */ }
 }
 
 function resegment(segments) {

@@ -103,6 +103,10 @@ def main() -> int:
             b = p.chromium.launch(); pg = b.new_page()
             pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
             pg.on("pageerror", lambda e: errs.append("PAGEERROR: " + str(e)))
+            # 번역 API(MyMemory) 는 결정적 테스트를 위해 가짜 응답으로 가로챈다.
+            pg.route("**/api.mymemory.translated.net/**", lambda route: route.fulfill(
+                status=200, content_type="application/json",
+                body='{"responseData":{"translatedText":"(테스트 번역)"}}'))
             pg.goto("http://localhost:8123/_harness.html")
             pg.wait_for_function("window.__ready===true", timeout=10000)
             n_sent = pg.eval_on_selector_all(".tx-sent", "els=>els.length")
@@ -120,15 +124,36 @@ def main() -> int:
             time.sleep(0.3)
             notes_show = pg.eval_on_selector(".tx-notes", "el=>el.classList.contains('show')") if pg.query_selector(".tx-notes") else None
             notes_text = pg.eval_on_selector(".tx-notes", "el=>el.textContent") if pg.query_selector(".tx-notes") else ""
+            # 번역 토글(#8): 켠 뒤 현재 문장의 번역 행이 뜨고 채워지는지
+            trans_ok = None
+            if pg.query_selector("#tx-trans"):
+                pg.click("#tx-trans")
+                pg.evaluate("window.__player.seek(72)")
+                time.sleep(0.4)
+                trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
+            # 싱크 보정(#7): 토글 → calibrating 클래스 → 문장 탭 → 해제 + offset 저장
+            calib_on = calib_off = off_val = None
+            if pg.query_selector("#tx-calib"):
+                pg.click("#tx-calib")
+                calib_on = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('calibrating')")
+                pg.evaluate("window.__player.seek(50)")
+                pg.eval_on_selector(".tx-scroll .tx-sent", "el=>el.click()")
+                time.sleep(0.2)
+                calib_off = pg.eval_on_selector(".tx-sheet", "el=>!el.classList.contains('calibrating')")
+                off_val = pg.evaluate("parseFloat(localStorage.getItem('aep-aoff-1')||'NaN')")
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
             print("sentences=", n_sent, " sheet_open=", sheet_open)
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
+            print("trans_ok=", trans_ok)
+            print("calib_on=", calib_on, " calib_off=", calib_off, " offset_saved=", off_val)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
-                     and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1)
+                     and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
+                     and trans_ok == "(테스트 번역)"
+                     and calib_on is True and calib_off is True and off_val is not None)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

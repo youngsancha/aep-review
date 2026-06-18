@@ -795,13 +795,17 @@ body.on-episode {
 .tx-search-input::placeholder { color: var(--text-4); }
 .tx-search-input:focus { background: var(--tint-soft); }
 .tx-toggle {
-  background: transparent; border: 0;
+  background: var(--surface-2); border: 0;
   color: var(--tint);
-  font-size: 12px; font-weight: 600;
-  cursor: pointer; padding: 6px 10px;
-  border-radius: 8px;
+  font-size: 12.5px; font-weight: 700;
+  cursor: pointer; padding: 7px 13px;
+  border-radius: 999px;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
 }
 .tx-toggle:hover { background: var(--tint-soft); }
+.tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
 
 .tx-scroll {
@@ -856,12 +860,12 @@ body.on-episode {
   padding: 1px 0;
   transition: color 0.15s ease;
 }
-.tx-sent.active { color: #000; font-weight: 600; }
+.tx-sent.active { color: var(--text); font-weight: 600; }
 /* 문장 안 단어 음영 (Apple식): 다음 단어 흐림 → 현재 tint → 지나간 단어 진함 */
 .tx-scroll .w { transition: color 0.22s ease; }
-.tx-sent.active .w { color: var(--text-3); }       /* 아직 안 지난(다음) 단어 */
-.tx-sent.active .w.spoken { color: #000; }          /* 이미 지나간 단어 */
-.tx-sent.active .w.cur { color: var(--tint); }      /* 지금 말하는 단어 */
+.tx-sent.active .w { color: var(--text-3); }        /* 아직 안 지난(다음) 단어 */
+.tx-sent.active .w.spoken { color: var(--text); }   /* 이미 지나간 단어 */
+.tx-sent.active .w.cur { color: var(--tint); font-weight: 700; }  /* 지금 말하는 단어 */
 
 /* Words: just clickable, no visual treatment */
 .w { cursor: pointer; }
@@ -1465,3 +1469,48 @@ a { color: var(--tint); }
   transition: transform 0.1s;
 }
 .tx-note-tts:active { transform: scale(0.9); }
+
+/* ========== 현재 문장 한국어 번역 행 (#8) ========== */
+.tx-trans-row {
+  display: flex; gap: 9px; align-items: flex-start;
+}
+.tx-trans-row:not(:last-child) {
+  padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 0.5px solid var(--separator-thin);
+}
+.tx-trans-ico {
+  flex: 0 0 auto; margin-top: 2px;
+  width: 22px; height: 22px; border-radius: 7px;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
+  font-size: 11px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.tx-trans-ko {
+  font-family: var(--font); font-size: 16px; line-height: 1.5;
+  color: var(--text); font-weight: 600; letter-spacing: -0.01em;
+}
+
+/* 번역/싱크 토글 on 상태 */
+.tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
+.tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }
+.tx-calib-toggle.on, .tx-calib-toggle[aria-pressed="true"] { background: #ff9f0a; color: #fff; }
+
+/* ========== 싱크 보정 (#7) — 탭 한 번으로 오디오↔자막 맞추기 ========== */
+.tx-calib-hint {
+  position: absolute; left: 12px; right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 92px);
+  background: rgba(255, 159, 10, 0.96); color: #fff;
+  font-size: 13.5px; font-weight: 600; text-align: center;
+  padding: 11px 14px; border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(255, 159, 10, 0.40);
+  z-index: 4; opacity: 0; transform: translateY(8px);
+  transition: opacity 0.22s, transform 0.22s; pointer-events: none;
+}
+.tx-calib-hint b { font-weight: 800; }
+.tx-sheet.calibrating .tx-calib-hint { opacity: 1; transform: translateY(0); }
+.tx-sheet.calibrating .tx-scroll .tx-sent { cursor: pointer; border-radius: 6px; }
+.tx-sheet.calibrating .tx-scroll .tx-sent:hover,
+.tx-sheet.calibrating .tx-scroll .tx-sent:active {
+  background: rgba(255, 159, 10, 0.18);
+  box-shadow: 0 0 0 2px rgba(255, 159, 10, 0.5);
+}
