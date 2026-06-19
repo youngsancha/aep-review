@@ -27,7 +27,18 @@ class Player {
     this._emit('track');
   }
 
-  play()    { this.audio.play().catch(() => {}); }
+  play() {
+    const a = this.audio;
+    // 새로고침 직후 등 src 가 에러/미로드 상태면 복구
+    if (a.error && this.current && this.current.src) { a.src = this.current.src; }
+    const p = a.play();
+    if (p && p.catch) p.catch((err) => {
+      if (err && err.name === 'NotAllowedError') return;  // 제스처 없는 자동재생 차단은 그대로 둠
+      // 아직 로드 전이라 실패한 경우 → 재생 가능 시점에 1회 자동 재시도 (재생버튼 먹통 방지)
+      const retry = () => { a.removeEventListener('canplay', retry); a.play().catch(() => {}); };
+      a.addEventListener('canplay', retry, { once: true });
+    });
+  }
   pause()   { this.audio.pause(); }
   toggle()  { this.audio.paused ? this.play() : this.pause(); }
   seek(t)   { if (Number.isFinite(t)) this.audio.currentTime = t; }

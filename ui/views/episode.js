@@ -875,19 +875,31 @@ function resegment(segments) {
   }
   if (!words.length) return segments || [];
 
+  // 광고/낭독처럼 구두점이 거의 없는 run-on 도 적절한 길이로 자른다:
+  //  ① 종결 구두점(.?!…)  ② 문장 사이 큰 쉼(gap)  ③ 긴 절의 콤마  ④ 길이 하드캡.
   const ENDS = /[.!?…]["')\]]?$/;
+  const COMMA = /[,;:]["')\]]?$/;
   const out = [];
   let cur = null;
+  let prevEnd = null;
+  const close = () => {
+    cur.text = cur.words.map((x) => x.word).join('').trim();
+    out.push(cur); cur = null;
+  };
   for (const w of words) {
+    const gap = (prevEnd != null && Number.isFinite(w.start)) ? (w.start - prevEnd) : 0;
+    // ② 현재 문장이 어느 정도 차고 큰 쉼(>0.7s)이 오면, 이 단어 전에서 끊는다(자연스러운 경계)
+    if (cur && cur.words.length >= 4 && gap > 0.7) close();
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);
-    if (Number.isFinite(w.end)) cur.end = w.end;
+    if (Number.isFinite(w.end)) { cur.end = w.end; prevEnd = w.end; }
     const txt = (w.word || '').trim();
-    const tooLong = (cur.end - cur.start) > 14 || cur.words.length > 45;
-    if ((ENDS.test(txt) && cur.words.length >= 2) || tooLong) {
-      cur.text = cur.words.map((x) => x.word).join('').trim();
-      out.push(cur);
-      cur = null;
+    const n = cur.words.length;
+    const dur = cur.end - cur.start;
+    if ((ENDS.test(txt) && n >= 2) ||           // ① 종결 구두점
+        (COMMA.test(txt) && n >= 12) ||         // ③ 긴 절은 콤마에서
+        dur > 14 || n >= 22) {                  // ④ 하드캡(너무 길면 무조건)
+      close();
     }
   }
   if (cur) { cur.text = cur.words.map((x) => x.word).join('').trim(); out.push(cur); }
