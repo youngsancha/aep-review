@@ -320,6 +320,18 @@ body.on-episode {
 .section-h .count {
   font-size: 13px; color: var(--text-3); font-weight: 500;
 }
+/* 접이식 시즌 그룹 — 최신만 펼침, 이전 시즌은 헤더 탭으로 토글 */
+.season-group { margin: 0; }
+.season-head {
+  align-items: center; cursor: pointer; list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.season-head::-webkit-details-marker { display: none; }
+.season-head::marker { content: ''; }
+.season-right { display: inline-flex; align-items: center; gap: 9px; }
+.season-caret { color: var(--text-3); font-size: 13px; font-weight: 800; transition: transform 0.25s ease; }
+.season-group[open] .season-caret { transform: rotate(180deg); }
+.season-group:not([open]) .season-head { margin-bottom: 10px; }
 .section-h .sort {
   font-size: 13px; color: var(--tint);
   font-weight: 500;

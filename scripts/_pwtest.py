@@ -226,14 +226,16 @@ def main() -> int:
             werr = pg.evaluate("window.__err||[]")
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
             print("sentences=", n_sent, " sheet_open=", sheet_open)
-            print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
+            # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (term 이 없어야 정상)
+            notes_no_vocab = "fill in the gap" not in (notes_text or "")
+            print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
-                     and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
+                     and notes_show is True and notes_no_vocab and about == 1
                      and trans_ok == "(테스트 번역)" and trans_default_on is True
                      and trans_fs is not None and trans_fs >= 20
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
@@ -314,6 +316,10 @@ def main() -> int:
             tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
             tl_featplay = bool(pg.query_selector(".feat-play"))
             tl_cont = bool(pg.query_selector(".cont-card"))   # 이어듣기 카드(#15)
+            # 접이식 시즌: 최신만 펼침, 이전 시즌은 접힘
+            tl_seasons = pg.eval_on_selector_all(".season-group", "els=>els.length")
+            tl_first_open = pg.eval_on_selector(".season-group", "el=>el.open") if pg.query_selector(".season-group") else None
+            tl_has_collapsed = pg.evaluate("[...document.querySelectorAll('.season-group')].some(d=>!d.open)")
             # 이어재생 ▶ → 인라인 load+seek(resume)+play (화면 진입 없이 바로 실행)
             tl_contplay = None
             if pg.query_selector(".cont-play"):
@@ -335,9 +341,11 @@ def main() -> int:
             tl_err = pg.evaluate("window.__err||[]")
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
                   " cont=", tl_cont, " contplay=", tl_contplay, " script_flag=", tl_script_flag,
+                  " seasons=", tl_seasons, " first_open=", tl_first_open, " has_collapsed=", tl_has_collapsed,
                   " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
                            and tl_cont and tl_contplay is True and tl_script_flag == "1"
+                           and tl_seasons >= 2 and tl_first_open is True and tl_has_collapsed is True
                            and tl_search == 1 and tl_no_pan and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok

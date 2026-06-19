@@ -234,31 +234,46 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function renderNotes(idx) {
     if (!$notes) return;
-    const ns = (idx >= 0 && vNotes[idx]) ? vNotes[idx] : [];
-    // 번역카드는 showTrans 가 켜져 있고 "easy 가 아닌" 문장에서만 (조금이라도 어려우면 노출)
+    // VOCAB(즉시해설)은 더 이상 표시하지 않음 — 단어/표현은 Study·Review 에서 학습.
+    // 재생 중 하단 카드엔 한글번역만(충분함, 사용자 요청). vNotes 는 난이도 판정에만 계속 사용.
     const wantTrans = showTrans && idx >= 0 && !isEasySentence(idx);
-    if (!ns.length && !wantTrans) {
+    if (!wantTrans) {
       $notes.classList.remove('show');
       $notes.setAttribute('aria-hidden', 'true');
       return;
     }
-    const transBlock = wantTrans
-      ? `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">한</span><span class="tx-trans-ko">…</span></div>`
-      : '';
-    $notes.innerHTML = transBlock + ns.map((v) => `
-      <div class="tx-note">
-        <div class="tx-note-term"><span>${escapeHtml(v.term)}</span><span class="tx-note-kind">${escapeHtml((v.kind || 'word').replace('_', ' '))}</span><button class="tx-note-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button></div>
-        ${v.definition ? `<div class="tx-note-def">${escapeHtml(v.definition)}</div>` : ''}
-      </div>`).join('');
+    $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">한</span><span class="tx-trans-ko">…</span></div>`;
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
-    if (wantTrans) fillTranslation(idx);
+    fillTranslation(idx);
   }
 
   let lastActiveSent = -1;
   let lastActivePara = -1;
   let userScrolledUntil = 0;     // suspend auto-follow until this timestamp
-  let autoScrollUntil = 0;       // we are mid auto-scroll until this timestamp
+  let autoScrollUntil = 0;       // (레거시) — 부드러운 ease 로 대체되어 게이트엔 더 안 씀
+
+  // === 부드러운 자동 스크롤 (Apple Podcasts 느낌) ===
+  // 네이티브 scrollTo({smooth}) 는 매 문장마다 재시작돼 끊긴다. 대신 rAF 로 매 프레임
+  // 목표(scrollTarget)를 향해 지수적으로 ease → 문장이 바뀌면 목표만 갱신되어 연속·부드럽게.
+  let scrollTarget = null;
+  let scrollRaf = 0;
+  const SCROLL_EASE = 0.12;       // 0~1, 클수록 빠르게 따라붙음(작을수록 더 부드럽고 느긋함)
+  function easeScroll() {
+    scrollRaf = 0;
+    const sc = document.querySelector('.tx-scroll');
+    if (!sc || scrollTarget == null) return;
+    const cur = sc.scrollTop;
+    const diff = scrollTarget - cur;
+    if (Math.abs(diff) < 0.5) { sc.scrollTop = scrollTarget; scrollTarget = null; return; }
+    sc.scrollTop = cur + diff * SCROLL_EASE;
+    scrollRaf = requestAnimationFrame(easeScroll);
+  }
+  function smoothScrollTo(top) {
+    scrollTarget = top;
+    if (!scrollRaf) scrollRaf = requestAnimationFrame(easeScroll);
+  }
+  function cancelEase() { scrollTarget = null; if (scrollRaf) { cancelAnimationFrame(scrollRaf); scrollRaf = 0; } }
 
   function findActiveSentIdx(t) {
     // Active = LAST segment with start <= t.
@@ -321,7 +336,7 @@ export async function renderEpisode(root, idStr, tStr) {
 
     // 핵심: 현재 "문장"을 매 문장 전환마다 상단 ~32% 위치로 부드럽게 고정 → 음성과 시선 일치.
     const userActive = Date.now() < userScrolledUntil;
-    if (idx >= 0 && scroll && !userActive && Date.now() > autoScrollUntil) {
+    if (idx >= 0 && scroll && !userActive) {
       const sentEl = sentRanges[idx].el;
       const rect = sentEl.getBoundingClientRect();
       const cont = scroll.getBoundingClientRect();
@@ -331,10 +346,9 @@ export async function renderEpisode(root, idStr, tStr) {
       const lh = parseFloat(getComputedStyle(sentRanges[idx].paraEl).lineHeight) || 40;
       const target = elTop - Math.max(8, scroll.clientHeight * 0.22 - lh * 2);
       const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
-      if (Math.abs(clamped - scroll.scrollTop) > 8) {
-        autoScrollUntil = Date.now() + 600;
-        scroll.scrollTo({ top: clamped, behavior: 'smooth' });
-      }
+      // 문장이 바뀔 때마다 목표만 갱신 → rAF ease 가 부드럽게 따라감(네이티브 smooth 의 끊김 제거)
+      const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;
+      if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
     }
     txCard?.classList.toggle('live', !userActive);
     txCard?.classList.toggle('no-follow', userActive);
@@ -344,12 +358,14 @@ export async function renderEpisode(root, idStr, tStr) {
   // because our own programmatic smooth-scroll fires scroll events for ~600ms.
   const $txScroll = document.querySelector('.tx-scroll');
   if ($txScroll) {
-    const markUser = () => { userScrolledUntil = Date.now() + 4000; };
-    $txScroll.addEventListener('wheel', markUser, { passive: true });
-    $txScroll.addEventListener('touchstart', markUser, { passive: true });
-    $txScroll.addEventListener('touchmove', markUser, { passive: true });
+    // cancel=true 인 실제 스크롤 제스처(휠/드래그/스크롤키)에선 진행 중인 auto-ease 를 즉시 멈춤.
+    // 단순 탭(touchstart)은 cancel 하지 않음 → 단어 탭→가운데 정렬 ease 가 살아있게.
+    const markUser = (cancel) => { userScrolledUntil = Date.now() + 4000; if (cancel) cancelEase(); };
+    $txScroll.addEventListener('wheel', () => markUser(true), { passive: true });
+    $txScroll.addEventListener('touchstart', () => markUser(false), { passive: true });
+    $txScroll.addEventListener('touchmove', () => markUser(true), { passive: true });
     $txScroll.addEventListener('keydown', (e) => {
-      if (['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key)) markUser();
+      if (['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(e.key)) markUser(true);
     });
   }
 
@@ -361,9 +377,8 @@ export async function renderEpisode(root, idStr, tStr) {
     const cont = $tx.getBoundingClientRect();
     const elTop = rect.top - cont.top + $tx.scrollTop;
     const target = elTop - $tx.clientHeight / 2 + rect.height / 2;
-    autoScrollUntil = Date.now() + 700;
     userScrolledUntil = Date.now() + 3000;  // give user 3s to read before auto-follow resumes
-    $tx.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    smoothScrollTo(Math.max(0, target));    // 부드러운 ease 로 가운데 정렬
   }
   if ($tx) {
     $tx.addEventListener('click', (e) => {
@@ -595,6 +610,7 @@ export async function renderEpisode(root, idStr, tStr) {
     releaseWake();
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
+    cancelEase();
     stopRaf();
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';

@@ -45,7 +45,7 @@ export async function renderTimeline(root) {
         const filtered = !q ? items : items.filter((e) =>
           (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
         const box = root.querySelector('#ep-groups');
-        box.innerHTML = filtered.length ? groupsHtml(filtered) : '<div class="empty">검색 결과가 없어요.</div>';
+        box.innerHTML = filtered.length ? groupsHtml(filtered, true) : '<div class="empty">검색 결과가 없어요.</div>';
         wirePlay(box, items);
       }, 150);
     });
@@ -84,8 +84,8 @@ function wirePlay(scope, items) {
   });
 }
 
-// 시즌별(내림차순) 그룹 섹션 HTML
-function groupsHtml(list) {
+// 시즌별(내림차순) 그룹 — 최신 시즌만 펼치고 이전 시즌은 접이식(<details>). openAll=검색 시 전부 펼침.
+function groupsHtml(list, openAll = false) {
   const groups = new Map();
   for (const e of list) {
     const key = e.season != null ? `Season ${e.season}` : 'Other';
@@ -98,15 +98,18 @@ function groupsHtml(list) {
     return bx - ax;
   });
   let html = '';
-  for (const key of sortedKeys) {
+  sortedKeys.forEach((key, i) => {
     const eps = groups.get(key);
+    const open = openAll || i === 0;  // 최신 시즌(i=0)만 기본 펼침
     html += `
-      <div class="section-h">
-        <h2>${escapeHtml(key)}</h2>
-        <span class="count">${eps.length} episodes</span>
-      </div>
-      <div class="ep-list">${eps.map(rowHtml).join('')}</div>`;
-  }
+      <details class="season-group"${open ? ' open' : ''}>
+        <summary class="section-h season-head">
+          <h2>${escapeHtml(key)}</h2>
+          <span class="season-right"><span class="count">${eps.length} episodes</span><span class="season-caret" aria-hidden="true">⌄</span></span>
+        </summary>
+        <div class="ep-list">${eps.map(rowHtml).join('')}</div>
+      </details>`;
+  });
   return html;
 }
 
