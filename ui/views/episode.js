@@ -9,10 +9,11 @@ const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="current
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 const SVG_MINI_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_MINI_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
-const SVG_BACK15 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3.5-7.1"/><polyline points="3 4 3 10 9 10"/></svg>';
-const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 10 15 10"/></svg>';
+const SVG_BACK15 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
 
-const SPEEDS = [1, 1.25, 1.5, 0.85, 1];
+// 1× 에서 탭마다 1.25 → 1.5 → 0.5 → 0.75 → 1.0 → 1.25 … 순환 (사용자 지정 순서)
+const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
 
 export async function renderEpisode(root, idStr, tStr) {
   const id = parseInt(idStr, 10);
@@ -125,8 +126,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | loop(문장 반복) | pause(문장 끝 자동 멈춤)
-  let autoPausedSent = -1;
+  let shadowMode = 'off';  // off | loop(문장 반복)
 
   // === 광고-무관 싱크 (#2) ===
   // 인제스트가 앱과 "똑같은" clean megaphone URL 로 STT 하므로 transcript ≡ stream
@@ -134,8 +134,10 @@ export async function renderEpisode(root, idStr, tStr) {
   // (수동 싱크 버튼/calibration 은 제거 — scripts/retranscribe.py 가 구조적으로 해결.)
   const txTime = () => player.time;
 
-  // === 현재 문장 번역 항상 표시 토글 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
-  let showTrans = false;
+  // === 현재 문장 번역 항상 표시 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
+  // 기본 ON: 끄지 않는 한 항상 번역카드가 따라온다. 사용자가 끄면 그 선택을 기억(localStorage).
+  const TRANS_KEY = 'aep-tx-trans';
+  let showTrans = localStorage.getItem(TRANS_KEY) !== '0';
   const _trCache = loadTrCache(ep.id);
   let _trSeq = 0;
 
@@ -152,12 +154,11 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
 
-    // 쉐도잉 모드: 현재 문장 끝에서 반복(loop) 또는 자동 멈춤(pause, 따라 말할 시간)
-    if (shadowMode !== 'off' && lastActiveSent >= 0 && !player.paused) {
+    // 쉐도잉 반복(loop): 현재 문장 끝에서 그 문장 처음으로 되돌려 무한 반복
+    if (shadowMode === 'loop' && lastActiveSent >= 0 && !player.paused) {
       const cur = sentRanges[lastActiveSent];
       if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
-        if (shadowMode === 'loop') player.seek(cur.start + 0.01);
-        else if (lastActiveSent !== autoPausedSent) { player.pause(); autoPausedSent = lastActiveSent; }
+        player.seek(cur.start + 0.01);
       }
     }
   }
@@ -320,8 +321,10 @@ export async function renderEpisode(root, idStr, tStr) {
       const rect = sentEl.getBoundingClientRect();
       const cont = scroll.getBoundingClientRect();
       const elTop = rect.top - cont.top + scroll.scrollTop;
-      // 현재 문장을 화면 상단 ~22% 에 고정 → 하단 번역/해설 카드와 한 화면에 함께 보이도록 위로 올림(#9)
-      const target = elTop - scroll.clientHeight * 0.22;
+      // 현재 문장을 상단 ~22% 에 두되, 거기서 2줄 더 위로 끌어올려 붙인다 → 하단 번역/해설
+      // 카드와 한 화면에 더 여유롭게 함께 보이도록(#9, 사용자 요청). lh = 한 줄 높이.
+      const lh = parseFloat(getComputedStyle(sentRanges[idx].paraEl).lineHeight) || 40;
+      const target = elTop - Math.max(8, scroll.clientHeight * 0.22 - lh * 2);
       const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
       if (Math.abs(clamped - scroll.scrollTop) > 8) {
         autoScrollUntil = Date.now() + 600;
@@ -373,38 +376,12 @@ export async function renderEpisode(root, idStr, tStr) {
     });
   }
 
-  // Search filter
-  const $search = document.getElementById('tx-search');
-  if ($search) {
-    let timer = 0;
-    $search.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => applySearch($search.value.trim().toLowerCase()), 120);
-    });
-  }
-  const wordEls = Array.from(document.querySelectorAll('.tx-scroll .w'));
-  function applySearch(q) {
-    wordEls.forEach((w) => w.classList.remove('match'));
-    if (!q) return;
-    wordEls.forEach((w) => {
-      const text = w.textContent.toLowerCase().replace(/[^a-z']/g, '');
-      if (text && text.includes(q)) w.classList.add('match');
-    });
-  }
-
   // "Now playing" badge tap → resume auto-follow
   const $card = document.querySelector('.tx-card');
   document.querySelector('.tx-live-badge')?.addEventListener('click', () => {
     userScrolledUntil = 0;
     lastActivePara = -1;  // force re-trigger of scroll on next update
     highlightActiveSegment();
-  });
-
-  // Toggle timestamp visibility
-  const $tsToggle = document.getElementById('tx-toggle-ts');
-  $tsToggle?.addEventListener('click', () => {
-    const on = $card.classList.toggle('show-ts');
-    $tsToggle.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 
   // === Sheet open/close (defined here so it can read state vars and fns above) ===
@@ -422,6 +399,7 @@ export async function renderEpisode(root, idStr, tStr) {
       autoScrollUntil = 0;
       userScrolledUntil = 0;
       highlightActiveSegment();
+      showControls();  // 열 때 컨트롤 표시 후 잠시 뒤 자동 숨김
     }, 80);
   }
   function closeSheet() {
@@ -449,10 +427,10 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     player.skip(30);
   });
+  // 쉐도잉(off) ↔ 반복(loop) 2단계 토글. 문장멈춤(pause)은 제거(사용자 요청).
   const SHADOW = [
-    { mode: 'off',   label: '🔁 쉐도잉',   on: false },
-    { mode: 'loop',  label: '🔁 반복',     on: true },
-    { mode: 'pause', label: '⏸ 문장멈춤', on: true },
+    { mode: 'off',  label: '🔁 쉐도잉', on: false },
+    { mode: 'loop', label: '🔁 반복',   on: true },
   ];
   let shadowIdx = 0;
   const $shadow = document.getElementById('tx-shadow');
@@ -461,14 +439,14 @@ export async function renderEpisode(root, idStr, tStr) {
     shadowIdx = (shadowIdx + 1) % SHADOW.length;
     const s = SHADOW[shadowIdx];
     shadowMode = s.mode;
-    autoPausedSent = -1;
     $shadow.textContent = s.label;
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
+    if (player.paused) player.play();  // 모드 전환 즉시 이어 재생 (반복→쉐도잉도 버튼 없이 바로 재생)
   });
 
   // 쉐도잉용 속도 조절 (시트 안에서 느리게 따라 말하기)
-  const SHEET_SPEEDS = [1, 0.85, 0.75, 1.25];
+  const SHEET_SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];  // 1×→1.25→1.5→0.5→0.75→… (사용자 지정 순서)
   let sheetSpeedIdx = 0;
   const $txSpeed = document.getElementById('tx-speed');
   $txSpeed?.addEventListener('click', (e) => {
@@ -480,11 +458,16 @@ export async function renderEpisode(root, idStr, tStr) {
     $txSpeed.classList.toggle('on', r !== 1);
   });
 
-  // 한국어 번역 항상 표시 토글 (#8)
+  // 한국어 번역 표시 토글 (#8) — 기본 ON. 초기 버튼 상태도 showTrans 에 맞춘다.
   const $trans = document.getElementById('tx-trans');
+  if ($trans) {
+    $trans.classList.toggle('on', showTrans);
+    $trans.setAttribute('aria-pressed', showTrans ? 'true' : 'false');
+  }
   $trans?.addEventListener('click', (e) => {
     e.stopPropagation();
     showTrans = !showTrans;
+    try { localStorage.setItem(TRANS_KEY, showTrans ? '1' : '0'); } catch (e) {}
     $trans.classList.toggle('on', showTrans);
     $trans.setAttribute('aria-pressed', showTrans ? 'true' : 'false');
     renderNotes(lastActiveSent);
@@ -493,10 +476,12 @@ export async function renderEpisode(root, idStr, tStr) {
   // 글자 크기 조절 (#17) — 읽기 영역 스케일을 localStorage 에 저장
   const FS_KEY = 'aep-tx-scale';
   let txScale = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
-  const $txCardEl = $sheet ? $sheet.querySelector('.tx-card') : null;
+  // --tx-scale 을 시트 카드(.tx-card 와 .tx-notes 의 공통 조상)에 두어 본문 + 한글번역이
+  // 함께 스케일되도록(#: 번역 폰트도 A−/A＋ 로 조절).
+  const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
-    if ($txCardEl) $txCardEl.style.setProperty('--tx-scale', String(txScale));
+    if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
   }
   applyTxScale();
@@ -525,6 +510,41 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(-1); });
   document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(1); });
+
+  // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
+  const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
+  let ctrlHideTimer = 0;
+  function showControls() {
+    if (!$sheetCard) return;
+    $sheetCard.classList.remove('controls-hidden');
+    clearTimeout(ctrlHideTimer);
+    ctrlHideTimer = setTimeout(() => $sheetCard.classList.add('controls-hidden'), 3200);
+  }
+  // 시트 어디든 탭(포인터 누름) → 컨트롤 다시 표시 + 숨김 타이머 리셋
+  $sheetCard?.addEventListener('pointerdown', showControls, { passive: true });
+
+  // === 재생 중 화면 꺼짐 방지 (Screen Wake Lock) — transcript/Now-Playing 화면 (사용자 요청) ===
+  let wakeLock = null;
+  async function acquireWake() {
+    try {
+      if ('wakeLock' in navigator && !wakeLock && !player.paused) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch (e) { /* 미지원/사용자 거부 — 무시 */ }
+  }
+  async function releaseWake() {
+    const w = wakeLock; wakeLock = null;
+    try { if (w) await w.release(); } catch (e) {}
+  }
+  const offWake = player.on((ev) => {
+    if (ev === 'play') acquireWake();
+    else if (ev === 'pause' || ev === 'ended') releaseWake();
+  });
+  // 브라우저는 탭이 숨겨지면 wake lock 을 자동 해제 → 복귀 시 재취득
+  const onVis = () => { if (document.visibilityState === 'visible' && !player.paused) acquireWake(); };
+  document.addEventListener('visibilitychange', onVis);
+  if (!player.paused) acquireWake();
 
   const off = player.on(refresh);
 
@@ -566,6 +586,10 @@ export async function renderEpisode(root, idStr, tStr) {
   window.addEventListener('hashchange', () => {
     off();
     offWord();
+    offWake();
+    releaseWake();
+    document.removeEventListener('visibilitychange', onVis);
+    clearTimeout(ctrlHideTimer);
     stopRaf();
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
@@ -699,14 +723,12 @@ function transcriptSheetHtml(segments, title, sub) {
           <button class="tx-sheet-close" aria-label="Close">×</button>
         </div>
         <div class="tx-card">
-          <div class="tx-search">
-            <input id="tx-search" class="tx-search-input" type="search" placeholder="Search transcript..." />
+          <div class="tx-toolbar">
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
             <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
-            <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
           </div>
           <div class="tx-scroll">
             ${body}
@@ -719,14 +741,14 @@ function transcriptSheetHtml(segments, title, sub) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
           </button>
           <button class="tx-mini-btn" id="tx-mini-back" aria-label="Back 15s">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3.5-7.1"/><polyline points="3 4 3 10 9 10"/></svg>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
             <span class="skip-num">15</span>
           </button>
           <button class="tx-mini-play" id="tx-mini-play" aria-label="Play/Pause">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
           </button>
           <button class="tx-mini-btn" id="tx-mini-fwd" aria-label="Forward 30s">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/><polyline points="21 4 21 10 15 10"/></svg>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
             <span class="skip-num">30</span>
           </button>
           <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next sentence">

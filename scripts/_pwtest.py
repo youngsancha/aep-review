@@ -158,13 +158,13 @@ def main() -> int:
             time.sleep(0.3)
             notes_show = pg.eval_on_selector(".tx-notes", "el=>el.classList.contains('show')") if pg.query_selector(".tx-notes") else None
             notes_text = pg.eval_on_selector(".tx-notes", "el=>el.textContent") if pg.query_selector(".tx-notes") else ""
-            # 번역 토글(#8): 켠 뒤 현재 문장의 번역 행이 뜨고 채워지는지
-            trans_ok = None
-            if pg.query_selector("#tx-trans"):
-                pg.click("#tx-trans")
-                pg.evaluate("window.__player.seek(71)")  # vocab 문장(난이도 not-easy)에서 번역카드 노출
-                time.sleep(0.4)
-                trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
+            # 번역 기본 ON(#8): 클릭 없이도 not-easy 문장에서 번역행이 뜨고 채워지는지 + 버튼 on
+            trans_default_on = pg.eval_on_selector("#tx-trans", "el=>el.classList.contains('on')") if pg.query_selector("#tx-trans") else None
+            pg.evaluate("window.__player.seek(71)")  # vocab 문장(난이도 not-easy)에서 번역카드 노출
+            time.sleep(0.4)
+            trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
+            # 번역 폰트가 본문 글자크기(--tx-scale)와 함께 커지는지: 24px*scale 이어야
+            trans_fs = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)") if pg.query_selector(".tx-trans-ko") else None
             # 광고-무관 싱크(#2): 수동 싱크 버튼은 제거됨. 문장 탭 → 그 data-start 로 정확히 seek
             # (offset 0 — transcript 시각 = audio 시각). 보정 UI 부재 + 1:1 매핑을 검증.
             calib_gone = pg.query_selector("#tx-calib") is None
@@ -173,6 +173,13 @@ def main() -> int:
             time.sleep(0.2)
             seeked_to = pg.evaluate("window.__player.time")
             sync_ok = (sent0_start is not None and abs((seeked_to or -99) - sent0_start) < 0.2)
+            # 하단 컨트롤 자동숨김 + 탭하면 다시 표시: hidden 강제 후 pointerdown → 해제되는지
+            ctrl_reveal = None
+            if pg.query_selector(".tx-sheet-card"):
+                pg.eval_on_selector(".tx-sheet-card", "el=>el.classList.add('controls-hidden')")
+                pg.dispatch_event(".tx-sheet-card", "pointerdown")
+                time.sleep(0.05)
+                ctrl_reveal = pg.eval_on_selector(".tx-sheet-card", "el=>!el.classList.contains('controls-hidden')")
             # 글자 크기(#17): A＋ 클릭 시 .tx-card 의 --tx-scale 증가
             fs_ok = None
             if pg.query_selector("#tx-fs-up"):
@@ -192,15 +199,16 @@ def main() -> int:
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
             print("sentences=", n_sent, " sheet_open=", sheet_open)
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
-            print("trans_ok=", trans_ok)
-            print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") fs_ok=", fs_ok)
+            print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs)
+            print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
-                     and trans_ok == "(테스트 번역)"
-                     and calib_gone is True and sync_ok is True
+                     and trans_ok == "(테스트 번역)" and trans_default_on is True
+                     and trans_fs is not None and trans_fs >= 23
+                     and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok)
 
             # === Study 뷰 회귀 ===
