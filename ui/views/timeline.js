@@ -52,9 +52,9 @@ export async function renderTimeline(root) {
   }
 }
 
-// ▶ 버튼(행/피처) → 인라인 재생
+// ▶ 버튼(행/피처/이어재생) → 인라인 재생. 이어재생은 저장 위치에서 resume.
 function wirePlay(scope, items) {
-  scope.querySelectorAll('.ep-play, .feat-play').forEach((btn) => {
+  scope.querySelectorAll('.ep-play, .feat-play, .cont-play').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -68,7 +68,18 @@ function wirePlay(scope, items) {
         cover: SHOW_COVER_SM,
         src: cleanAudioUrl(ep.audio_url),
       });
-      player.play();
+      // 이어재생: 저장 위치로 seek 후 재생. (metadata 준비 전이면 meta 이벤트에서)
+      const resume = parseFloat(btn.dataset.resume || '0') || 0;
+      const go = () => { if (resume > 0) player.seek(resume); player.play(); };
+      if (player.duration) go();
+      else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+    });
+  });
+  // "스크립트로 보기" → transcript 화면 진입 + 자동재생 + 시트 자동 열기 (논스톱)
+  // sessionStorage 플래그를 남기고 링크 이동 → episode 뷰가 읽어서 처리.
+  scope.querySelectorAll('.feat-script, .cont-script').forEach((a) => {
+    a.addEventListener('click', () => {
+      try { sessionStorage.setItem('aep-open-script', a.dataset.id || ''); } catch (e) {}
     });
   });
 }
@@ -109,15 +120,20 @@ function continueHtml(prog, items) {
   const left = prog.dur ? Math.max(1, Math.round((prog.dur - prog.t) / 60)) : 0;
   return `
     <div class="section-h"><h2>이어듣기</h2></div>
-    <a class="cont-card" href="#/episode/${prog.id}">
-      <img class="cont-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+    <div class="cont-card">
+      <a class="cont-cover-link" href="#/episode/${prog.id}" aria-label="${escapeHtml(title)}">
+        <img class="cont-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+      </a>
       <div class="cont-body">
-        <div class="cont-title">${escapeHtml(title)}</div>
+        <a class="cont-title" href="#/episode/${prog.id}">${escapeHtml(title)}</a>
         <div class="cont-bar"><span style="width:${pct}%"></span></div>
         <div class="cont-meta">${pct}% 들음 · ${left}분 남음</div>
+        <div class="cont-actions">
+          <button class="cont-play" data-id="${prog.id}" data-resume="${prog.t}">▶ 이어재생</button>
+          <a class="cont-script" data-id="${prog.id}" href="#/episode/${prog.id}">스크립트로 보기 ›</a>
+        </div>
       </div>
-      <span class="cont-play">▶</span>
-    </a>`;
+    </div>`;
 }
 
 function skeletonHtml() {
@@ -162,7 +178,7 @@ function featuredHtml(e) {
       ${desc ? `<p class="feat-desc">${escapeHtml(desc)}</p>` : ''}
       <div class="feat-actions">
         ${e.has_audio ? `<button class="feat-play" data-id="${e.id}">▶ 재생</button>` : ''}
-        <a class="feat-script" href="#/episode/${e.id}">스크립트로 보기 ›</a>
+        <a class="feat-script" data-id="${e.id}" href="#/episode/${e.id}">스크립트로 보기 ›</a>
       </div>
     </div>
   `;

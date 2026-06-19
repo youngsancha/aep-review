@@ -137,7 +137,8 @@ body.on-episode {
 /* ========== Tab bar (iOS) ========== */
 #tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; height: var(--tabbar-h);
-  background: rgba(248, 248, 250, 0.92);
+  /* 테마 토큰 사용(다크에서도 라벨이 보이도록) — 예전 하드코딩 밝은색은 다크 배경에서 라벨이 사라졌음 */
+  background: var(--topbar-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-top: 0.5px solid var(--separator);
@@ -148,13 +149,13 @@ body.on-episode {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px;
-  text-decoration: none; color: var(--text-3);
-  font-size: 10px; font-weight: 600;
+  text-decoration: none; color: var(--text-2);  /* 미선택 라벨 가독성↑ (text-3 → text-2) */
+  font-size: 10.5px; font-weight: 600;
   letter-spacing: 0.02em;
   transition: color 0.15s;
 }
-#tabbar a .icon { font-size: 22px; line-height: 1; }
-#tabbar a[aria-current="page"] { color: var(--tint); }
+#tabbar a .icon { font-size: 22px; line-height: 1; opacity: 0.95; }
+#tabbar a[aria-current="page"] { color: var(--tint); font-weight: 800; }
 
 /* ========== Layout ========== */
 #app { padding: 14px 16px 0; max-width: 720px; margin: 0 auto; }
@@ -251,26 +252,31 @@ body.on-episode {
 /* ── 이어듣기 카드 ── */
 .cont-card {
   display: flex; align-items: center; gap: 14px;
-  text-decoration: none; color: inherit;
   background: var(--surface); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card); padding: 14px 16px; margin-bottom: 14px;
 }
-.cont-card:active { background: var(--surface-2); }
-.cont-cover { width: 56px; height: 56px; border-radius: 11px; flex: 0 0 auto; object-fit: cover; box-shadow: var(--shadow-card); }
+.cont-cover-link { flex: 0 0 auto; display: block; }
+.cont-cover { width: 64px; height: 64px; border-radius: 12px; display: block; object-fit: cover; box-shadow: var(--shadow-card); }
 .cont-body { flex: 1; min-width: 0; }
 .cont-title {
+  display: block; text-decoration: none;
   font-family: var(--font); font-weight: 700; font-size: 15px; color: var(--text); letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 7px;
 }
 .cont-bar { height: 5px; border-radius: 3px; background: var(--separator-thin); overflow: hidden; }
 .cont-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--grad-1), var(--grad-3)); border-radius: 3px; }
 .cont-meta { font-size: 11.5px; color: var(--text-3); margin-top: 5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.cont-actions { display: flex; align-items: center; gap: 14px; margin-top: 11px; }
 .cont-play {
-  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
-  display: inline-flex; align-items: center; justify-content: center; font-size: 16px;
+  border: 0; cursor: pointer; color: #fff;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
+  font-family: var(--font); font-weight: 800; font-size: 13.5px;
+  padding: 9px 18px; border-radius: 999px;
   box-shadow: 0 4px 14px rgba(245, 64, 141, 0.3);
+  transition: transform 0.1s;
 }
+.cont-play:active { transform: scale(0.97); }
+.cont-script { color: var(--tint); font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; }
 .show-hero-title {
   font-family: var(--font);
   font-weight: 700;
@@ -561,7 +567,8 @@ body.on-episode {
   font-size: 12px; font-weight: 700;
   cursor: pointer; padding: 7px 14px;
   border-radius: 999px;
-  min-width: 48px;
+  /* 가장 넓은 라벨(1.25×)에 맞춰 고정폭 → 속도 바뀌어도 버튼 크기 안 변함 */
+  min-width: 66px; text-align: center; font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 .np-extras .speed:hover { background: var(--tint-soft); color: var(--tint-hover); }
@@ -1602,7 +1609,7 @@ a { color: var(--tint); }
 /* ========== 쉐도잉: 문장 반복(loop) 토글 ========== */
 /* 쉐도잉 문장 반복 토글 (헤더 칩) */
 .tx-loop-toggle { white-space: nowrap; }
-.tx-speed-toggle { min-width: 42px; font-variant-numeric: tabular-nums; }
+.tx-speed-toggle { min-width: 58px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .tx-speed-toggle.on { background: var(--tint); color: #fff; }
 .tx-speed-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 .tx-loop-toggle.on,

@@ -637,21 +637,26 @@ export async function renderEpisode(root, idStr, tStr) {
   });
   prefetch(vocabs.map((v) => v.term).filter(Boolean));
 
-  // 딥링크 #/episode/:id/:t — 그 시점부터 재생 (Study/SRS 에서 표현의 맥락으로 점프)
+  // "스크립트로 보기" 진입 플래그(라이브러리에서 설정): 자동재생 + 트랜스크립트 시트 자동 열기 (논스톱)
+  let wantScript = false;
+  try {
+    const si = sessionStorage.getItem('aep-open-script');
+    if (si && parseInt(si, 10) === ep.id) { wantScript = true; sessionStorage.removeItem('aep-open-script'); }
+  } catch (e) {}
+
+  // 시작 위치: 딥링크(:t) > 저장된 이어듣기 위치. 자동재생: 딥링크이거나 "스크립트로 보기"일 때.
   const seekTo = tStr != null ? parseFloat(tStr) : NaN;
-  if (Number.isFinite(seekTo) && seekTo > 0) {
-    const go = () => { player.seek(seekTo); player.play(); };
+  const prog = getProgress(ep.id);
+  let startAt = null;
+  if (Number.isFinite(seekTo) && seekTo > 0) startAt = seekTo;
+  else if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) startAt = prog.t;
+  const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript;
+  if (startAt != null || autoPlay) {
+    const go = () => { if (startAt != null) player.seek(startAt); if (autoPlay) player.play(); };
     if (player.duration) go();
     else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
-  } else {
-    // 딥링크가 없으면 마지막 재생 위치에서 이어듣기 (저장된 audio 시각, 자동재생은 안 함)
-    const prog = getProgress(ep.id);
-    if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) {
-      const go = () => player.seek(prog.t);
-      if (player.duration) go();
-      else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
-    }
   }
+  if (wantScript) openSheet();  // 트랜스크립트 시트 바로 열기
 
   refresh();
 }

@@ -36,9 +36,30 @@ class MockPlayer {
   get paused(){return this._paused;} get time(){return this._t;} get duration(){return 1700;}
 }
 export const player = new MockPlayer(); window.__player = player;
-const PUB = 'https://lbcvuztpyaapyckxmqhk.supabase.co/storage/v1/object/public/transcripts/1.json';
+// 결정적 고정 트랜스크립트 (Storage 라이브 데이터에 의존하지 않음 → 재정렬 backfill 과 무관하게 안정).
+const FIX_SENTS = [
+  [0,   'Welcome back to the show everyone, today we begin.'],
+  [10,  'We are going to talk about something quite interesting.'],
+  [22,  'Shana explains a particularly tricky idiom in detail here.'],
+  [35,  'Sometimes language learners genuinely struggle with these expressions.'],
+  [48,  'Let us look at one concrete example together right now.'],
+  [60,  'Here comes a particularly nuanced sentence for you.'],
+  [68,  'You often need to fill in the gap yourself somehow.'],
+  [82,  'That phrase appears constantly throughout real conversations.'],
+  [95,  'Practice it repeatedly until it becomes second nature.'],
+  [110, 'Thanks for listening and we will see you next time.'],
+];
+function buildTranscript(){
+  const starts = FIX_SENTS.map(s=>s[0]).concat([122]);
+  const segments = FIX_SENTS.map((s,i)=>{
+    const st=s[0], en=starts[i+1]-0.3, toks=s[1].split(' '), per=(en-st)/toks.length;
+    const words=toks.map((w,j)=>({start:+(st+per*j).toFixed(2), end:+(st+per*(j+1)).toFixed(2), word:(j?' ':'')+w}));
+    return {idx:i, start:st, end:en, text:s[1], words};
+  });
+  return {language:'en', duration:122, aligned:true, segments};
+}
 export async function getEpisode(id){
-  const transcript = await (await fetch(PUB)).json();
+  const transcript = buildTranscript();
   const vocab = [{ id:1, term:'fill in the gap', kind:'idiom',
     definition:'to provide a missing piece of information (빈칸을 채우다)',
     example_sentence:'fill in the gap', sentence_start_sec:70, sentence_end_sec:75 }];
@@ -172,7 +193,7 @@ def main() -> int:
             pg.eval_on_selector(".tx-scroll .tx-sent", "el=>el.click()")
             time.sleep(0.2)
             seeked_to = pg.evaluate("window.__player.time")
-            sync_ok = (sent0_start is not None and abs((seeked_to or -99) - sent0_start) < 0.2)
+            sync_ok = (sent0_start is not None and seeked_to is not None and abs(seeked_to - sent0_start) < 0.2)
             # 하단 컨트롤 자동숨김 + 탭하면 다시 표시: hidden 강제 후 pointerdown → 해제되는지
             ctrl_reveal = None
             if pg.query_selector(".tx-sheet-card"):
@@ -281,6 +302,18 @@ def main() -> int:
             tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
             tl_featplay = bool(pg.query_selector(".feat-play"))
             tl_cont = bool(pg.query_selector(".cont-card"))   # 이어듣기 카드(#15)
+            # 이어재생 ▶ → 인라인 load+seek(resume)+play (화면 진입 없이 바로 실행)
+            tl_contplay = None
+            if pg.query_selector(".cont-play"):
+                pg.eval_on_selector(".cont-play", "el=>el.click()")
+                time.sleep(0.15)
+                _cc = pg.evaluate("window.__calls||[]")
+                tl_contplay = any(c[0] == "play" for c in _cc) and any(c[0] == "seek" for c in _cc)
+            # 스크립트로 보기 → sessionStorage 플래그(논스톱 진입). 기본 네비는 막고 클릭만.
+            tl_script_flag = None
+            if pg.query_selector(".cont-script"):
+                pg.eval_on_selector(".cont-script", "el=>{el.addEventListener('click',e=>e.preventDefault(),{once:true}); el.click();}")
+                tl_script_flag = pg.evaluate("sessionStorage.getItem('aep-open-script')")
             # 에피소드 검색(#15): 'older' 입력 시 1개로 필터
             tl_search = None
             if pg.query_selector("#ep-search"):
@@ -289,9 +322,11 @@ def main() -> int:
                 tl_search = pg.eval_on_selector_all("#ep-groups .ep-row", "els=>els.length")
             tl_err = pg.evaluate("window.__err||[]")
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
-                  " cont=", tl_cont, " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
+                  " cont=", tl_cont, " contplay=", tl_contplay, " script_flag=", tl_script_flag,
+                  " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
-                           and tl_cont and tl_search == 1 and tl_no_pan and not tl_err)
+                           and tl_cont and tl_contplay is True and tl_script_flag == "1"
+                           and tl_search == 1 and tl_no_pan and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok
             b.close()
