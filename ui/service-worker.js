@@ -1,7 +1,7 @@
 // aep-review service worker — app shell 캐시.
 // 데이터/오디오/TTS 는 모두 cross-origin(Supabase·CDN) → SW 를 우회(온라인).
 // 따라서 여기선 동일 출처 정적 셸만 캐시한다.
-const VERSION = '72';
+const VERSION = '73';
 const CACHE = 'aep-review-shell-v' + VERSION;
 const Q = '?v=' + VERSION;
 const SHELL = [

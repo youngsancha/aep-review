@@ -16,6 +16,12 @@ const $version = document.getElementById('app-version');
 
 if ($version) $version.textContent = 'v' + APP_VERSION;
 
+// === 전역 오류 안전망 (안정성: 오류 0 목표) ===
+// 예기치 못한 오류/거부가 콘솔 스팸이나 깨진 화면으로 이어지지 않게 잡아 로깅만 한다.
+// (개별 기능은 이미 자체적으로 graceful 처리 — 번역/재생 등. 이건 최후의 그물.)
+window.addEventListener('error', (e) => { console.error('[uncaught]', e.error || e.message); });
+window.addEventListener('unhandledrejection', (e) => { console.error('[unhandledrejection]', e.reason); });
+
 const ROUTES = [
   { re: /^#?\/$/,                    handler: renderTimeline, title: 'Episodes', tab: 'timeline', back: false },
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
@@ -38,7 +44,12 @@ async function route() {
       try {
         await r.handler($app, ...m.slice(1));
       } catch (e) {
-        $app.innerHTML = `<div class="empty error">Error: ${escapeHtml(String(e.message || e))}</div>`;
+        console.error('[route] view render failed:', e);
+        $app.innerHTML = `<div class="empty error">
+          <p>잠시 문제가 생겼어요.</p>
+          <button class="btn primary" id="route-retry">다시 시도</button>
+        </div>`;
+        document.getElementById('route-retry')?.addEventListener('click', () => route());
       }
       // 뷰 전환 페이드인 (reflow 트릭으로 매 라우트마다 재시작; reduced-motion 에선 무시됨)
       $app.classList.remove('view-enter');
