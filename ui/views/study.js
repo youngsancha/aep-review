@@ -1,6 +1,6 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
-import { escapeHtml } from '/app.js';
+import { escapeHtml, highlightTerm } from '/app.js';
 import { studyOverview, expressionsByKind, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 
@@ -99,7 +99,12 @@ export async function renderStudy(root) {
           <button class="study-x-know" data-id="${v.id}" aria-label="알아요로 표시">${v.known ? '✓ 알아요' : '알아요'}</button>
         </div>
         ${v.definition ? `<div class="study-x-def">${escapeHtml(v.definition)}</div>` : ''}
-        ${epTitle ? `<div class="study-x-ep">${escapeHtml(epTitle)}</div>` : ''}
+        ${v.example_sentence ? `
+          <div class="study-x-ex">
+            <span class="study-x-ex-q">“${highlightTerm(v.example_sentence, v.term)}”</span>
+            <button class="study-x-exspk" data-text="${escapeHtml(v.example_sentence)}" aria-label="문장 듣기">🔊</button>
+          </div>` : ''}
+        ${epTitle ? `<div class="study-x-ep">🎧 ${escapeHtml(epTitle)}</div>` : ''}
       </li>`;
   }
 
@@ -112,7 +117,7 @@ export async function renderStudy(root) {
   }
 
   function wireList() {
-    root.querySelectorAll('.study-x-tts').forEach((b) =>
+    root.querySelectorAll('.study-x-tts, .study-x-exspk').forEach((b) =>
       b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
     root.querySelectorAll('.study-x-know').forEach((b) =>
       b.addEventListener('click', async (e) => {

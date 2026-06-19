@@ -17,6 +17,13 @@ TIMELINE_HARNESS = UI / "_harness_timeline.html"
 
 MOCKS_JS = r"""
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+export const highlightTerm = (text, term) => {
+  const s = String(text ?? ''); if (!term) return escapeHtml(s);
+  const re = new RegExp(String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  let out = '', last = 0, m;
+  while ((m = re.exec(s)) !== null) { out += escapeHtml(s.slice(last, m.index)) + '<mark class="term-hl">' + escapeHtml(m[0]) + '</mark>'; last = m.index + m[0].length; if (m[0].length === 0) re.lastIndex++; }
+  return out + escapeHtml(s.slice(last));
+};
 export const fmtTime = (s) => { s = Math.max(0, s | 0); const m = (s / 60) | 0; const ss = s % 60; return m + ':' + String(ss).padStart(2, '0'); };
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
 export const fmtDuration = (s) => Math.round(s / 60) + ' min';
@@ -237,6 +244,9 @@ def main() -> int:
             pg.wait_for_function("window.__ready===true", timeout=10000)
             time.sleep(0.3)
             study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
+            # 각 표현에 Shana 예문(+term 강조)이 함께 표시되는지 (학습 맥락)
+            study_ex = pg.eval_on_selector_all(".study-x-ex", "els=>els.length")
+            study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             ring_pct = pg.eval_on_selector("#study-ring-pct", "el=>el.textContent") if pg.query_selector("#study-ring-pct") else None
             # 알아요 마크(#10): 버튼 클릭 → markKnown 호출 + 행 known + 카운트 증가
@@ -279,10 +289,12 @@ def main() -> int:
                 time.sleep(0.3)
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
             study_err = pg.evaluate("window.__err||[]")
-            print("STUDY: expressions=", study_x, " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
+            print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
+                  " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
                   " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked,
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok, " err=", study_err)
-            study_ok = (study_x >= 4 and study_chips == 4 and quiz_opts == 4 and not study_err
+            study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
+                        and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True)

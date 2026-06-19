@@ -8,7 +8,7 @@
 //   - Book-flip drag: 손가락 위치 ↔ 반응 일치, 운동기억 강화
 //   - Haptic + auto-TTS at stage entry
 //   - Keyboard: Space=advance, ←/→=grade, R=replay
-import { escapeHtml } from '/app.js';
+import { escapeHtml, highlightTerm } from '/app.js';
 import { srsQueue, srsReview } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 
@@ -126,7 +126,7 @@ export async function renderSrs(root) {
               <div class="srs-term">${escapeHtml(term)}</div>
               ${example ? `
                 <div class="srs-example" ${startSec ? `data-start="${startSec}"` : ''}>
-                  ${escapeHtml(example)}
+                  ${highlightTerm(example, term)}
                 </div>
                 ${(startSec && c.episode_id) ? `<button class="srs-context-btn" data-ep="${c.episode_id}" data-t="${Math.floor(startSec)}">🎧 맥락에서 듣기</button>` : ''}
               ` : ''}

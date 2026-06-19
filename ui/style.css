@@ -1380,7 +1380,26 @@ body.logged-out #app-version { display: none; }
 }
 .study-x-tts:active { transform: scale(0.9); }
 .study-x-def { font-size: 13.5px; color: var(--text-2); line-height: 1.45; margin-top: 5px; }
+/* Shana 팟캐스트에서 이 표현이 실제로 쓰인 문장 (학습 맥락) */
+.study-x-ex {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 8px; padding: 8px 10px;
+  background: var(--surface-2); border-radius: 10px;
+  border-left: 3px solid var(--tint-soft-2);
+}
+.study-x-ex-q { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); font-style: italic; }
+.study-x-exspk {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+  border: 0; background: var(--tint-soft); color: var(--tint); font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.study-x-exspk:active { transform: scale(0.9); }
 .study-x-ep { font-size: 11.5px; color: var(--text-4); margin-top: 6px; }
+/* 문장 속 표현 강조 (Study/Review 공통) */
+.term-hl {
+  background: linear-gradient(transparent 55%, var(--tint-soft-2) 55%);
+  color: var(--tint-hover); font-weight: 800; padding: 0 1px; border-radius: 2px;
+}
 .study-quiz-btn {
   width: 100%; margin: 2px 0 10px; padding: 13px;
   border: 0; border-radius: 14px; cursor: pointer;

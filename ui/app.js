@@ -177,6 +177,21 @@ export function escapeHtml(s) {
   }[c]));
 }
 
+// 문장 속에서 표현(term)이 나온 부분을 <mark> 로 강조 (나머지는 escape). 조각별 안전 결합.
+// Study/Review 에서 "Shana 가 정확히 어떤 문장에서 이 표현을 썼는지" 한눈에 보여주기 위함.
+export function highlightTerm(text, term) {
+  const s = String(text || '');
+  if (!term) return escapeHtml(s);
+  const re = new RegExp(String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  let out = '', last = 0, m;
+  while ((m = re.exec(s)) !== null) {
+    out += escapeHtml(s.slice(last, m.index)) + '<mark class="term-hl">' + escapeHtml(m[0]) + '</mark>';
+    last = m.index + m[0].length;
+    if (m[0].length === 0) re.lastIndex++;  // 빈 매치 무한루프 방지
+  }
+  return out + escapeHtml(s.slice(last));
+}
+
 export function fmtTime(sec) {
   if (sec == null) return '';
   const m = Math.floor(sec / 60);
