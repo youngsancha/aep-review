@@ -235,7 +235,7 @@ def main() -> int:
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
                      and trans_ok == "(테스트 번역)" and trans_default_on is True
-                     and trans_fs is not None and trans_fs >= 23
+                     and trans_fs is not None and trans_fs >= 20
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok)
 

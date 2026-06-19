@@ -132,7 +132,12 @@ export async function renderEpisode(root, idStr, tStr) {
   // 인제스트가 앱과 "똑같은" clean megaphone URL 로 STT 하므로 transcript ≡ stream
   // (광고 포함 동일 바이트) → 보정 offset 불필요. transcript 시각 = audio 시각.
   // (수동 싱크 버튼/calibration 은 제거 — scripts/retranscribe.py 가 구조적으로 해결.)
-  const txTime = () => player.time;
+  //
+  // HL_LAG(초): 하이라이트/단어 팔로우를 오디오보다 이만큼 "늦게" 따라가게 한다(>0).
+  // whisper 단어 타임스탬프가 실제 음성보다 살짝 빨라, 보정 없으면 하이라이트가 음성보다
+  // 앞서 보인다 → 양수 lag 로 "Shana 가 말하기 시작한 직후" 따라오도록. (사용자 튜닝값)
+  const HL_LAG = 0.2;
+  const txTime = () => player.time - HL_LAG;
 
   // === 현재 문장 번역 항상 표시 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
   // 기본 ON: 끄지 않는 한 항상 번역카드가 따라온다. 사용자가 끄면 그 선택을 기억(localStorage).
