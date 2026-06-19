@@ -427,6 +427,10 @@ body.on-episode {
   display: flex; gap: 5px; margin-left: auto;
   flex-wrap: wrap; justify-content: flex-end;
 }
+/* 들은 진도(부분 청취) — 행 하단 얇은 막대 (Apple Podcasts 스타일) */
+.ep-row .ep-progress { height: 3px; border-radius: 2px; background: var(--separator-thin); overflow: hidden; margin-top: 8px; }
+.ep-row .ep-progress > span { display: block; height: 100%; background: linear-gradient(90deg, var(--grad-1), var(--grad-3)); border-radius: 2px; }
+.ep-row.resumable .ep-meta { color: var(--tint); font-weight: 700; }
 
 .chip {
   display: inline-flex; align-items: center; gap: 3px;

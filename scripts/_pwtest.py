@@ -108,6 +108,7 @@ export async function listEpisodes() {
 export async function srsStats() { return { total:1905, today_batch:50, today_review:40, today_new:10, backlog_new:0, learned:12 }; }
 export function getProgress() { return null; }
 export function getLatestProgress() { return { id:1, t:300, dur:1700, title:'211 - The Latest One', at:Date.now() }; }
+export function getProgressMap() { return { 1: { t:300, dur:1700, title:'211 - The Latest One', at:Date.now() } }; }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -320,6 +321,8 @@ def main() -> int:
             tl_seasons = pg.eval_on_selector_all(".season-group", "els=>els.length")
             tl_first_open = pg.eval_on_selector(".season-group", "el=>el.open") if pg.query_selector(".season-group") else None
             tl_has_collapsed = pg.evaluate("[...document.querySelectorAll('.season-group')].some(d=>!d.open)")
+            # 들은 진도 막대: 진도 있는 ep(id1) 행에 .ep-progress 표시
+            tl_progress = bool(pg.query_selector(".ep-row.resumable .ep-progress"))
             # 이어재생 ▶ → 인라인 load+seek(resume)+play (화면 진입 없이 바로 실행)
             tl_contplay = None
             if pg.query_selector(".cont-play"):
@@ -342,10 +345,11 @@ def main() -> int:
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
                   " cont=", tl_cont, " contplay=", tl_contplay, " script_flag=", tl_script_flag,
                   " seasons=", tl_seasons, " first_open=", tl_first_open, " has_collapsed=", tl_has_collapsed,
-                  " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
+                  " progress=", tl_progress, " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
                            and tl_cont and tl_contplay is True and tl_script_flag == "1"
                            and tl_seasons >= 2 and tl_first_open is True and tl_has_collapsed is True
+                           and tl_progress is True
                            and tl_search == 1 and tl_no_pan and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok

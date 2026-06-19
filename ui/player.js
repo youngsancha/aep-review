@@ -66,6 +66,7 @@ const PROG_KEY = 'aep-progress';
 function loadMap() { try { return JSON.parse(localStorage.getItem(PROG_KEY) || '{}') || {}; } catch { return {}; } }
 function saveMap(m) { try { localStorage.setItem(PROG_KEY, JSON.stringify(m)); } catch (e) { /* quota */ } }
 export function getProgress(id) { const m = loadMap(); return m[id] || null; }
+export function getProgressMap() { return loadMap(); }  // 전체 진도 맵(라이브러리 행별 표시용)
 export function getLatestProgress() {
   const m = loadMap(); let best = null;
   for (const id in m) { const e = m[id]; if (e && (!best || e.at > best.at)) best = { id: Number(id), ...e }; }
