@@ -128,17 +128,11 @@ export async function renderEpisode(root, idStr, tStr) {
   let shadowMode = 'off';  // off | loop(문장 반복) | pause(문장 끝 자동 멈춤)
   let autoPausedSent = -1;
 
-  // === 광고 싱크 보정 (#7) ===
-  // 최근 에피소드는 시작부 동적 광고(DAI)로 스트리밍 audio 와 transcript 타임스탬프가 어긋난다.
-  // 모든 audio↔transcript 매핑을 txTime()=player.time-adOffset 로 보정하고, 탭-보정으로 1탭에 고정.
-  const OFFKEY = `aep-aoff-${ep.id}`;
-  let adOffset = parseFloat(localStorage.getItem(OFFKEY) || '0') || 0;
-  const txTime = () => player.time - adOffset;
-  function setOffset(v) {
-    adOffset = Math.max(-30, Math.min(600, Math.round(v * 100) / 100));
-    try { localStorage.setItem(OFFKEY, String(adOffset)); } catch (e) {}
-  }
-  let calibrating = false;
+  // === 광고-무관 싱크 (#2) ===
+  // 인제스트가 앱과 "똑같은" clean megaphone URL 로 STT 하므로 transcript ≡ stream
+  // (광고 포함 동일 바이트) → 보정 offset 불필요. transcript 시각 = audio 시각.
+  // (수동 싱크 버튼/calibration 은 제거 — scripts/retranscribe.py 가 구조적으로 해결.)
+  const txTime = () => player.time;
 
   // === 현재 문장 번역 항상 표시 토글 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
   let showTrans = false;
@@ -162,7 +156,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (shadowMode !== 'off' && lastActiveSent >= 0 && !player.paused) {
       const cur = sentRanges[lastActiveSent];
       if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
-        if (shadowMode === 'loop') player.seek(cur.start + 0.01 + adOffset);
+        if (shadowMode === 'loop') player.seek(cur.start + 0.01);
         else if (lastActiveSent !== autoPausedSent) { player.pause(); autoPausedSent = lastActiveSent; }
       }
     }
@@ -368,20 +362,12 @@ export async function renderEpisode(root, idStr, tStr) {
       const w = e.target.closest('.w');
       const sent = e.target.closest('.tx-sent');
       const para = e.target.closest('.tx-para');
-      // 싱크 보정 모드(#7): 지금 들리는 문장을 탭 → 그 문장 시작이 현재 재생시점이 되도록 offset 고정
-      if (calibrating && (sent || para)) {
-        const base = parseFloat((sent || para).dataset.start);
-        setOffset(player.time - base);
-        endCalibrate();
-        highlightActiveSegment();
-        return;
-      }
       let seekTo = null;
       if (w)        seekTo = parseFloat(w.dataset.s);
       else if (sent) seekTo = parseFloat(sent.dataset.start);
       else if (para) seekTo = parseFloat(para.dataset.start);
       if (seekTo == null) return;
-      player.seek(seekTo + adOffset);  // transcript 시각 → audio 시각
+      player.seek(seekTo);  // transcript 시각 = audio 시각 (offset 0)
       player.play();
       scrollSentToCenter(sent || para);
     });
@@ -504,23 +490,6 @@ export async function renderEpisode(root, idStr, tStr) {
     renderNotes(lastActiveSent);
   });
 
-  // 오디오 싱크 보정 토글 (#7)
-  function endCalibrate() {
-    calibrating = false;
-    $sheet?.classList.remove('calibrating');
-    const b = document.getElementById('tx-calib');
-    if (b) { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
-  }
-  const $calib = document.getElementById('tx-calib');
-  $calib?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (calibrating) { endCalibrate(); return; }
-    calibrating = true;
-    $sheet?.classList.add('calibrating');
-    $calib.classList.add('on');
-    $calib.setAttribute('aria-pressed', 'true');
-  });
-
   // 글자 크기 조절 (#17) — 읽기 영역 스케일을 localStorage 에 저장
   const FS_KEY = 'aep-tx-scale';
   let txScale = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
@@ -550,7 +519,7 @@ export async function renderEpisode(root, idStr, tStr) {
     target = Math.max(0, Math.min(sentRanges.length - 1, target));
     const sel = sentRanges[target];
     if (!sel) return;
-    player.seek(sel.start + 0.01 + adOffset);
+    player.seek(sel.start + 0.01);
     player.play();
     scrollSentToCenter(sel.el);
   }
@@ -647,7 +616,7 @@ export async function renderEpisode(root, idStr, tStr) {
   // 딥링크 #/episode/:id/:t — 그 시점부터 재생 (Study/SRS 에서 표현의 맥락으로 점프)
   const seekTo = tStr != null ? parseFloat(tStr) : NaN;
   if (Number.isFinite(seekTo) && seekTo > 0) {
-    const go = () => { player.seek(seekTo + adOffset); player.play(); };
+    const go = () => { player.seek(seekTo); player.play(); };
     if (player.duration) go();
     else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
   } else {
@@ -735,7 +704,6 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-calib" class="tx-toggle tx-calib-toggle" aria-pressed="false" aria-label="오디오에 싱크 맞추기">🎯 싱크</button>
             <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
             <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
             <button id="tx-toggle-ts" class="tx-toggle" aria-pressed="false">Time</button>
@@ -745,7 +713,6 @@ function transcriptSheetHtml(segments, title, sub) {
           </div>
         </div>
         <button class="tx-live-badge" type="button" aria-label="Resume auto-follow">↓ Now playing</button>
-        <div class="tx-calib-hint" aria-hidden="true">🎯 지금 <b>들리는 문장</b>을 탭하면 오디오와 싱크가 맞춰져요</div>
         <div class="tx-notes" aria-hidden="true"></div>
         <div class="tx-sheet-controls">
           <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">

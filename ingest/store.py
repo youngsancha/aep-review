@@ -97,6 +97,30 @@ def mark_vocab_extracted(ep_id: int) -> None:
     client().table("episodes").update({"vocab_extracted_at": _now()}).eq("id", ep_id).execute()
 
 
+def episodes_by_recency(limit: int | None = None) -> list[dict[str, Any]]:
+    """pub_date 내림차순 episode 목록 (재정렬용). audio_url 있는 것만."""
+    q = (client().table("episodes")
+         .select("id, audio_url, pub_date, transcribed_at, duration_sec")
+         .not_.is_("audio_url", "null")
+         .order("pub_date", desc=True))
+    if limit:
+        q = q.limit(limit)
+    return q.execute().data or []
+
+
+def vocab_for_episode(ep_id: int) -> list[dict[str, Any]]:
+    res = (client().table("vocab_cards")
+           .select("id, example_sentence, sentence_start_sec, sentence_end_sec")
+           .eq("episode_id", ep_id).execute())
+    return res.data or []
+
+
+def update_vocab_times(vocab_id: int, start: float | None, end: float | None) -> None:
+    client().table("vocab_cards").update(
+        {"sentence_start_sec": start, "sentence_end_sec": end}
+    ).eq("id", vocab_id).execute()
+
+
 def episode_title(ep_id: int) -> str | None:
     res = client().table("episodes").select("title").eq("id", ep_id).single().execute()
     return (res.data or {}).get("title")

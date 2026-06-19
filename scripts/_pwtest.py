@@ -165,16 +165,14 @@ def main() -> int:
                 pg.evaluate("window.__player.seek(71)")  # vocab 문장(난이도 not-easy)에서 번역카드 노출
                 time.sleep(0.4)
                 trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
-            # 싱크 보정(#7): 토글 → calibrating 클래스 → 문장 탭 → 해제 + offset 저장
-            calib_on = calib_off = off_val = None
-            if pg.query_selector("#tx-calib"):
-                pg.click("#tx-calib")
-                calib_on = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('calibrating')")
-                pg.evaluate("window.__player.seek(50)")
-                pg.eval_on_selector(".tx-scroll .tx-sent", "el=>el.click()")
-                time.sleep(0.2)
-                calib_off = pg.eval_on_selector(".tx-sheet", "el=>!el.classList.contains('calibrating')")
-                off_val = pg.evaluate("parseFloat(localStorage.getItem('aep-aoff-1')||'NaN')")
+            # 광고-무관 싱크(#2): 수동 싱크 버튼은 제거됨. 문장 탭 → 그 data-start 로 정확히 seek
+            # (offset 0 — transcript 시각 = audio 시각). 보정 UI 부재 + 1:1 매핑을 검증.
+            calib_gone = pg.query_selector("#tx-calib") is None
+            sent0_start = pg.eval_on_selector(".tx-scroll .tx-sent", "el=>parseFloat(el.dataset.start)")
+            pg.eval_on_selector(".tx-scroll .tx-sent", "el=>el.click()")
+            time.sleep(0.2)
+            seeked_to = pg.evaluate("window.__player.time")
+            sync_ok = (sent0_start is not None and abs((seeked_to or -99) - sent0_start) < 0.2)
             # 글자 크기(#17): A＋ 클릭 시 .tx-card 의 --tx-scale 증가
             fs_ok = None
             if pg.query_selector("#tx-fs-up"):
@@ -195,14 +193,14 @@ def main() -> int:
             print("sentences=", n_sent, " sheet_open=", sheet_open)
             print("notes_show=", notes_show, " notes_has_term=", ("fill in the gap" in (notes_text or "")))
             print("trans_ok=", trans_ok)
-            print("calib_on=", calib_on, " calib_off=", calib_off, " offset_saved=", off_val, " fs_ok=", fs_ok)
+            print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") fs_ok=", fs_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and "fill in the gap" in (notes_text or "") and about == 1
                      and trans_ok == "(테스트 번역)"
-                     and calib_on is True and calib_off is True and off_val is not None
+                     and calib_gone is True and sync_ok is True
                      and fs_ok is True and dark_ok)
 
             # === Study 뷰 회귀 ===
@@ -261,9 +259,15 @@ def main() -> int:
                         and cloze_ok is True and speak_ok is True)
 
             # === Timeline(Library) 회귀 ===
+            pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건
             pg.goto("http://localhost:8123/_harness_timeline.html")
             pg.wait_for_function("window.__ready===true", timeout=10000)
             time.sleep(0.3)
+            # 가로 오버플로(#1): 문서 스크롤폭이 뷰포트폭을 넘지 않아야(좌우로 밀리면 안 됨)
+            tl_overflow = pg.evaluate(
+                "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) "
+                "- document.documentElement.clientWidth")
+            tl_no_pan = (tl_overflow is not None and tl_overflow <= 1)
             tl_feat = pg.eval_on_selector_all(".feat-card", "els=>els.length")
             tl_rows = pg.eval_on_selector_all(".ep-row", "els=>els.length")
             tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
@@ -277,9 +281,9 @@ def main() -> int:
                 tl_search = pg.eval_on_selector_all("#ep-groups .ep-row", "els=>els.length")
             tl_err = pg.evaluate("window.__err||[]")
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
-                  " cont=", tl_cont, " search_rows=", tl_search, " err=", tl_err)
+                  " cont=", tl_cont, " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
-                           and tl_cont and tl_search == 1 and not tl_err)
+                           and tl_cont and tl_search == 1 and tl_no_pan and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok
             b.close()

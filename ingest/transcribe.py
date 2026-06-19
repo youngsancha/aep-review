@@ -42,7 +42,7 @@ if sys.platform == "win32":
 import tempfile
 
 from ingest import store
-from ingest.audio_download import download_to
+from ingest.audio_download import clean_audio_url, download_to
 
 log = logging.getLogger(__name__)
 
@@ -130,7 +130,8 @@ def transcribe_pending(limit: int | None = None) -> int:
             ep_id = row["id"]
             apath = Path(tmpdir) / f"{ep_id}.mp3"
             try:
-                download_to(row["audio_url"], apath)
+                # 앱이 스트리밍하는 것과 똑같은 clean URL 로 받아야 STT 타임스탬프가 스트림과 일치(#2)
+                download_to(clean_audio_url(row["audio_url"]), apath)
             except Exception:
                 log.exception("download failed ep=%s", ep_id)
                 continue
@@ -142,6 +143,7 @@ def transcribe_pending(limit: int | None = None) -> int:
             finally:
                 apath.unlink(missing_ok=True)
 
+            data["aligned"] = True  # clean URL 기준 정렬됨 → 클라이언트 offset 0
             store.upload_transcript(ep_id, data)
             store.mark_transcribed(ep_id, data.get("duration"))
             count += 1

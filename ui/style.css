@@ -61,7 +61,9 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; height: 100%; }
+/* 가로 오버플로 방지(#1): blurred 배경 레이어가 뷰포트를 넘쳐 좌우로 밀리는 현상 차단.
+   topbar 은 position:fixed 라 영향 없음. clip 미지원 환경 대비 hidden 도 함께 둔다. */
+html, body { margin: 0; padding: 0; height: 100%; overflow-x: hidden; max-width: 100%; }
 body {
   font-family: var(--font);
   color: var(--text);
@@ -177,6 +179,7 @@ body.on-episode {
   text-align: center;
   position: relative;
   isolation: isolate;
+  overflow: hidden;  /* width:130% blurred 배경(.show-hero-bg)을 박스 안으로 클립 → 가로 오버플로 차단(#1) */
 }
 .show-hero-bg {
   position: absolute; left: 50%; top: -56px; transform: translateX(-50%);
@@ -1690,30 +1693,9 @@ a { color: var(--tint); }
   color: var(--text); font-weight: 600; letter-spacing: -0.01em;
 }
 
-/* 번역/싱크 토글 on 상태 */
+/* 번역 토글 on 상태 */
 .tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }
-.tx-calib-toggle.on, .tx-calib-toggle[aria-pressed="true"] { background: #ff9f0a; color: #fff; }
-
-/* ========== 싱크 보정 (#7) — 탭 한 번으로 오디오↔자막 맞추기 ========== */
-.tx-calib-hint {
-  position: absolute; left: 12px; right: 12px;
-  bottom: calc(env(safe-area-inset-bottom) + 92px);
-  background: rgba(255, 159, 10, 0.96); color: #fff;
-  font-size: 13.5px; font-weight: 600; text-align: center;
-  padding: 11px 14px; border-radius: 14px;
-  box-shadow: 0 12px 30px rgba(255, 159, 10, 0.40);
-  z-index: 4; opacity: 0; transform: translateY(8px);
-  transition: opacity 0.22s, transform 0.22s; pointer-events: none;
-}
-.tx-calib-hint b { font-weight: 800; }
-.tx-sheet.calibrating .tx-calib-hint { opacity: 1; transform: translateY(0); }
-.tx-sheet.calibrating .tx-scroll .tx-sent { cursor: pointer; border-radius: 6px; }
-.tx-sheet.calibrating .tx-scroll .tx-sent:hover,
-.tx-sheet.calibrating .tx-scroll .tx-sent:active {
-  background: rgba(255, 159, 10, 0.18);
-  box-shadow: 0 0 0 2px rgba(255, 159, 10, 0.5);
-}
 
 /* ========================================================================
    다크 테마 (세련된 색감) — 명시적 [data-theme="dark"] 또는 시스템 자동
