@@ -1,17 +1,19 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
 import { listEpisodes, srsStats, cleanAudioUrl } from '/db.js';
-import { player, getLatestProgress, getProgressMap } from '/player.js';
+import { player, getLatestProgress, getProgressMap, getCompleted } from '/player.js';
 import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 
-let _prog = {};  // 에피소드별 재생 진도 맵 (행에 들은 정도 표시)
+let _prog = {};        // 에피소드별 재생 진도 맵 (행에 들은 정도 표시)
+let _done = new Set(); // 완료(끝까지 들음) 집합
 
 export async function renderTimeline(root) {
   root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
   const items = await listEpisodes();
   _prog = getProgressMap();
+  _done = getCompleted();
   const stats = await srsStats().catch(() => null);
 
   if (!items.length) {
@@ -193,19 +195,22 @@ function featuredHtml(e) {
 function rowHtml(e) {
   const num = e.episode_no != null ? `#${e.episode_no}` : '';
   const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
-  const chips = [];
-  const isNew = e.pub_date && (Date.now() - new Date(e.pub_date).getTime()) < 21 * 864e5;
-  if (isNew) chips.push('<span class="chip new-ep">NEW</span>');
-  if (e.vocab_count > 0) chips.push(`<span class="chip vocab">${e.vocab_count} vocab</span>`);
-  if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
-
   const title = (e.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   // 들은 진도(부분 청취) — Apple Podcasts 처럼 행에 얇은 막대 + 남은 시간 표시
   const p = _prog[e.id];
   const pct = (p && p.dur && p.t) ? Math.min(99, Math.round(p.t / p.dur * 100)) : 0;
   const leftMin = (pct && p.dur) ? Math.max(1, Math.round((p.dur - p.t) / 60)) : 0;
+  const done = !pct && _done.has(e.id);  // 완료(이어듣기 중이 아닐 때만 ✓)
+
+  const chips = [];
+  const isNew = e.pub_date && (Date.now() - new Date(e.pub_date).getTime()) < 21 * 864e5;
+  if (isNew) chips.push('<span class="chip new-ep">NEW</span>');
+  if (done) chips.push('<span class="chip done-ep">✓ 들음</span>');
+  if (e.vocab_count > 0) chips.push(`<span class="chip vocab">${e.vocab_count} vocab</span>`);
+  if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
+
   return `
-    <a class="ep-row${pct ? ' resumable' : ''}" href="#/episode/${e.id}">
+    <a class="ep-row${pct ? ' resumable' : ''}${done ? ' played' : ''}" href="#/episode/${e.id}">
       <div class="ep-thumb">
         <img src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         ${num ? `<span class="ep-num">${escapeHtml(num)}</span>` : ''}

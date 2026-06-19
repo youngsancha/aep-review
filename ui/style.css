@@ -444,6 +444,8 @@ body.on-episode {
 .chip.vocab  { background: var(--chip-vocab-bg);  color: var(--chip-vocab-tx);  }
 .chip.warn   { background: var(--chip-warn-bg);   color: var(--chip-warn-tx);   }
 .chip.new-ep { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
+.chip.done-ep { background: var(--chip-coll-bg); color: var(--chip-coll-tx); }
+.ep-row.played .ep-title { opacity: 0.55; }  /* 완료한 에피소드는 살짝 흐리게(Apple Podcasts) */
 .chip.word    { background: var(--chip-word-bg);    color: var(--chip-word-tx);    }
 .chip.idiom   { background: var(--chip-idiom-bg);   color: var(--chip-idiom-tx);   }
 .chip.collocation { background: var(--chip-coll-bg); color: var(--chip-coll-tx);  }

@@ -67,6 +67,15 @@ function loadMap() { try { return JSON.parse(localStorage.getItem(PROG_KEY) || '
 function saveMap(m) { try { localStorage.setItem(PROG_KEY, JSON.stringify(m)); } catch (e) { /* quota */ } }
 export function getProgress(id) { const m = loadMap(); return m[id] || null; }
 export function getProgressMap() { return loadMap(); }  // 전체 진도 맵(라이브러리 행별 표시용)
+
+// 끝까지 들은 에피소드(완료) 집합 — 라이브러리에 '✓ 들음' 표시용
+const DONE_KEY = 'aep-completed';
+function loadDone() { try { return new Set(JSON.parse(localStorage.getItem(DONE_KEY) || '[]')); } catch { return new Set(); } }
+export function getCompleted() { return loadDone(); }
+function markCompleted(id) {
+  const s = loadDone();
+  if (!s.has(id)) { s.add(id); try { localStorage.setItem(DONE_KEY, JSON.stringify([...s])); } catch (e) {} }
+}
 export function getLatestProgress() {
   const m = loadMap(); let best = null;
   for (const id in m) { const e = m[id]; if (e && (!best || e.at > best.at)) best = { id: Number(id), ...e }; }
@@ -80,8 +89,9 @@ function saveProgress() {
   if (dur && t > 5 && t < dur - 10) {
     m[c.id] = { t, dur, title: c.title, at: Date.now() };
     saveMap(m);
-  } else if (dur && t >= dur - 10 && m[c.id]) {  // 거의 끝까지 들음 → 완료(이어듣기에서 제거)
-    delete m[c.id]; saveMap(m);
+  } else if (dur && t >= dur - 10) {  // 거의 끝까지 들음 → 완료 기록 + 이어듣기에서 제거
+    markCompleted(c.id);
+    if (m[c.id]) { delete m[c.id]; saveMap(m); }
   }
 }
 player.on((ev) => {
