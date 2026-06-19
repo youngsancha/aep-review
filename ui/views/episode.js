@@ -3,7 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
+import { SHOW_COVER, SHOW_COVER_SM, TRANSLATE_EMAIL } from '/config.js';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -201,29 +201,34 @@ export async function renderEpisode(root, idStr, tStr) {
     return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
   }
   // showTrans 가 켜져 있으면 현재 문장의 한국어 번역을 비동기로 채운다(캐시 우선).
+  // 번역행이 비거나 실패하면 조용히 패널을 숨긴다(에러 텍스트 절대 표시 X — 안정성 우선).
+  function hideTransPanel() {
+    if (!$notes) return;
+    $notes.classList.remove('show');
+    $notes.setAttribute('aria-hidden', 'true');
+  }
   async function fillTranslation(idx) {
     if (!$notes) return;
     const sel = () => $notes.querySelector(`.tx-trans-row[data-idx="${idx}"] .tx-trans-ko`);
     let row = sel();
     if (!row) return;
     const text = getSentText(idx);
-    if (!text) { row.textContent = ''; return; }
+    if (!text) { hideTransPanel(); return; }
     if (_trCache[idx]) { row.textContent = _trCache[idx]; return; }
     const seq = ++_trSeq;
-    try {
-      const ko = await translateEnKo(text);
-      if (seq !== _trSeq) return;            // 더 최신 문장으로 넘어갔으면 폐기
-      row = sel(); if (!row) return;
-      row.textContent = ko || '(번역 없음)';
+    const ko = await translateEnKo(text);   // 절대 throw 안 함
+    if (seq !== _trSeq) return;             // 더 최신 문장으로 넘어갔으면 폐기
+    if (ko) {
+      row = sel(); if (row) row.textContent = ko;
       _trCache[idx] = ko; saveTrCache(ep.id, _trCache);
-    } catch (e) {
-      row = sel(); if (row) row.textContent = '· 번역을 불러올 수 없어요 (네트워크)';
+    } else {
+      hideTransPanel();                     // 실패/한도 → 조용히 숨김
     }
-    // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만
+    // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만, 캐시에만 저장
     const nxt = idx + 1;
-    if (showTrans && nxt < sentRanges.length && !_trCache[nxt] && !isEasySentence(nxt)) {
+    if (showTrans && nxt < sentRanges.length && _trCache[nxt] == null && !isEasySentence(nxt)) {
       const t2 = getSentText(nxt);
-      if (t2) translateEnKo(t2).then((k) => { _trCache[nxt] = k; saveTrCache(ep.id, _trCache); }).catch(() => {});
+      if (t2) translateEnKo(t2).then((k) => { if (k) { _trCache[nxt] = k; saveTrCache(ep.id, _trCache); } });
     }
   }
   // 현재 문장이 "easy" 인가 — 어려운 표현(vocab)이 있거나 흔치 않은 단어가 있으면 not-easy.
@@ -818,18 +823,33 @@ function easyByWords(text) {
 }
 
 // === EN→KO 문장 번역 (#8) — 무료 MyMemory API. 세션 메모리 + per-episode localStorage 캐시 ===
+// 안정성 원칙: 절대 throw 하지 않는다(호출부에 오류가 새어나가지 않게). 실패/한도초과면 '' 반환 →
+// 호출부가 조용히 번역행을 숨김(사용자에게 에러 메시지 X). 한도 초과(429) 감지 시 세션 동안
+// 추가 요청을 멈춰 더 이상 실패가 누적되지 않게 한다.
 const _TR_MEM = new Map();
+let _trQuotaHit = false;
 async function translateEnKo(text) {
   const key = text.slice(0, 480);  // API 길이 제한 여유
   if (_TR_MEM.has(key)) return _TR_MEM.get(key);
-  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(key)}&langpair=en|ko`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('translate http ' + r.status);
-  const j = await r.json();
+  if (_trQuotaHit) return '';      // 한도 초과 후엔 조용히 빈 값
+  const de = (TRANSLATE_EMAIL && TRANSLATE_EMAIL.indexOf('@') > 0) ? '&de=' + encodeURIComponent(TRANSLATE_EMAIL) : '';
+  const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(key)}&langpair=en|ko${de}`;
+  let j = null;
+  try {
+    const r = await fetch(url);
+    if (r.status === 429) { _trQuotaHit = true; return ''; }
+    if (!r.ok) return '';
+    j = await r.json();
+  } catch (e) {
+    return '';  // 네트워크 오류 → 조용히 빈 값
+  }
   let ko = (j && j.responseData && j.responseData.translatedText) || '';
-  // MyMemory 가 가끔 따옴표/대문자 경고문을 섞어 보내므로 정리
-  if (/MYMEMORY WARNING/i.test(ko)) ko = '';
-  _TR_MEM.set(key, ko);
+  const st = j && j.responseStatus;
+  // 한도/경고/오류 응답은 빈 값으로 처리하고 이후 요청 중단
+  if (/MYMEMORY WARNING|YOU USED ALL|QUOTA|INVALID/i.test(ko) || st === 403 || st === '403' || st === 429 || st === '429') {
+    _trQuotaHit = true; ko = '';
+  }
+  if (ko) _TR_MEM.set(key, ko);  // 성공한 것만 캐시(빈 값은 캐시 안 함 → 한도 회복 후 재시도 가능)
   return ko;
 }
 function loadTrCache(epId) {

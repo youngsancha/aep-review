@@ -5,6 +5,10 @@
 export const SUPABASE_URL = 'https://lbcvuztpyaapyckxmqhk.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_Ql1_5-UEpclxRc8LLQ3D2A_3748Xz07';
 
+// MyMemory 번역 API 무료 한도 키. 익명은 하루 ~1천 단어로 금방 소진(429) → 이메일 지정 시
+// 하루 5만 단어. 이 repo 는 PRIVATE 이라 노출 위험 없음. 비우면 익명으로 동작(권장X).
+export const TRANSLATE_EMAIL = 'yscha.roy@gmail.com';
+
 // 쇼 커버 아트워크 (megaphone imgix — w/h 리사이즈·webp 자동). RSS 에 에피소드별 이미지가
 // 없어 전 에피소드가 공유한다. 앱 아이콘 대신 실제 팟캐스트 아트워크 사용 → Apple Podcasts 느낌.
 const _COVER = 'https://megaphone.imgix.net/podcasts/15526600-fb41-11ee-92ae-93bb88e95bb6/image/17f5482ab2cc597b1acfc1f8b7dc45e8.jpg?auto=format,compress&fit=crop';
