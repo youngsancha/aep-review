@@ -264,6 +264,8 @@ export async function renderEpisode(root, idStr, tStr) {
   let scrollTarget = null;
   let scrollRaf = 0;
   const SCROLL_EASE = 0.12;       // 0~1, 클수록 빠르게 따라붙음(작을수록 더 부드럽고 느긋함)
+  // 동작 줄이기 설정이면 ease 없이 즉시 이동(접근성)
+  const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function easeScroll() {
     scrollRaf = 0;
     const sc = document.querySelector('.tx-scroll');
@@ -275,6 +277,7 @@ export async function renderEpisode(root, idStr, tStr) {
     scrollRaf = requestAnimationFrame(easeScroll);
   }
   function smoothScrollTo(top) {
+    if (REDUCED_MOTION) { const sc = document.querySelector('.tx-scroll'); if (sc) sc.scrollTop = top; return; }
     scrollTarget = top;
     if (!scrollRaf) scrollRaf = requestAnimationFrame(easeScroll);
   }

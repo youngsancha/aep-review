@@ -64,6 +64,16 @@
 /* 가로 오버플로 방지(#1): blurred 배경 레이어가 뷰포트를 넘쳐 좌우로 밀리는 현상 차단.
    topbar 은 position:fixed 라 영향 없음. clip 미지원 환경 대비 hidden 도 함께 둔다. */
 html, body { margin: 0; padding: 0; height: 100%; overflow-x: hidden; max-width: 100%; }
+
+/* 접근성: 동작 줄이기 설정 시 애니메이션/전환/스무스 스크롤 최소화 (Apple 앱 동작과 동일) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 body {
   font-family: var(--font);
   color: var(--text);
