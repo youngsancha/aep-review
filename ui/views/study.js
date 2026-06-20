@@ -363,8 +363,34 @@ export async function renderStudy(root) {
   }
 
   // ── 받아쓰기(Dictation) — 듣고 그대로 타이핑 → 단어 단위 채점 + 차이 표시 (리스닝) ──
+  // 축약형·구어 축약(native reductions)을 표준형으로 펼친다. 음성인식(말하기 드릴)이 "I'm"을
+  // "I am"으로, "gonna"를 "going to"로 내놓아도 정답과 어긋나지 않게 — 사용자/정답 '양쪽'에 같은
+  // 규칙을 적용하므로 모호한 경우(it's=it is/has)도 일관되게 일치한다(언어학적 정확성보다 대칭성).
+  const _CONTR = {
+    "i'm": "i am", "you're": "you are", "we're": "we are", "they're": "they are",
+    "i've": "i have", "you've": "you have", "we've": "we have", "they've": "they have",
+    "i'll": "i will", "you'll": "you will", "he'll": "he will", "she'll": "she will", "we'll": "we will", "they'll": "they will", "it'll": "it will",
+    "i'd": "i would", "you'd": "you would", "he'd": "he would", "she'd": "she would", "we'd": "we would", "they'd": "they would",
+    "it's": "it is", "he's": "he is", "she's": "she is", "that's": "that is", "there's": "there is", "here's": "here is",
+    "what's": "what is", "who's": "who is", "where's": "where is", "how's": "how is", "let's": "let us",
+    "won't": "will not", "can't": "can not", "cannot": "can not", "don't": "do not", "doesn't": "does not",
+    "didn't": "did not", "isn't": "is not", "aren't": "are not", "wasn't": "was not", "weren't": "were not",
+    "haven't": "have not", "hasn't": "has not", "hadn't": "had not", "ain't": "is not",
+    "wouldn't": "would not", "shouldn't": "should not", "couldn't": "could not", "mustn't": "must not",
+    "gonna": "going to", "wanna": "want to", "gotta": "got to", "gimme": "give me", "lemme": "let me",
+    "kinda": "kind of", "sorta": "sort of", "outta": "out of", "dunno": "do not know", "y'all": "you all",
+  };
+  const _normApos = (s) => String(s || '').replace(/[‘’ʼ]/g, "'");  // 곱슬따옴표 → ASCII '
   function normWords(s) {
-    return String(s || '').toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').split(/\s+/).filter(Boolean);
+    const cleaned = _normApos(s).toLowerCase().replace(/[^a-z0-9'\s]/g, ' ');
+    const out = [];
+    for (const tok of cleaned.split(/\s+/)) {
+      if (!tok) continue;
+      const exp = _CONTR[tok];
+      if (exp) out.push(...exp.split(' '));
+      else out.push(tok.replace(/'/g, ''));   // 비매핑 토큰은 따옴표 제거(소유격 john's=johns 일관화)
+    }
+    return out;
   }
   function wordEdit(a, b) {  // 단어 배열 간 Levenshtein
     const m = a.length, n = b.length;
@@ -381,12 +407,12 @@ export async function renderStudy(root) {
     if (!b.length) return 0;
     return Math.max(0, 1 - wordEdit(a, b) / Math.max(a.length, b.length, 1));
   }
-  function diffHtml(user, ans) {  // 정답 문장에서 맞춘/놓친 단어 표시
+  function diffHtml(user, ans) {  // 정답 문장에서 맞춘/놓친 단어 표시(축약 정규화 동일 적용)
     const got = new Set(normWords(user));
-    return ans.split(/(\s+)/).map((tok) => {
+    return _normApos(ans).split(/(\s+)/).map((tok) => {
       if (!tok.trim()) return tok;
-      const norm = tok.toLowerCase().replace(/[^a-z0-9']/g, '');
-      const ok = norm && got.has(norm);
+      const parts = normWords(tok);                          // 정답 토큰도 같은 규칙으로 펼쳐
+      const ok = parts.length > 0 && parts.every((p) => got.has(p));  // 펼친 부분이 모두 인식되면 hit
       return `<span class="dw ${ok ? 'hit' : 'miss'}">${escapeHtml(tok)}</span>`;
     }).join('');
   }
