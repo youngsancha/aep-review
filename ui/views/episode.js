@@ -3,7 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { SHOW_COVER, SHOW_COVER_SM, TRANSLATE_EMAIL, R2_PUBLIC_BASE } from '/config.js';
+import { SHOW_COVER, SHOW_COVER_SM, TRANSLATE_EMAIL } from '/config.js';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -133,10 +133,14 @@ export async function renderEpisode(root, idStr, tStr) {
   // 광고 길이가 달라질 수 있다(재STT 로도 광고 로테이션은 못 따라감). 그래서 회차별 '상수 오프셋'
   // 보정을 둔다: syncOffset = (오디오 시각 − 자막 시각). 사용자가 '지금 들리는 문장'을 한 번 탭하면
   // 계산·저장(localStorage)되어 이후 자막↔오디오가 정확히 맞는다. 기본 0(보정 안 함).
-  // 호스팅된 회차(R2 = 자막과 같은 오디오)는 항상 완벽 싱크 → 수동 보정 불필요(저장된 offset 도 무시).
-  const isHosted = !!(ep.audio_url && R2_PUBLIC_BASE && ep.audio_url.startsWith(R2_PUBLIC_BASE));
+  // 완벽 싱크의 '진짜' 조건은 자막이 '서빙되는 R2 오디오 그 자체'로 STT 됐을 때다 → 그 표시가
+  // transcript.r2_audio === true (scripts/retranscribe.py --from-r2). 이 회차만 offset 0·보정 불필요.
+  // 단순히 R2 에 올라가 있기만 한(host_audio 로 별도 다운로드 업로드) 회차는 자막≠서빙오디오일 수 있어
+  // (DAI 광고 적재 다름) → 보정 버튼을 남겨 사용자가 맞출 수 있게 한다. R2 는 세션마다 안 바뀌므로
+  // 한 번 보정하면 영구 고정. 재싱크 백필이 끝나면 모든 회차가 isSynced 가 된다.
+  const isSynced = ep.transcript?.r2_audio === true;
   const SYNC_KEY = 'aep-sync-' + ep.id;
-  let syncOffset = isHosted ? 0 : (parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0);
+  let syncOffset = isSynced ? 0 : (parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0);
   // HL_LAG: whisper 단어 타임스탬프가 음성보다 살짝 빨라, 하이라이트를 약간 늦게 따라오게(>0).
   const HL_LAG = 0.2;
   const txTime = () => player.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
@@ -443,7 +447,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $syncBtn.textContent = on ? `🎯 ${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s` : '🎯 싱크';
   }
   reflectSyncBtn();
-  if (isHosted && $syncBtn) $syncBtn.style.display = 'none';  // 호스팅 회차는 자동 완벽 싱크 → 수동 버튼 숨김
+  if (isSynced && $syncBtn) $syncBtn.style.display = 'none';  // 재싱크(r2_audio) 회차만 완벽 → 버튼 숨김; 미재싱크는 보정 가능하게 유지
   function applySync(offset) {
     syncOffset = Math.round(offset * 100) / 100;
     try { localStorage.setItem(SYNC_KEY, String(syncOffset)); } catch (e) {}
