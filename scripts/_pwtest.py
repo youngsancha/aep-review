@@ -119,7 +119,7 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
   "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
-  import { renderEpisode, detectContentStart } from '/views/episode.js';
+  import { renderEpisode, detectContentStart, detectAdRanges } from '/views/episode.js';
   window.__ready=false;
   // 프리롤 광고 감지 단위검증: 광고2 + 인사말 + 진행자 인트로 → 본편 시작 인덱스 2('Hi everybody')
   window.__adK = detectContentStart([
@@ -127,6 +127,16 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
     {text:'New markdowns up to seventy percent off at the store today.'},
     {text:'Hi everybody, welcome back to the show.'},
     {text:'My name is Shana and this is the American English Podcast.'}
+  ]);
+  // 미드롤 광고 감지 단위검증: 본편 사이 서드파티 광고 클러스터(2~4) → 구간 {s:2,e:5}, 본편(0,1,5,6)은 유지
+  window.__adRanges = detectAdRanges([
+    {text:'Hi everybody, my name is Shana.', start:0},
+    {text:'Today we learn a great idiom together.', start:5},
+    {text:'Learn more at windows.com slash student offer.', start:10},
+    {text:'Get up to 45% off site-wide at blinds.com.', start:14},
+    {text:'Rules and restrictions apply.', start:18},
+    {text:'So as I was saying, let us continue the lesson.', start:22},
+    {text:'That is all for today, thanks for listening everyone.', start:30}
   ]);
   renderEpisode(document.getElementById('app'),'1').then(()=>{window.__ready=true;})
     .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
@@ -190,6 +200,10 @@ def main() -> int:
             # 프리롤 광고(DAI): detectContentStart 단위검증(=2) + 앵커없는 픽스처엔 광고바 미표시(폴백 안전)
             ad_detect = pg.evaluate("window.__adK")
             ad_none = pg.query_selector(".tx-ad-skip") is None
+            # 미드롤 광고 구간 감지: {s:2,e:5} 한 구간(본편 0,1,5,6 사이의 광고 2~4)
+            ad_ranges = pg.evaluate("window.__adRanges")
+            ad_mid_ok = (isinstance(ad_ranges, list) and len(ad_ranges) == 1
+                         and ad_ranges[0].get('s') == 2 and ad_ranges[0].get('e') == 5)
             if pg.query_selector("#np-play"):
                 pg.click("#np-play")
             sheet_open = None
@@ -250,7 +264,7 @@ def main() -> int:
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
-            print("sentences=", n_sent, " sheet_open=", sheet_open, " ad_detect=", ad_detect, " ad_none=", ad_none)
+            print("sentences=", n_sent, " sheet_open=", sheet_open, " ad_detect=", ad_detect, " ad_none=", ad_none, " ad_mid=", ad_ranges, " ad_mid_ok=", ad_mid_ok)
             # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (vocab term/def 카드 DOM 이 없어야 정상.
             #  문자열 매칭은 번역이 예문을 에코하면 오탐 → DOM 부재로 견고하게 확인)
             notes_no_vocab = (pg.query_selector(".tx-notes .tx-note-term") is None
@@ -268,7 +282,8 @@ def main() -> int:
                      and trans_default_on is True
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
-                     and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True)
+                     and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
+                     and ad_mid_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

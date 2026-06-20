@@ -180,14 +180,16 @@ export async function renderEpisode(root, idStr, tStr) {
   // Cache offsetTop now (stable until DOM mutates) — survives scroll animations.
   const paraTops = paraEls.map((el) => el.offsetTop);
 
-  // 프리롤 광고 바(감지된 경우에만 존재): 광고 구간이면 강조, 탭하면 본편(첫 콘텐츠 문장)으로 점프.
-  const $adSkip = $sheet ? $sheet.querySelector('.tx-ad-skip') : null;
-  const firstContentStart = sentRanges.length ? sentRanges[0].start : 0;
-  $adSkip?.addEventListener('click', (e) => {
+  // 광고 바(프리롤 + 미드롤/엔드롤): 각 바는 자기 시간구간[start,end) 동안 강조되고,
+  // 탭하면 그 광고가 끝나는 지점(본편 재개)으로 점프한다.
+  const adBars = $sheet ? Array.from($sheet.querySelectorAll('.tx-ad-skip')).map((el) => ({
+    el, start: parseFloat(el.dataset.start) || 0, end: parseFloat(el.dataset.end) || 0,
+  })) : [];
+  adBars.forEach((b) => b.el.addEventListener('click', (e) => {
     e.stopPropagation();
-    player.seek(firstContentStart + 0.01);
+    player.seek((b.end || 0) + 0.01);
     player.play();
-  });
+  }));
 
   // 즉시 해설: 각 vocab(어려운 표현)을 그 example 시점이 속한 문장에 매핑 → 그 문장이
   // 재생될 때 하단 패널에 term + 한국어 해설을 띄운다(쉐도잉하며 바로 이해).
@@ -266,6 +268,7 @@ export async function renderEpisode(root, idStr, tStr) {
 
   let lastActiveSent = -1;
   let lastActivePara = -1;
+  let lastAdEl = null;   // 현재 강조 중인 광고 바(중복 스크롤 방지)
   let userScrolledUntil = 0;     // suspend auto-follow until this timestamp
   let autoScrollUntil = 0;       // (레거시) — 부드러운 ease 로 대체되어 게이트엔 더 안 씀
 
@@ -329,9 +332,26 @@ export async function renderEpisode(root, idStr, tStr) {
   function _highlightImpl() {
     if (!sentRanges.length) return;
     const t = txTime();
+    // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
+    // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
+    let inAd = null;
+    for (const b of adBars) { const on = t >= b.start && t < b.end; b.el.classList.toggle('active', on); if (on) inAd = b; }
+    if (inAd) {
+      if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
+      if (lastActiveSent !== -1) { lastActiveSent = -1; renderNotes(-1); }
+      if (lastAdEl !== inAd.el) {                 // 새 광고 진입 → 광고 바를 화면에 보이게
+        lastAdEl = inAd.el;
+        const scroll = document.querySelector('.tx-scroll');
+        if (scroll && Date.now() >= userScrolledUntil) {
+          const rect = inAd.el.getBoundingClientRect(), cont = scroll.getBoundingClientRect();
+          const top = rect.top - cont.top + scroll.scrollTop - Math.max(8, scroll.clientHeight * 0.3);
+          smoothScrollTo(Math.max(0, Math.min(top, scroll.scrollHeight - scroll.clientHeight)));
+        }
+      }
+      return;
+    }
+    lastAdEl = null;
     const idx = findActiveSentIdx(t);
-    // 광고 구간(첫 콘텐츠 문장 시작 전, idx<0)이면 상단 '광고' 바를 강조 — 본편 진입 시 자동 해제.
-    if ($adSkip) $adSkip.classList.toggle('active', idx < 0);
     if (idx === lastActiveSent) return;
 
     if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) {
@@ -766,31 +786,89 @@ export function detectContentStart(sentences) {
   }
   return 0;  // 앵커 없음 → 아무것도 감추지 않음(안전 폴백 — 기존 동작 유지)
 }
-function adBlockHtml(adSents, contentStart) {
-  const adStart = Number.isFinite(adSents[0]?.start) ? adSents[0].start : 0;
-  return `<button class="tx-ad-skip" type="button" data-skip="${contentStart}" data-start="${adStart}" data-end="${contentStart}" aria-label="광고 건너뛰고 본편으로">
+// === 미드롤/엔드롤 광고(DAI) 감지 — 서드파티 광고 신호 점수화 ===
+// 본편 중간/끝의 서드파티 광고(windows.com·blinds.com·"45% off"·"terms apply"·"learn more at"…)는
+// DAI 라 음성과 다르다. Shana 자체 홍보(AmericanEnglishPodcast.com/Academy/premium)는 베이크된
+// 콘텐츠라 싱크 정상 → 광고로 보지 않는다(화이트리스트). 오탐("go to Virginia city" 등) 방지 위해
+// 강한 신호 점수≥3(앵커) 또는 ≥3문장 클러스터만 광고로 인정.
+const AD_SELF_RE = /(americanenglishpodcast\.com|the academy|premium content|episode notes)/i;
+function adScore(text) {
+  const t = String(text || '').toLowerCase();
+  if (!t || AD_SELF_RE.test(t)) return 0;                  // 빈문장/자체홍보 제외
+  let s = 0;
+  if (/\b[a-z][a-z0-9-]*\.com\b/.test(t)) s += 2;          // 서드파티 도메인
+  if (/promo code|use code|coupon code/.test(t)) s += 2;
+  if (/free trial|terms (and conditions )?apply|rules (and restrictions )?apply/.test(t)) s += 2;
+  if (/brought to you by|sponsored by|this episode is sponsored/.test(t)) s += 2;
+  if (/\d{1,3}\s?% off|percent off/.test(t)) s += 1;
+  if (/learn more at|subscribe now at|sign up (now|today)|offer ends|limited[- ]time/.test(t)) s += 1;
+  if (/\bslash\b/.test(t)) s += 1;                          // 광고 URL 읽기 "X.com slash Y"
+  return s;
+}
+// 광고 시간구간 [{s,e}] (문장 인덱스, 끝 배타적). 프리롤(인트로 앵커 앞) + 강한 광고 클러스터.
+export function detectAdRanges(sentences) {
+  const ranges = [];
+  const K = detectContentStart(sentences);
+  if (K > 0) ranges.push({ s: 0, e: K });
+  const score = sentences.map((x) => adScore(x.text));
+  let i = Math.max(K, 0);
+  while (i < sentences.length) {
+    if (score[i] >= 2) {
+      let last = i, gap = 0, maxs = score[i], cnt = 1;
+      for (let k = i + 1; k < sentences.length; k++) {
+        if (score[k] >= 2) { last = k; gap = 0; maxs = Math.max(maxs, score[k]); cnt++; }
+        else { gap++; if (gap > 1) break; }   // 광고 사이 1문장 갭까지 한 블록으로 연결
+      }
+      if (maxs >= 3 || cnt >= 3) { ranges.push({ s: i, e: last + 1 }); i = last + 1; continue; }
+    }
+    i++;
+  }
+  ranges.sort((a, b) => a.s - b.s);
+  const merged = [];
+  for (const r of ranges) {                    // 인접/겹침 병합(프리롤+첫 클러스터 등)
+    const prev = merged[merged.length - 1];
+    if (prev && r.s <= prev.e) prev.e = Math.max(prev.e, r.e);
+    else merged.push({ ...r });
+  }
+  return merged;
+}
+function adBarHtml(adStart, resumeStart, isPre) {
+  return `<button class="tx-ad-skip" type="button" data-start="${adStart}" data-end="${resumeStart}" data-skip="${resumeStart}" aria-label="광고 건너뛰고 본편으로">
     <span class="tx-ad-ico">📢</span>
     <span class="tx-ad-text"><b>광고 구간</b><small>음성 광고는 재생마다 달라 자막과 다를 수 있어요</small></span>
-    <span class="tx-ad-go">본편으로 ›</span>
+    <span class="tx-ad-go">${isPre ? '본편으로' : '건너뛰기'} ›</span>
   </button>`;
 }
 
 function transcriptSheetHtml(segments, title, sub) {
-  // 프리롤 광고(DAI) 분리 — 본편 앵커 앞 문장은 광고로 보고 감춘다(앵커 없으면 K=0, 전부 표시).
-  const K = detectContentStart(segments);
-  const adSents = K > 0 ? segments.slice(0, K) : [];
-  const content = adSents.length ? segments.slice(K) : segments;
-  content.forEach((s, i) => { s._idx = i; });
-  const paras = groupIntoParagraphs(content);
-  const adHtml = adSents.length ? adBlockHtml(adSents, content[0].start) : '';
-  const body = adHtml + paras.map((para) => {
-    const sentsHtml = para.segments.map((s) => {
-      return `<span class="tx-sent" data-i="${s._idx}" data-start="${s.start}" data-end="${s.end}">${renderSegmentWords(s)}</span>`;
-    }).join(' ');
+  // 광고(DAI) 구간을 감지해 자막에서 감추고 '광고' 바로 대체. 본편 문장의 타임스탬프는 그대로 두므로
+  // 광고가 끝나면 다음 본편 문장이 제 시각에 하이라이트된다(싱크 보존). 광고 없으면 전부 표시(폴백).
+  const adRanges = detectAdRanges(segments);
+  const isAd = new Array(segments.length).fill(false);
+  for (const r of adRanges) for (let i = r.s; i < r.e; i++) isAd[i] = true;
+
+  const renderPara = (para) => {
+    const sentsHtml = para.segments.map((s) =>
+      `<span class="tx-sent" data-i="${s._idx}" data-start="${s.start}" data-end="${s.end}">${renderSegmentWords(s)}</span>`).join(' ');
     return `<p class="tx-para" data-start="${para.start}" data-end="${para.end}">
       <span class="ts">${escapeHtml(fmtTime(para.start))}</span>${sentsHtml}
     </p>`;
-  }).join('');
+  };
+  // 본편 run + 광고 바(자리표시)를 교대로 조립. 본편 문장에만 _idx 부여(하이라이트 대상).
+  let ci = 0, i = 0, body = '';
+  while (i < segments.length) {
+    if (isAd[i]) {
+      const r = adRanges.find((x) => x.s === i) || { e: i + 1 };
+      const adStart = Number.isFinite(segments[i].start) ? segments[i].start : 0;
+      const resume = segments[r.e] ? segments[r.e].start : (segments[r.e - 1]?.end ?? adStart);
+      body += adBarHtml(adStart, resume, r.s === 0);
+      i = r.e;
+    } else {
+      const run = [];
+      while (i < segments.length && !isAd[i]) { segments[i]._idx = ci++; run.push(segments[i]); i++; }
+      body += groupIntoParagraphs(run).map(renderPara).join('');
+    }
+  }
 
   return `
     <div class="tx-sheet" aria-hidden="true">
