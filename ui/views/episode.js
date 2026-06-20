@@ -542,8 +542,8 @@ export async function renderEpisode(root, idStr, tStr) {
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
     if (shadowMode === 'loop') {
-      // '지금 들리는' 문장이 속한 '문단' 전체를 반복 대상으로 확정 → 문단 처음으로 되감아 반복.
-      // 오디오 위치(HL_LAG 미적용)로 현재 문장을 찾고, 같은 문단의 첫/마지막 문장으로 경계를 잡는다.
+      // 누르는 즉시 처음으로 점프하지 않는다 — 지금 위치에서 그 '문단' 끝까지 자연스럽게 읽은 뒤,
+      // 문단 끝에서 처음으로 되감아 반복(사용자 요청). 현재 문장이 속한 문단으로 경계만 확정.
       const si = findActiveSentIdx(player.time - syncOffset);
       if (si >= 0 && sentRanges[si]) {
         const paraEl = sentRanges[si].paraEl;
@@ -551,8 +551,7 @@ export async function renderEpisode(root, idStr, tStr) {
         loopPara = paraEls.indexOf(paraEl);
         loopStart = ps[0].start;
         loopEnd = ps[ps.length - 1].end;
-        userScrolledUntil = 0;   // 자동추적 재개 → 문단 단위 정렬이 바로 작동
-        player.seek(toAudio(loopStart) + 0.01);   // 문단 처음부터
+        userScrolledUntil = 0;   // 자동추적 재개
       }
     } else {
       loopPara = -1;
@@ -1134,12 +1133,17 @@ function renderSegmentWords(seg) {
       return `<span class="w" data-s="${ws.toFixed(2)}" data-e="${we.toFixed(2)}">${escapeHtml(w)}</span>`;
     }).join(' ');
   }
+  // whisper 단어는 앞 공백으로 띄어쓰기를 인코딩한다(" U" = 공백+U, ".S." = 앞단어에 이어붙임).
+  // 그 규칙을 보존: 앞 공백 있으면 span 앞에 공백 텍스트노드, 없으면 그대로 이어붙여 "U.S." 가 "U .S." 로
+  // 벌어지지 않게 한다. (전부 .join(' ') 하면 ".S." 앞에 잘못된 공백이 생겼던 버그)
   return words.map((w) => {
-    const txt = (w.word || '').replace(/^\s+/, '');
+    const raw = (w.word || '');
+    const lead = /^\s/.test(raw) ? ' ' : '';
+    const txt = raw.replace(/^\s+/, '');
     const start = (w.start ?? seg.start);
     const end   = (w.end   ?? seg.end);
-    return `<span class="w" data-s="${(+start).toFixed(2)}" data-e="${(+end).toFixed(2)}">${escapeHtml(txt)}</span>`;
-  }).join(' ');
+    return `${lead}<span class="w" data-s="${(+start).toFixed(2)}" data-e="${(+end).toFixed(2)}">${escapeHtml(txt)}</span>`;
+  }).join('');
 }
 
 function vocabHtml(v) {
