@@ -94,6 +94,8 @@ export async function expressionsByKind(kind) {
 }
 export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
 export function cleanAudioUrl(u) { return u; }
+export async function audioSrcFor(id, u) { return u; }
+export async function hostedSet() { return new Set(); }
 export async function listEpisodes() {
   return [
     { id:1, season:2, episode_no:12, title:'211 - The Latest One', pub_date:'2026-06-10', duration_sec:1700,

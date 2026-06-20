@@ -1,6 +1,6 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
-import { listEpisodes, srsStats, cleanAudioUrl } from '/db.js';
+import { listEpisodes, srsStats, cleanAudioUrl, audioSrcFor } from '/db.js';
 import { player, getLatestProgress, getProgressMap, getCompleted } from '/player.js';
 import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
@@ -60,18 +60,19 @@ export async function renderTimeline(root) {
 // ▶ 버튼(행/피처/이어재생) → 인라인 재생. 이어재생은 저장 위치에서 resume.
 function wirePlay(scope, items) {
   scope.querySelectorAll('.ep-play, .feat-play, .cont-play').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = parseInt(btn.dataset.id, 10);
       const ep = items.find((x) => x.id === id);
       if (!ep || !ep.audio_url) return;
+      const src = await audioSrcFor(ep.id, ep.audio_url);  // 호스팅됐으면 R2, 아니면 megaphone(에피소드 뷰와 동일)
       player.load({
         id: ep.id,
         title: ep.title,
         show: 'American English Podcast',
         cover: SHOW_COVER_SM,
-        src: cleanAudioUrl(ep.audio_url),
+        src,
       });
       // 이어재생: 저장 위치로 seek 후 재생. (metadata 준비 전이면 meta 이벤트에서)
       const resume = parseFloat(btn.dataset.resume || '0') || 0;

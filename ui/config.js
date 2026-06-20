@@ -5,6 +5,11 @@
 export const SUPABASE_URL = 'https://lbcvuztpyaapyckxmqhk.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_Ql1_5-UEpclxRc8LLQ3D2A_3748Xz07';
 
+// Cloudflare R2 공개(읽기) 베이스 — 우리가 STT 한 '바로 그 오디오'를 호스팅. 공개 URL 이라 커밋 OK.
+// 앱은 호스팅된 회차(audio_hosted.json 매니페스트)만 여기서 스트리밍 → 자막=오디오 영구 일치(완전 자동 싱크).
+export const R2_PUBLIC_BASE = 'https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev';
+export function hostedAudioUrl(id) { return `${R2_PUBLIC_BASE}/${id}.mp3`; }
+
 // MyMemory 번역 API 무료 한도 키. 익명은 하루 ~1천 단어로 금방 소진(429) → 이메일 지정 시
 // 하루 5만 단어. 이 repo 는 PRIVATE 이라 노출 위험 없음. 비우면 익명으로 동작(권장X).
 export const TRANSLATE_EMAIL = 'yscha.roy@gmail.com';

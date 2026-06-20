@@ -117,20 +117,29 @@ def remap_vocab(ep_id: int, transcript: dict[str, Any]) -> int:
 
 
 # ─────────────────────── 재정렬 한 건 ───────────────────────
-def retranscribe_one(row: dict[str, Any], remap: bool = True) -> dict[str, Any]:
+def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = True) -> dict[str, Any]:
     ep_id = row["id"]
     url = clean_audio_url(row["audio_url"])
+    hosted = False
     with tempfile.TemporaryDirectory(prefix="aep_re_") as tmpdir:
         apath = Path(tmpdir) / f"{ep_id}.mp3"
         nbytes = download_to(url, apath)
         data = transcribe_one(apath)
+        if host_r2:  # 자막과 '같은 바이트'를 R2 에 올림 → 앱이 그걸 스트리밍, 영구 일치(완전 자동 싱크)
+            try:
+                store.upload_audio_r2(ep_id, apath)
+                hosted = True
+            except Exception:
+                log.exception("R2 업로드 실패 ep=%s (자막은 계속 저장)", ep_id)
     data["aligned"] = True  # clean URL 정렬 → 클라이언트 offset 0
     store.upload_transcript(ep_id, data)
     store.mark_transcribed(ep_id, data.get("duration"))
     n_remap = remap_vocab(ep_id, data) if remap else 0
+    if hosted:
+        store.mark_hosted(ep_id)
     return {
         "ep": ep_id, "bytes": nbytes, "dur": data.get("duration"),
-        "segments": len(data.get("segments", [])), "remap": n_remap,
+        "segments": len(data.get("segments", [])), "remap": n_remap, "hosted": hosted,
     }
 
 

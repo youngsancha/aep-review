@@ -1,6 +1,7 @@
 // 데이터 접근 shim — 기존 /api/* 응답 모양을 Supabase 직접 호출로 재현.
 // 뷰(timeline/episode/srs)는 받는 데이터 모양만 같으면 거의 그대로 동작한다.
 import { supabase, STORAGE_URL } from '/supabase.js';
+import { hostedAudioUrl } from '/config.js';
 
 const NEW_LIMIT = 5;
 const REVIEW_LIMIT = 50;
@@ -32,6 +33,24 @@ export function cleanAudioUrl(u) {
   return m ? 'https://' + m[1] : u;
 }
 
+// 호스팅 완료 매니페스트 — 이 목록의 회차만 R2(자막=오디오)로 스트리밍. 1회 fetch 후 메모리 캐시.
+let _hosted = null, _hostedP = null;
+export async function hostedSet() {
+  if (_hosted) return _hosted;
+  if (!_hostedP) {
+    _hostedP = fetch(`${STORAGE_URL}/transcripts/audio_hosted.json`, { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((a) => { _hosted = new Set((a || []).map(Number)); return _hosted; })
+      .catch(() => { _hosted = new Set(); return _hosted; });
+  }
+  return _hostedP;
+}
+// 회차 오디오 소스 결정: 호스팅됐으면 R2(광고 로테이션 무관·완전 일치), 아니면 기존 megaphone clean.
+export async function audioSrcFor(id, audioUrl) {
+  const h = await hostedSet();
+  return h.has(Number(id)) ? hostedAudioUrl(id) : cleanAudioUrl(audioUrl);
+}
+
 // GET /api/episodes/{id} 대체 → { ...episode, vocab, transcript }
 export async function getEpisode(id) {
   const { data: ep, error } = await supabase
@@ -51,7 +70,7 @@ export async function getEpisode(id) {
     if (bn == null) return -1;
     return an - bn || a.id - b.id;
   });
-  ep.audio_url = cleanAudioUrl(ep.audio_url);  // 광고 래퍼 제거 → 직접 CDN 재생
+  ep.audio_url = await audioSrcFor(ep.id, ep.audio_url);  // 호스팅됐으면 R2(자막=오디오), 아니면 megaphone
   ep.transcript = await fetchTranscript(id, ep.transcribed_at);
   return ep;
 }
