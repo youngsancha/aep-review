@@ -261,6 +261,17 @@ def main() -> int:
             m = __import__("re").findall(r"\d+", dark_bg or "")
             dark_ok = bool(m) and (int(m[0]) + int(m[1]) + int(m[2]) < 120)
             pg.evaluate("document.documentElement.removeAttribute('data-theme')")
+            # 싱크 보정(#): 🎯 버튼 → '지금 들리는 문장' 탭 → per-episode offset(=오디오−자막) 저장
+            # (가장 마지막에 — player.time 을 바꾸므로 앞 검증에 영향 없게)
+            sync_cal_ok = None
+            if pg.query_selector("#tx-sync"):
+                pg.evaluate("window.__player.seek(50)")        # 현재 오디오 시각 50s
+                pg.click("#tx-sync")                            # 보정 모드
+                time.sleep(0.1)
+                pg.eval_on_selector(".tx-scroll .tx-sent", "el=>el.click()")  # 첫 문장(자막 start 0) 탭
+                time.sleep(0.1)
+                _st = pg.evaluate("localStorage.getItem('aep-sync-1')")
+                sync_cal_ok = (_st is not None and abs(float(_st) - 50) < 1.0)  # offset ≈ 50−0
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
@@ -271,7 +282,7 @@ def main() -> int:
                               and pg.query_selector(".tx-notes .tx-note-def") is None)
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
-            print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok)
+            print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_cal_ok=", sync_cal_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -283,7 +294,7 @@ def main() -> int:
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
-                     and ad_mid_ok is True)
+                     and ad_mid_ok is True and sync_cal_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

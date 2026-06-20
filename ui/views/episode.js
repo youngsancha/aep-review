@@ -128,16 +128,17 @@ export async function renderEpisode(root, idStr, tStr) {
   let speedIdx = 0;
   let shadowMode = 'off';  // off | loop(문장 반복)
 
-  // === 광고-무관 싱크 (#2) ===
-  // 인제스트가 앱과 "똑같은" clean megaphone URL 로 STT 하므로 transcript ≡ stream
-  // (광고 포함 동일 바이트) → 보정 offset 불필요. transcript 시각 = audio 시각.
-  // (수동 싱크 버튼/calibration 은 제거 — scripts/retranscribe.py 가 구조적으로 해결.)
-  //
-  // HL_LAG(초): 하이라이트/단어 팔로우를 오디오보다 이만큼 "늦게" 따라가게 한다(>0).
-  // whisper 단어 타임스탬프가 실제 음성보다 살짝 빨라, 보정 없으면 하이라이트가 음성보다
-  // 앞서 보인다 → 양수 lag 로 "Shana 가 말하기 시작한 직후" 따라오도록. (사용자 튜닝값)
+  // === 싱크 보정 (#) ===
+  // megaphone DAI 는 재생마다 '다른 길이의 광고'를 끼워, 우리가 STT 한 오디오와 실제 스트림의
+  // 광고 길이가 달라질 수 있다(재STT 로도 광고 로테이션은 못 따라감). 그래서 회차별 '상수 오프셋'
+  // 보정을 둔다: syncOffset = (오디오 시각 − 자막 시각). 사용자가 '지금 들리는 문장'을 한 번 탭하면
+  // 계산·저장(localStorage)되어 이후 자막↔오디오가 정확히 맞는다. 기본 0(보정 안 함).
+  const SYNC_KEY = 'aep-sync-' + ep.id;
+  let syncOffset = parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0;
+  // HL_LAG: whisper 단어 타임스탬프가 음성보다 살짝 빨라, 하이라이트를 약간 늦게 따라오게(>0).
   const HL_LAG = 0.2;
-  const txTime = () => player.time - HL_LAG;
+  const txTime = () => player.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
+  const toAudio = (txSec) => txSec + syncOffset;              // 자막 시각 → 오디오 시각(시크용)
 
   // === 현재 문장 번역 항상 표시 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
   // 기본 ON: 끄지 않는 한 항상 번역카드가 따라온다. 사용자가 끄면 그 선택을 기억(localStorage).
@@ -163,7 +164,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (shadowMode === 'loop' && lastActiveSent >= 0 && !player.paused) {
       const cur = sentRanges[lastActiveSent];
       if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
-        player.seek(cur.start + 0.01);
+        player.seek(toAudio(cur.start) + 0.01);
       }
     }
   }
@@ -421,17 +422,60 @@ export async function renderEpisode(root, idStr, tStr) {
     userScrolledUntil = Date.now() + 3000;  // give user 3s to read before auto-follow resumes
     smoothScrollTo(Math.max(0, target));    // 부드러운 ease 로 가운데 정렬
   }
+  // === 싱크 보정 — DAI 로 어긋난 회차를 '지금 들리는 문장' 한 번 탭으로 맞춤 ===
+  let calibrating = false;
+  let syncBannerTimer = 0;
+  function showSyncBanner(msg, hideAfter) {
+    if (!$sheet) return;
+    let el = $sheet.querySelector('.tx-sync-banner');
+    if (!el) { el = document.createElement('div'); el.className = 'tx-sync-banner'; ($sheet.querySelector('.tx-sheet-card') || $sheet).appendChild(el); }
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(syncBannerTimer);
+    if (hideAfter) syncBannerTimer = setTimeout(() => el.classList.remove('show'), hideAfter);
+  }
+  const $syncBtn = document.getElementById('tx-sync');
+  function reflectSyncBtn() {
+    if (!$syncBtn) return;
+    const on = Math.abs(syncOffset) > 0.05;
+    $syncBtn.classList.toggle('on', on);
+    $syncBtn.textContent = on ? `🎯 ${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s` : '🎯 싱크';
+  }
+  reflectSyncBtn();
+  function applySync(offset) {
+    syncOffset = Math.round(offset * 100) / 100;
+    try { localStorage.setItem(SYNC_KEY, String(syncOffset)); } catch (e) {}
+    lastActiveSent = -1; lastAdEl = null;        // 강제 재평가
+    highlightActiveSegment(); updateWord();
+    reflectSyncBtn();
+  }
+  $syncBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (calibrating) { calibrating = false; $syncBtn.classList.remove('calibrating'); reflectSyncBtn(); showSyncBanner('보정 취소', 1200); return; }
+    calibrating = true; $syncBtn.classList.add('calibrating');
+    showSyncBanner('🎯 지금 들리는 문장을 탭하세요 (버튼 길게누르면 해제)');
+  });
+  let syncHold = 0;   // 버튼 길게누르기 → 보정 0 으로 해제
+  $syncBtn?.addEventListener('pointerdown', () => { syncHold = setTimeout(() => { calibrating = false; $syncBtn.classList.remove('calibrating'); applySync(0); showSyncBanner('싱크 보정 해제', 1200); }, 600); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => $syncBtn?.addEventListener(ev, () => clearTimeout(syncHold)));
+
   if ($tx) {
     $tx.addEventListener('click', (e) => {
       const w = e.target.closest('.w');
       const sent = e.target.closest('.tx-sent');
       const para = e.target.closest('.tx-para');
-      let seekTo = null;
-      if (w)        seekTo = parseFloat(w.dataset.s);
-      else if (sent) seekTo = parseFloat(sent.dataset.start);
-      else if (para) seekTo = parseFloat(para.dataset.start);
-      if (seekTo == null) return;
-      player.seek(seekTo);  // transcript 시각 = audio 시각 (offset 0)
+      let txSec = null;
+      if (w)        txSec = parseFloat(w.dataset.s);
+      else if (sent) txSec = parseFloat(sent.dataset.start);
+      else if (para) txSec = parseFloat(para.dataset.start);
+      if (txSec == null) return;
+      if (calibrating) {        // '지금 들리는 문장' → offset = 현재 오디오 시각 − 자막 시각
+        calibrating = false; $syncBtn?.classList.remove('calibrating');
+        applySync(player.time - txSec);
+        showSyncBanner(`✓ 싱크 맞춤 (${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s) · 이 회차에 저장됨`, 1800);
+        scrollSentToCenter(sent || para);
+        return;
+      }
+      player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각(보정 반영)
       player.play();
       scrollSentToCenter(sent || para);
     });
@@ -565,7 +609,7 @@ export async function renderEpisode(root, idStr, tStr) {
     target = Math.max(0, Math.min(sentRanges.length - 1, target));
     const sel = sentRanges[target];
     if (!sel) return;
-    player.seek(sel.start + 0.01);
+    player.seek(toAudio(sel.start) + 0.01);
     player.play();
     scrollSentToCenter(sel.el);
   }
@@ -886,6 +930,7 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
+            <button id="tx-sync" class="tx-toggle tx-sync-btn" aria-label="싱크 맞추기">🎯 싱크</button>
             <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
             <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
           </div>

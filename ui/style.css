@@ -1713,6 +1713,24 @@ a { color: var(--tint); }
 .tx-loop-toggle.on:hover,
 .tx-loop-toggle[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
 
+/* 싱크 보정 버튼(🎯) + 안내 배너 — DAI 로 어긋난 회차를 한 번 탭으로 맞춤 */
+.tx-sync-btn { font-variant-numeric: tabular-nums; }
+.tx-sync-btn.on { background: var(--tint); color: #fff; }
+.tx-sync-btn.on:hover { background: var(--tint-hover); color: #fff; }
+.tx-sync-btn.calibrating { background: var(--grad-2); color: #fff; animation: ctx-pulse 1.2s ease-out infinite; }
+.tx-sync-banner {
+  position: absolute; left: 50%; top: 64px; transform: translateX(-50%) translateY(-8px);
+  max-width: 90%; z-index: 6;
+  background: var(--glass-bar); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  color: var(--text); font-family: var(--font); font-size: 12.5px; font-weight: 700;
+  letter-spacing: -0.01em; text-align: center;
+  padding: 9px 15px; border-radius: 999px; border: 0.5px solid var(--separator-thin);
+  box-shadow: var(--shadow-pop);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.tx-sync-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* ========== 즉시 해설 패널 (쉐도잉 중 현재 문장의 어려운 표현) ========== */
 .tx-notes {
   position: absolute;
