@@ -655,7 +655,7 @@ export async function renderStudy(root) {
       const input = root.querySelector('#cz-in');
       input.focus();
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].term]);
-      root.querySelector('#cz-spk').addEventListener('click', () => speak(c.example_sentence));  // 힌트로 문장 듣기(선택)
+      root.querySelector('#cz-spk').addEventListener('click', () => playExample(c));  // 힌트: Shana 실제 문장 듣기(선택)
       root.querySelector('#cz-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#cz-skip').addEventListener('click', () => reveal(0));
       root.querySelector('#cz-check').addEventListener('click', () => reveal(scoreText(input.value, c.term)));
