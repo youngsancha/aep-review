@@ -142,7 +142,7 @@ def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = Tr
     with tempfile.TemporaryDirectory(prefix="aep_re_") as tmpdir:
         apath = Path(tmpdir) / f"{ep_id}.mp3"
         nbytes = download_to(url, apath)
-        data = transcribe_one(apath)
+        data = transcribe_one(apath)   # 구두점 품질 게이트는 transcribe_one 내부에 있어 자동 자가복구
         if host_r2 and not from_r2:  # 자막과 '같은 바이트'를 R2 에 올림(신규 호스팅용). from_r2 면 이미 R2 에 있음
             try:
                 store.upload_audio_r2(ep_id, apath)
@@ -204,9 +204,10 @@ def main() -> None:
     if not (args.ids or args.recent or args.all):
         p.error("--ids / --recent N / --all 중 하나 필요")
 
-    done = set() if args.redo else load_done()
+    done = load_done()                          # 저장 베이스는 항상 전체 — --redo 여도 진행파일 손실 방지
     skip = load_skip()
-    ids = [i for i in select_ids(args) if i not in done and i not in skip]
+    sel_done = set() if args.redo else done     # --redo 는 '이미 done' 도 다시 처리(선택 필터에만 영향)
+    ids = [i for i in select_ids(args) if i not in sel_done and i not in skip]
     ids = ids[: args.limit]
     if not ids:
         log.info("처리할 episode 없음 (모두 done?). 총 done=%d", len(done))

@@ -80,38 +80,64 @@ def _get_model():
     return _model
 
 
+# 정상 전사는 1마침표당 ~10단어, 전사 실패 잔재는 25단어+ → 임계 미달이면 beam 을 올려 1회 재시도.
+# 구두점이 없으면 클라이언트가 문장을 구(句) 중간에서 자른다(사용자 보고 근본원인) → 여기서 자가복구.
+PUNCT_MIN = 0.04   # 1마침표 / 25단어
+
+
+def _punct_ratio(data: dict[str, Any]) -> float:
+    txt = " ".join(s.get("text", "") for s in data.get("segments", []))
+    w = len(txt.split())
+    p = txt.count(".") + txt.count("?") + txt.count("!")
+    return p / max(w, 1)
+
+
 def transcribe_one(audio_path: Path) -> dict[str, Any]:
     model = _get_model()
+
+    def _pass(beam: int) -> dict[str, Any]:
+        segments_iter, info = model.transcribe(
+            str(audio_path),
+            language="en",
+            word_timestamps=True,
+            vad_filter=True,  # 침묵 구간 스킵 → 빠르고 hallucination 감소
+            beam_size=beam,
+        )
+        segments_out: list[dict[str, Any]] = []
+        for i, seg in enumerate(segments_iter):
+            words = []
+            if seg.words:
+                for w in seg.words:
+                    words.append({
+                        "start": round(w.start, 3) if w.start is not None else None,
+                        "end": round(w.end, 3) if w.end is not None else None,
+                        "word": w.word,
+                    })
+            segments_out.append({
+                "idx": i,
+                "start": round(seg.start, 3),
+                "end": round(seg.end, 3),
+                "text": seg.text.strip(),
+                "words": words,
+            })
+        return {
+            "language": info.language or "en",
+            "duration": round(info.duration, 2) if info.duration else None,
+            "segments": segments_out,
+        }
+
     beam_size = int(os.getenv("AEP_WHISPER_BEAM", "5"))
-    segments_iter, info = model.transcribe(
-        str(audio_path),
-        language="en",
-        word_timestamps=True,
-        vad_filter=True,  # 침묵 구간 스킵 → 빠르고 hallucination 감소
-        beam_size=beam_size,
-    )
-    segments_out: list[dict[str, Any]] = []
-    for i, seg in enumerate(segments_iter):
-        words = []
-        if seg.words:
-            for w in seg.words:
-                words.append({
-                    "start": round(w.start, 3) if w.start is not None else None,
-                    "end": round(w.end, 3) if w.end is not None else None,
-                    "word": w.word,
-                })
-        segments_out.append({
-            "idx": i,
-            "start": round(seg.start, 3),
-            "end": round(seg.end, 3),
-            "text": seg.text.strip(),
-            "words": words,
-        })
-    return {
-        "language": info.language or "en",
-        "duration": round(info.duration, 2) if info.duration else None,
-        "segments": segments_out,
-    }
+    data = _pass(beam_size)
+    # 구두점 품질 게이트(durable): 임계 미달이면 beam 을 올려 1회 재시도(더 나으면 채택) → 어떤 회차도
+    # '구두점 없는 자막'으로 저장되지 않게 자가복구. 모든 전사 경로(인제스트·재싱크) 공통 적용.
+    if _punct_ratio(data) < PUNCT_MIN and beam_size < 5:
+        r0 = _punct_ratio(data)
+        log.warning("구두점 빈약(1마침표/%.0f단어) → beam=5 재시도", 1 / max(r0, 1e-9))
+        data2 = _pass(5)
+        if _punct_ratio(data2) > r0:
+            data = data2
+            log.info("beam=5 로 구두점 개선(1마침표/%.0f단어)", 1 / max(_punct_ratio(data), 1e-9))
+    return data
 
 
 def transcribe_pending(limit: int | None = None) -> int:
