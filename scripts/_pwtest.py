@@ -379,9 +379,9 @@ def main() -> int:
             tl_no_pan = (tl_overflow is not None and tl_overflow <= 1)
             tl_feat = pg.eval_on_selector_all(".feat-card", "els=>els.length")
             tl_rows = pg.eval_on_selector_all(".ep-row", "els=>els.length")
-            tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
-            # 컴팩트 히어로(#): 로고 헤더 높이를 줄여 이어듣기+최신이 한 화면에 — 높이 < 130px
-            tl_hero_h = pg.eval_on_selector(".show-hero", "el=>el.offsetHeight") if pg.query_selector(".show-hero") else 999
+            tl_hero = pg.eval_on_selector_all(".library-head", "els=>els.length")
+            # 슬림 라이브러리 헤더(브랜딩 히어로 제거): 높이 < 130px
+            tl_hero_h = pg.eval_on_selector(".library-head", "el=>el.offsetHeight") if pg.query_selector(".library-head") else 999
             tl_compact = tl_hero_h is not None and tl_hero_h < 130
             tl_featplay = bool(pg.query_selector(".feat-play"))
             tl_cont = bool(pg.query_selector(".cont-card"))   # 이어듣기 카드(#15)

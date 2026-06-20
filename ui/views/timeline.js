@@ -1,6 +1,6 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
-import { listEpisodes, srsStats, cleanAudioUrl, audioSrcFor } from '/db.js';
+import { listEpisodes, cleanAudioUrl, audioSrcFor } from '/db.js';
 import { player, getLatestProgress, getProgressMap, getCompleted } from '/player.js';
 import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
 
@@ -14,11 +14,10 @@ export async function renderTimeline(root) {
   const items = await listEpisodes();
   _prog = getProgressMap();
   _done = getCompleted();
-  const stats = await srsStats().catch(() => null);
 
   if (!items.length) {
     root.innerHTML = `
-      ${heroHtml({total: 0, ready: 0, due: 0})}
+      ${heroHtml({total: 0, ready: 0})}
       <div class="empty">
         에피소드가 아직 없습니다.<br />
         우측 상단 ↻ 버튼을 눌러 RSS 피드를 동기화하세요.
@@ -28,9 +27,8 @@ export async function renderTimeline(root) {
   }
 
   const ready = items.filter((e) => e.vocab_count > 0).length;
-  const due = stats?.today_batch || 0;
 
-  let html = heroHtml({total: items.length, ready, due});
+  let html = heroHtml({total: items.length, ready});
   html += continueHtml(getLatestProgress(), items);  // 이어듣기 (저장된 재생위치)
   html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
   html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 에피소드 검색" autocomplete="off" /></div>`;
@@ -150,20 +148,12 @@ function skeletonHtml() {
   return `<div class="skel-hero"></div>${Array(6).fill(row).join('')}`;
 }
 
-function heroHtml({total, ready, due}) {
+function heroHtml({total, ready}) {
+  // 브랜딩 히어로(커버+'American English Podcast' 로고) 제거 — 슬림한 라이브러리 헤더로 정리.
   return `
-    <div class="show-hero">
-      <div class="show-hero-bg" style="background-image:url('${SHOW_COVER}')"></div>
-      <img class="show-hero-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
-      <div class="show-hero-text">
-        <h1 class="show-hero-title">American English Podcast</h1>
-        <p class="show-hero-host">Shana Thompson · Language Learning</p>
-        <div class="show-hero-stats">
-          <span class="show-stat">${total} episodes</span>
-          <span class="show-stat">${ready} ready</span>
-          <span class="show-stat">${due} due</span>
-        </div>
-      </div>
+    <div class="library-head">
+      <h1 class="library-title">Library</h1>
+      <div class="library-sub">${total} episodes${ready < total ? ` · ${total - ready} 준비중` : ' · 모두 준비됨'}</div>
     </div>
   `;
 }

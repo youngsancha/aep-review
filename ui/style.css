@@ -143,6 +143,25 @@ body.on-episode {
 #topbar button:disabled { opacity: 0.4; cursor: default; }
 #back-btn { font-size: 26px; line-height: 1; color: var(--tint); }
 #sync-btn { font-size: 19px; }
+/* 좌우로 슬라이드되는 테마 토글 스위치 (해=좌/달=우) */
+#topbar button.theme-switch { width: 52px; height: 28px; border-radius: 14px; padding: 0; }
+#topbar button.theme-switch:hover { background: transparent; }
+.theme-switch .theme-track {
+  position: relative; display: flex; align-items: center; justify-content: space-between;
+  width: 52px; height: 28px; border-radius: 14px; box-sizing: border-box; padding: 0 7px;
+  background: var(--surface-2); border: 1px solid var(--border, rgba(127,127,127,0.25));
+}
+.theme-switch .theme-ico { font-size: 12px; line-height: 1; z-index: 1; }
+.theme-switch .theme-knob {
+  position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%;
+  background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.theme-switch.is-dark .theme-knob { transform: translateX(23px); }
+/* 슬림 라이브러리 헤더 (브랜딩 히어로 대체) */
+.library-head { padding: 6px 2px 10px; }
+.library-title { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+.library-sub { margin-top: 3px; font-size: 13px; color: var(--text-2); }
 
 /* ========== Tab bar (iOS) ========== */
 #tabbar {

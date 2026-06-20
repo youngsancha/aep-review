@@ -23,7 +23,7 @@ window.addEventListener('error', (e) => { console.error('[uncaught]', e.error ||
 window.addEventListener('unhandledrejection', (e) => { console.error('[unhandledrejection]', e.reason); });
 
 const ROUTES = [
-  { re: /^#?\/$/,                    handler: renderTimeline, title: 'Episodes', tab: 'timeline', back: false },
+  { re: /^#?\/$/,                    handler: renderTimeline, title: 'Library', tab: 'timeline', back: false },
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
   { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
@@ -143,7 +143,8 @@ function applyTheme(pref) {
   if (pref === 'light' || pref === 'dark') document.documentElement.setAttribute('data-theme', pref);
   else document.documentElement.removeAttribute('data-theme');
   const eff = effectiveTheme();
-  if ($theme) $theme.textContent = eff === 'dark' ? '☀️' : '🌙';
+  // 토글 스위치: 노브 위치(좌=라이트/우=다크)를 클래스로 구동. textContent 로 내부 마크업을 덮지 않는다.
+  if ($theme) { $theme.classList.toggle('is-dark', eff === 'dark'); $theme.setAttribute('aria-checked', eff === 'dark' ? 'true' : 'false'); }
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', eff === 'dark' ? '#0B0B10' : '#cc6cff');
 }

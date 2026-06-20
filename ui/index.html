@@ -12,7 +12,7 @@
   <title>American English Podcast 복습</title>
 
   <script>
-    window.APP_VERSION = '100';
+    window.APP_VERSION = '101';
     // 페인트 전에 저장된 테마를 적용해 깜빡임 방지 (auto 면 시스템 설정에 맡김)
     (function () { try {
       var t = localStorage.getItem('aep-theme');
@@ -51,7 +51,9 @@
       <h1 id="page-title">Episodes</h1>
     </div>
     <span id="app-version">v?</span>
-    <button id="theme-btn" aria-label="라이트/다크 테마 전환">🌙</button>
+    <button id="theme-btn" class="theme-switch" role="switch" aria-checked="false" aria-label="라이트/다크 테마 전환">
+      <span class="theme-track"><span class="theme-ico sun">☀️</span><span class="theme-ico moon">🌙</span><span class="theme-knob"></span></span>
+    </button>
     <button id="sync-btn" aria-label="Sync">↻</button>
   </header>
 
@@ -75,7 +77,6 @@
   <nav id="tabbar">
     <a href="#/"      data-tab="timeline"><span class="icon">🎧</span><span class="label">Library</span></a>
     <a href="#/study" data-tab="study"><span class="icon">📚</span><span class="label">Study</span></a>
-    <a href="#/srs"   data-tab="srs"><span class="icon">🗂️</span><span class="label">Review</span></a>
   </nav>
 </body>
 </html>

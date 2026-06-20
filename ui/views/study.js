@@ -84,16 +84,10 @@ export async function renderStudy(root) {
           <div class="study-progress-pills">
             ${getStreak() > 0 ? `<span class="study-pill streak">🔥 ${getStreak()}일 연속</span>` : ''}
             <span class="study-pill">📚 학습 ${ov.learned.toLocaleString()}</span>
-            <span class="study-pill">🔁 복습 ${ov.due.toLocaleString()}</span>
           </div>
           <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
       </div>
-      ${ov.due > 0 ? `
-        <a class="study-cta" href="#/srs">
-          <div class="study-cta-t">🔁 오늘 복습 ${ov.due}개</div>
-          <div class="study-cta-m">플래시카드로 정리하기 ▸</div>
-        </a>` : ''}
       <div class="study-kinds">
         ${kinds.map((k) => `
           <button class="study-kind-chip${k.kind === selected ? ' on' : ''}" data-kind="${k.kind}">
