@@ -380,7 +380,8 @@ export async function renderEpisode(root, idStr, tStr) {
 
     // 문단 played/active 표시 (시각용)
     const newPara = idx >= 0 ? paraEls.indexOf(sentRanges[idx].paraEl) : -1;
-    if (newPara !== lastActivePara) {
+    const paraChanged = newPara !== lastActivePara;
+    if (paraChanged) {
       paraEls.forEach((p, i) => {
         p.classList.toggle('active', i === newPara);
         if (newPara >= 0 && i < newPara) p.classList.add('played');
@@ -389,21 +390,28 @@ export async function renderEpisode(root, idStr, tStr) {
       lastActivePara = newPara;
     }
 
-    // 핵심: 현재 "문장"을 매 문장 전환마다 상단 ~32% 위치로 부드럽게 고정 → 음성과 시선 일치.
+    // 문단 단위 따라가기: 새 '문단'에 들어설 때만 그 문단 시작을 상단 ~16% 줄에 맞춰 문단 전체가
+    // 한 화면에 들어오게 한다 → 한 문단을 읽는 동안엔 화면이 안 움직인다(사용자 보고: 4줄 문장 다음
+    // 1줄로 넘어갈 때 화면이 위로 튀던 문제 제거). 같은 문단에서 활성 문장이 화면 밖으로 나가려
+    // 할 때(아주 긴 문단)만 예외적으로 그 문장을 ~30% 로 살짝 당긴다.
     const userActive = Date.now() < userScrolledUntil;
     if (idx >= 0 && scroll && !userActive) {
-      const sentEl = sentRanges[idx].el;
-      const rect = sentEl.getBoundingClientRect();
       const cont = scroll.getBoundingClientRect();
-      const elTop = rect.top - cont.top + scroll.scrollTop;
-      // 현재 문장을 상단 ~22% 에 두되, 거기서 2줄 더 위로 끌어올려 붙인다 → 하단 번역/해설
-      // 카드와 한 화면에 더 여유롭게 함께 보이도록(#9, 사용자 요청). lh = 한 줄 높이.
-      const lh = parseFloat(getComputedStyle(sentRanges[idx].paraEl).lineHeight) || 40;
-      const target = elTop - Math.max(8, scroll.clientHeight * 0.22 - lh * 2);
-      const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
-      // 문장이 바뀔 때마다 목표만 갱신 → rAF ease 가 부드럽게 따라감(네이티브 smooth 의 끊김 제거)
-      const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;
-      if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
+      const h = scroll.clientHeight;
+      const sRect = sentRanges[idx].el.getBoundingClientRect();
+      const sRelTop = sRect.top - cont.top, sRelBot = sRect.bottom - cont.top;
+      let target = null;
+      if (paraChanged) {
+        const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
+        target = pTop - Math.max(8, h * 0.16);
+      } else if (sRelBot > h * 0.90 || sRelTop < h * 0.04) {
+        target = sRelTop + scroll.scrollTop - Math.max(8, h * 0.30);
+      }
+      if (target != null) {
+        const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
+        const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;  // rAF ease 로 부드럽게
+        if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
+      }
     }
     txCard?.classList.toggle('live', !userActive);
     txCard?.classList.toggle('no-follow', userActive);
