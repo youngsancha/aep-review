@@ -3,7 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { SHOW_COVER, SHOW_COVER_SM, TRANSLATE_EMAIL } from '/config.js';
+import { SHOW_COVER, SHOW_COVER_SM, TRANSLATE_EMAIL, R2_PUBLIC_BASE } from '/config.js';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -133,8 +133,10 @@ export async function renderEpisode(root, idStr, tStr) {
   // 광고 길이가 달라질 수 있다(재STT 로도 광고 로테이션은 못 따라감). 그래서 회차별 '상수 오프셋'
   // 보정을 둔다: syncOffset = (오디오 시각 − 자막 시각). 사용자가 '지금 들리는 문장'을 한 번 탭하면
   // 계산·저장(localStorage)되어 이후 자막↔오디오가 정확히 맞는다. 기본 0(보정 안 함).
+  // 호스팅된 회차(R2 = 자막과 같은 오디오)는 항상 완벽 싱크 → 수동 보정 불필요(저장된 offset 도 무시).
+  const isHosted = !!(ep.audio_url && R2_PUBLIC_BASE && ep.audio_url.startsWith(R2_PUBLIC_BASE));
   const SYNC_KEY = 'aep-sync-' + ep.id;
-  let syncOffset = parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0;
+  let syncOffset = isHosted ? 0 : (parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0);
   // HL_LAG: whisper 단어 타임스탬프가 음성보다 살짝 빨라, 하이라이트를 약간 늦게 따라오게(>0).
   const HL_LAG = 0.2;
   const txTime = () => player.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
@@ -441,6 +443,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $syncBtn.textContent = on ? `🎯 ${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s` : '🎯 싱크';
   }
   reflectSyncBtn();
+  if (isHosted && $syncBtn) $syncBtn.style.display = 'none';  // 호스팅 회차는 자동 완벽 싱크 → 수동 버튼 숨김
   function applySync(offset) {
     syncOffset = Math.round(offset * 100) / 100;
     try { localStorage.setItem(SYNC_KEY, String(syncOffset)); } catch (e) {}
