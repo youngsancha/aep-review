@@ -46,6 +46,68 @@ def client() -> Client:
     return create_client(url, key)
 
 
+# ─────────────────────────── R2 (오디오 호스팅) ───────────────────────────
+# 우리가 STT 하는 '바로 그 오디오'를 R2 에 올려, 앱이 그걸 스트리밍 → 자막=오디오 영구 일치(DAI 광고
+# 로테이션 무관, 완전 자동 싱크). 업로드는 S3 호환 API(R2_ENDPOINT). 로컬 네트워크가 막아도 CI 는 OK.
+@lru_cache(maxsize=1)
+def r2():
+    load_dotenv(PROJECT_ROOT / ".env")
+    import boto3
+    from botocore.config import Config
+    ep = os.environ.get("R2_ENDPOINT"); ak = os.environ.get("R2_ACCESS_KEY_ID")
+    sk = os.environ.get("R2_SECRET_ACCESS_KEY")
+    if not (ep and ak and sk):
+        raise SystemExit("R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 가 환경에 없습니다.")
+    return boto3.client("s3", endpoint_url=ep, aws_access_key_id=ak, aws_secret_access_key=sk,
+                        region_name="auto", config=Config(signature_version="s3v4", retries={"max_attempts": 3}))
+
+
+def r2_bucket() -> str:
+    return os.environ.get("R2_BUCKET", "aep-audio")
+
+
+def r2_audio_exists(ep_id: int) -> bool:
+    import botocore
+    try:
+        r2().head_object(Bucket=r2_bucket(), Key=f"{ep_id}.mp3")
+        return True
+    except botocore.exceptions.ClientError:
+        return False
+
+
+def upload_audio_r2(ep_id: int, path: Any) -> int:
+    """오디오 파일을 R2 의 {id}.mp3 로 업로드. 반환: 바이트 수."""
+    p = Path(path)
+    r2().upload_file(str(p), r2_bucket(), f"{ep_id}.mp3", ExtraArgs={"ContentType": "audio/mpeg"})
+    return p.stat().st_size
+
+
+# 호스팅 '완료'(=R2 오디오 + 그와 일치하는 자막) 매니페스트 — Supabase transcripts 버킷의 public JSON.
+# 앱은 이 목록의 회차만 R2 스트리밍(자막 일치 보장), 나머지는 기존 megaphone(폴백).
+HOSTED_MANIFEST = "audio_hosted.json"
+
+
+def load_hosted() -> set[int]:
+    try:
+        raw = client().storage.from_("transcripts").download(HOSTED_MANIFEST)
+        return set(json.loads(raw))
+    except Exception:
+        return set()
+
+
+def mark_hosted(ep_id: int) -> None:
+    ids = load_hosted()
+    if int(ep_id) in ids:
+        return
+    ids.add(int(ep_id))
+    body = json.dumps(sorted(ids)).encode("utf-8")
+    sb = client().storage.from_("transcripts")
+    try:
+        sb.update(HOSTED_MANIFEST, body, {"content-type": "application/json", "upsert": "true"})
+    except Exception:
+        sb.upload(HOSTED_MANIFEST, body, {"content-type": "application/json", "upsert": "true"})
+
+
 # ─────────────────────────── episodes ───────────────────────────
 def existing_guids() -> set[str]:
     res = client().table("episodes").select("guid").execute()
