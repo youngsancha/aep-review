@@ -134,10 +134,12 @@ export async function expressionsByKind(kind, limit = 800) {
     .order('term', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
+  const hosted = await hostedSet();
   return (data || []).map((v) => ({
     ...v,
     episode_title: v.episodes?.title || '',
-    audio_url: cleanAudioUrl(v.episodes?.audio_url || ''),  // '맥락에서 듣기' 인라인 재생용(실제 음성)
+    // 인라인 문장 재생용 — 호스팅된 회차는 R2(자막 문장시각과 일치) 아니면 megaphone clean.
+    audio_url: hosted.has(Number(v.episode_id)) ? hostedAudioUrl(v.episode_id) : cleanAudioUrl(v.episodes?.audio_url || ''),
     known: Array.isArray(v.srs) && v.srs.some((s) => (s.interval_days || 0) >= KNOWN_INTERVAL),
   }));
 }
@@ -161,11 +163,12 @@ function sm2(ease, interval, reps, grade) {
 const QUEUE_SELECT =
   '*, episodes(title, audio_url), vocab_cards(example_sentence, sentence_start_sec, sentence_end_sec, kind)';
 
-function flattenCard(r) {
+function flattenCard(r, hosted) {
   return {
     ...r,
     episode_title: r.episodes?.title || '',
-    audio_url: cleanAudioUrl(r.episodes?.audio_url || ''),  // '맥락에서 듣기' 인라인 재생용(실제 음성)
+    // 호스팅된 회차는 R2(자막 문장시각 일치) 아니면 megaphone clean.
+    audio_url: (hosted && hosted.has(Number(r.episode_id))) ? hostedAudioUrl(r.episode_id) : cleanAudioUrl(r.episodes?.audio_url || ''),
     example_sentence: r.vocab_cards?.example_sentence ?? null,
     sentence_start_sec: r.vocab_cards?.sentence_start_sec ?? null,
     sentence_end_sec: r.vocab_cards?.sentence_end_sec ?? null,
@@ -190,7 +193,8 @@ export async function srsQueue() {
     .limit(NEW_LIMIT);
   if (fresh.error) throw new Error(fresh.error.message);
 
-  return [...review.data, ...fresh.data].map(flattenCard);
+  const hosted = await hostedSet();
+  return [...review.data, ...fresh.data].map((r) => flattenCard(r, hosted));
 }
 
 // POST /api/srs/review 대체
