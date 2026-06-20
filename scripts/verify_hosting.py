@@ -81,9 +81,12 @@ def mp3_duration(url, clen):
 # ───────────────── resegment 포팅 (ui/views/episode.js 와 동일 기준) ─────────────────
 ENDS = re.compile(r'[.!?…]["\')\]]?$')
 COMMA = re.compile(r'[,;:]["\')\]]?$')
+CONJ = re.compile(r"^(and|but|so|or|because|when|while|if|since|though|although|unless)$", re.I)
+_LEAD = re.compile(r"^[^A-Za-z']+")
 
 
 def resegment(segments):
+    # episode.js 의 resegment 와 동일 기준(접속사 앞 분할 + 하드캡 백스톱) — 표시와 검증 일치.
     words = []
     for seg in segments or []:
         ws = seg.get("words") or []
@@ -101,6 +104,8 @@ def resegment(segments):
         gap = (w["start"] - prev_end) if (prev_end is not None and isinstance(w["start"], (int, float))) else 0
         if cur and (gap > 1.5 or (len(cur["words"]) >= 3 and gap > 0.8) or (len(cur["words"]) >= 7 and gap > 0.45)):
             out.append(cur); cur = None
+        if cur and len(cur["words"]) >= 11 and CONJ.match(_LEAD.sub("", (w["word"] or "").strip()).lower()):
+            out.append(cur); cur = None
         if not cur:
             cur = {"start": w["start"], "end": w["end"], "words": []}
         cur["words"].append(w)
@@ -109,7 +114,7 @@ def resegment(segments):
         txt = (w["word"] or "").strip()
         n = len(cur["words"])
         dur = (cur["end"] or 0) - (cur["start"] or 0)
-        if (ENDS.search(txt) and n >= 2) or (COMMA.search(txt) and n >= 9) or dur > 10 or n >= 16:
+        if (ENDS.search(txt) and n >= 2) or (COMMA.search(txt) and n >= 9) or dur > 12 or n >= 18:
             out.append(cur); cur = None
     if cur:
         out.append(cur)

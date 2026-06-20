@@ -1061,6 +1061,10 @@ function resegment(segments) {
   //  ① 종결 구두점(.?!…)  ② 문장 사이 큰 쉼(gap)  ③ 긴 절의 콤마  ④ 길이 하드캡.
   const ENDS = /[.!?…]["')\]]?$/;
   const COMMA = /[,;:]["')\]]?$/;
+  // 등위·종속 접속사 앞은 영어 절(clause)이 자연스럽게 갈리는 지점. 절이 이미 길면 '그 앞'에서
+  // 끊어 "…is so | alive", "…layer of | yellow" 같은 구(句) 중간 하드캡 절단을 막는다.
+  // 관계대명사(that/which/who)는 제외 — "the pollen that is in our area" 처럼 붙어야 자연스러운 절을 안 쪼개려고.
+  const CONJ = /^(and|but|so|or|because|when|while|if|since|though|although|unless)$/i;
   const out = [];
   let cur = null;
   let prevEnd = null;
@@ -1076,6 +1080,11 @@ function resegment(segments) {
     if (cur && (gap > 1.5 ||                       // 큰 비발화 간격(긴 쉼·음악·광고구간 등)은 단어수 무관 분리
                 (cur.words.length >= 3 && gap > 0.8) ||
                 (cur.words.length >= 7 && gap > 0.45))) close();
+    // ②' 접속사 앞 분할 — 절이 충분히 길 때(≥11단어) 접속사 '앞'에서 끊어 구 중간 절단 방지.
+    if (cur && cur.words.length >= 11) {
+      const lead = (w.word || '').trim().replace(/^[^A-Za-z']+/, '').toLowerCase();
+      if (CONJ.test(lead)) close();
+    }
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);
     if (Number.isFinite(w.end)) { cur.end = w.end; prevEnd = w.end; }
@@ -1084,7 +1093,8 @@ function resegment(segments) {
     const dur = cur.end - cur.start;
     if ((ENDS.test(txt) && n >= 2) ||           // ① 종결 구두점
         (COMMA.test(txt) && n >= 9) ||          // ③ 긴 절은 콤마에서(12→9: 더 적절한 길이로)
-        dur > 10 || n >= 16) {                  // ④ 하드캡(14s/22w → 10s/16w: 과하게 길지 않게)
+        dur > 12 || n >= 18) {                  // ④ 하드캡(백스톱) — 접속사/구두점 경계를 우선 쓰되,
+                                                //    그 이상은 강제(10s/16w→12s/18w: 종결 구두점까지 닿게 살짝 상향)
       close();
     }
   }
