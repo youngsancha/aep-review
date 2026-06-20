@@ -32,12 +32,22 @@ from ingest.transcribe import transcribe_one
 log = logging.getLogger(__name__)
 
 PROGRESS = store.PROJECT_ROOT / "data" / "retranscribe_done.json"
+# 하드 크래시(예: CUDA 드라이버 폴트)로 프로세스가 통째로 죽는 '독성' 회차를 격리.
+# done 과 달리 '완벽싱크됨'이 아니라 '건너뜀(미완료)' 의미 → 절대 done 에 섞지 않는다.
+SKIP = store.PROJECT_ROOT / "data" / "retranscribe_skip.json"
 
 
 # ─────────────────────── 진행 상태 (로컬) ───────────────────────
 def load_done() -> set[int]:
     try:
         return set(json.loads(PROGRESS.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+def load_skip() -> set[int]:
+    try:
+        return set(json.loads(SKIP.read_text(encoding="utf-8")))
     except Exception:
         return set()
 
@@ -178,13 +188,14 @@ def main() -> None:
         p.error("--ids / --recent N / --all 중 하나 필요")
 
     done = set() if args.redo else load_done()
-    ids = [i for i in select_ids(args) if args.ids or i not in done]
+    skip = load_skip()
+    ids = [i for i in select_ids(args) if args.ids or (i not in done and i not in skip)]
     ids = ids[: args.limit]
     if not ids:
         log.info("처리할 episode 없음 (모두 done?). 총 done=%d", len(done))
         return
 
-    log.info("재정렬 시작: %d개 (done 누적 %d)", len(ids), len(done))
+    log.info("재정렬 시작: %d개 (done 누적 %d, skip %d)", len(ids), len(done), len(skip))
     rows = {r["id"]: r for r in store.episodes_by_recency()}
     ok = 0
     for ep_id in ids:
