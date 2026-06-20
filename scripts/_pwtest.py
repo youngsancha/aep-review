@@ -6,8 +6,9 @@ renderEpisode 를 띄운 뒤, 런타임 에러·문장수·재생 버튼 동작�
 
     python scripts/_pwtest.py
 """
-import subprocess, sys, time
+import json, subprocess, sys, time
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 UI = Path(__file__).resolve().parent.parent / "ui"
 MOCKS = UI / "_mocks.js"
@@ -175,10 +176,13 @@ def main() -> int:
             b = p.chromium.launch(); pg = b.new_page()
             pg.on("console", lambda m: errs.append(f"{m.type}: {m.text}") if m.type in ("error", "warning") else None)
             pg.on("pageerror", lambda e: errs.append("PAGEERROR: " + str(e)))
-            # 번역 API(MyMemory) 는 결정적 테스트를 위해 가짜 응답으로 가로챈다.
-            pg.route("**/api.mymemory.translated.net/**", lambda route: route.fulfill(
-                status=200, content_type="application/json",
-                body='{"responseData":{"translatedText":"(테스트 번역)"}}'))
+            # 번역 API(MyMemory) 가짜 응답 — 원문(q)을 그대로 에코해 번역↔문장 대응을 검증 가능하게.
+            # ('[KO] '+원문) → 화면의 번역이 현재 활성 문장과 일치하는지 확인(인덱스 mismatch 회귀 방지).
+            def _mm(route):
+                q = parse_qs(urlparse(route.request.url).query).get('q', [''])[0]
+                route.fulfill(status=200, content_type="application/json",
+                              body=json.dumps({"responseData": {"translatedText": "[KO] " + q}}))
+            pg.route("**/api.mymemory.translated.net/**", _mm)
             pg.goto("http://localhost:8123/_harness.html")
             pg.wait_for_function("window.__ready===true", timeout=10000)
             n_sent = pg.eval_on_selector_all(".tx-sent", "els=>els.length")
@@ -247,8 +251,10 @@ def main() -> int:
             werr = pg.evaluate("window.__err||[]")
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
             print("sentences=", n_sent, " sheet_open=", sheet_open, " ad_detect=", ad_detect, " ad_none=", ad_none)
-            # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (term 이 없어야 정상)
-            notes_no_vocab = "fill in the gap" not in (notes_text or "")
+            # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (vocab term/def 카드 DOM 이 없어야 정상.
+            #  문자열 매칭은 번역이 예문을 에코하면 오탐 → DOM 부재로 견고하게 확인)
+            notes_no_vocab = (pg.query_selector(".tx-notes .tx-note-term") is None
+                              and pg.query_selector(".tx-notes .tx-note-def") is None)
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok)
@@ -257,7 +263,9 @@ def main() -> int:
             print("episode: about_blocks=", about)
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and notes_no_vocab and about == 1
-                     and trans_ok == "(테스트 번역)" and trans_default_on is True
+                     and isinstance(trans_ok, str) and trans_ok.startswith("[KO]")
+                     and "fill in the gap" in trans_ok  # 번역이 현재 활성 문장과 대응(인덱스 mismatch 아님)
+                     and trans_default_on is True
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True)

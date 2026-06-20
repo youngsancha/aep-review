@@ -223,21 +223,23 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!row) return;
     const text = getSentText(idx);
     if (!text) { hideTransPanel(); return; }
-    if (_trCache[idx]) { row.textContent = _trCache[idx]; return; }
+    const ck = trKey(text);                 // '문장 텍스트' 기준 캐시 키(인덱스 X) → 항상 그 문장에 정확히 매칭
+    if (_trCache[ck]) { row.textContent = _trCache[ck]; return; }
     const seq = ++_trSeq;
     const ko = await translateEnKo(text);   // 절대 throw 안 함
     if (seq !== _trSeq) return;             // 더 최신 문장으로 넘어갔으면 폐기
     if (ko) {
       row = sel(); if (row) row.textContent = ko;
-      _trCache[idx] = ko; saveTrCache(ep.id, _trCache);
+      _trCache[ck] = ko; saveTrCache(ep.id, _trCache);
     } else {
       hideTransPanel();                     // 실패/한도 → 조용히 숨김
     }
     // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만, 캐시에만 저장
     const nxt = idx + 1;
-    if (showTrans && nxt < sentRanges.length && _trCache[nxt] == null && !isEasySentence(nxt)) {
+    if (showTrans && nxt < sentRanges.length && !isEasySentence(nxt)) {
       const t2 = getSentText(nxt);
-      if (t2) translateEnKo(t2).then((k) => { if (k) { _trCache[nxt] = k; saveTrCache(ep.id, _trCache); } });
+      const ck2 = trKey(t2);
+      if (t2 && _trCache[ck2] == null) translateEnKo(t2).then((k) => { if (k) { _trCache[ck2] = k; saveTrCache(ep.id, _trCache); } });
     }
   }
   // 현재 문장이 "easy" 인가 — 어려운 표현(vocab)이 있거나 흔치 않은 단어가 있으면 not-easy.
@@ -900,11 +902,17 @@ async function translateEnKo(text) {
   if (ko) _TR_MEM.set(key, ko);  // 성공한 것만 캐시(빈 값은 캐시 안 함 → 한도 회복 후 재시도 가능)
   return ko;
 }
+// 번역 캐시 키 = '문장 텍스트'(정규화). 인덱스 기준이면 resegment/광고 슬라이스로 문장 경계가 바뀔 때
+// 같은 인덱스가 다른 문장을 가리켜 번역이 엉뚱한 문장에 붙는다(영↔한 mismatch). 텍스트 기준이면 안전.
+function trKey(text) {
+  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 180);
+}
 function loadTrCache(epId) {
-  try { return JSON.parse(localStorage.getItem('aep-tr-' + epId) || '{}'); } catch { return {}; }
+  try { localStorage.removeItem('aep-tr-' + epId); } catch (e) {}  // 구버전(인덱스 기반) 캐시 폐기 → mismatch 원인 제거
+  try { return JSON.parse(localStorage.getItem('aep-trk-' + epId) || '{}'); } catch { return {}; }
 }
 function saveTrCache(epId, obj) {
-  try { localStorage.setItem('aep-tr-' + epId, JSON.stringify(obj)); } catch (e) { /* quota */ }
+  try { localStorage.setItem('aep-trk-' + epId, JSON.stringify(obj)); } catch (e) { /* quota */ }
 }
 
 function resegment(segments) {
