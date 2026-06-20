@@ -458,6 +458,16 @@ export async function renderEpisode(root, idStr, tStr) {
       else if (sent) txSec = parseFloat(sent.dataset.start);
       else if (para) txSec = parseFloat(para.dataset.start);
       if (txSec == null) return;
+      // 반복 중에 다른 문장을 탭하면, 그 문장이 속한 문단으로 반복 대상을 옮긴다(그 문장이 반복됨).
+      if (shadowMode === 'loop') {
+        const pEl = para || (sent && sent.closest('.tx-para'));
+        const ps = pEl ? sentRanges.filter((s) => s.paraEl === pEl) : [];
+        if (ps.length) {
+          loopPara = paraEls.indexOf(pEl);
+          loopStart = ps[0].start;
+          loopEnd = ps[ps.length - 1].end;
+        }
+      }
       player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
       player.play();
       scrollSentIntoViewIfNeeded(sent || para);   // 이미 보이면 안 움직임(탭 그 자리서 시작)
