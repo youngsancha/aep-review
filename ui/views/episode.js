@@ -128,7 +128,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $speed = document.getElementById('np-speed');
   let speedIdx = 0;
   let shadowMode = 'off';  // off | loop(문장 반복)
-  let loopSent = -1;       // 반복 모드에서 되풀이할 문장의 고정 인덱스(누르는 순간 오디오 위치로 확정)
+  let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 모드: 되풀이할 '문단'과 그 시작/끝(자막시각)
 
   // === 싱크 (자동) ===
   // 모든 회차는 '서빙되는 R2 오디오 그 자체'로 STT(scripts/retranscribe.py --from-r2)되어
@@ -159,13 +159,11 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
 
-    // 쉐도잉 반복(loop): 누를 때 확정한 그 문장(loopSent)을 끝에서 처음으로 되돌려 무한 반복.
-    // lastActiveSent(=하이라이트, HL_LAG 만큼 지연)를 쓰면 경계 직후 '이전 문장'이 잡혀
-    // 엉뚱한 문장이 반복된다(사용자 보고). → 고정 loopSent 사용.
-    if (shadowMode === 'loop' && loopSent >= 0 && !player.paused) {
-      const cur = sentRanges[loopSent];
-      if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
-        player.seek(toAudio(cur.start) + 0.01);
+    // 쉐도잉 반복(loop): 누를 때 확정한 '문단' 전체를 끝(마지막 문장)에서 처음(첫 문장)으로 되돌려
+    // 무한 반복. 문단 안에선 문장이 정상 진행·하이라이트되고, 문단 끝에서만 처음으로 되감는다.
+    if (shadowMode === 'loop' && loopPara >= 0 && !player.paused) {
+      if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
+        player.seek(toAudio(loopStart) + 0.01);
       }
     }
   }
@@ -333,7 +331,10 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function _highlightImpl() {
     if (!sentRanges.length) return;
-    const t = txTime();
+    let t = txTime();
+    // 반복 모드: 문단 끝에서 처음으로 되감은 직후 txTime 이 HL_LAG(0.2s)만큼 뒤로 가 직전 문단이
+    // 잠깐 잡히는 것 방지 — 활성 판정 시각을 반복 문단 시작 아래로 안 내려가게 클램프.
+    if (shadowMode === 'loop' && loopPara >= 0) t = Math.max(t, loopStart);
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
     let inAd = null;
@@ -353,18 +354,6 @@ export async function renderEpisode(root, idStr, tStr) {
       return;
     }
     lastAdEl = null;
-    // 반복(loop) 모드: 활성 문장을 loopSent 에 고정한다. 매 되감기 직후 txTime 이 HL_LAG 만큼
-    // 뒤로 가 '직전 문장'이 잠깐 잡히면서 화면이 앞뒤로 튀던 '뒤틀림'을 제거 — 문장은 고정하고
-    // 단어 카라오케만 그 안에서 진행. 들어올 때 1회 정렬(토글 핸들러)했으니 스크롤도 멈춘다.
-    if (shadowMode === 'loop' && loopSent >= 0) {
-      if (lastActiveSent !== loopSent && sentRanges[loopSent]) {
-        if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
-        sentRanges[loopSent].el.classList.add('active');
-        lastActiveSent = loopSent;
-        renderNotes(loopSent);
-      }
-      return;
-    }
     const idx = findActiveSentIdx(t);
     if (idx === lastActiveSent) return;
 
@@ -542,21 +531,20 @@ export async function renderEpisode(root, idStr, tStr) {
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
     if (shadowMode === 'loop') {
-      // '지금 들리는' 문장을 오디오 위치(HL_LAG 미적용)로 확정 → 그 문장 처음으로 즉시 되감아 반복.
-      // 하이라이트(lastActiveSent)는 0.2s 지연이라 경계서 직전 문장을 집을 수 있어 audio 시각을 쓴다.
-      const audioTx = player.time - syncOffset;
-      loopSent = findActiveSentIdx(audioTx);
-      if (loopSent >= 0 && sentRanges[loopSent]) {
-        player.seek(toAudio(sentRanges[loopSent].start) + 0.01);
-        // 하이라이트·번역카드를 즉시 그 문장으로 고정하고, 화면은 1회만 살짝 정렬(이후 _highlightImpl 이 고정).
-        if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
-        sentRanges[loopSent].el.classList.add('active');
-        lastActiveSent = loopSent;
-        renderNotes(loopSent);
-        scrollSentIntoViewIfNeeded(sentRanges[loopSent].el);
+      // '지금 들리는' 문장이 속한 '문단' 전체를 반복 대상으로 확정 → 문단 처음으로 되감아 반복.
+      // 오디오 위치(HL_LAG 미적용)로 현재 문장을 찾고, 같은 문단의 첫/마지막 문장으로 경계를 잡는다.
+      const si = findActiveSentIdx(player.time - syncOffset);
+      if (si >= 0 && sentRanges[si]) {
+        const paraEl = sentRanges[si].paraEl;
+        const ps = sentRanges.filter((s) => s.paraEl === paraEl);
+        loopPara = paraEls.indexOf(paraEl);
+        loopStart = ps[0].start;
+        loopEnd = ps[ps.length - 1].end;
+        userScrolledUntil = 0;   // 자동추적 재개 → 문단 단위 정렬이 바로 작동
+        player.seek(toAudio(loopStart) + 0.01);   // 문단 처음부터
       }
     } else {
-      loopSent = -1;
+      loopPara = -1;
     }
     if (player.paused) player.play();  // 모드 전환 즉시 이어 재생 (반복→쉐도잉도 버튼 없이 바로 재생)
   });
@@ -674,7 +662,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
     let t = txTime();
     // 반복 모드: 되감기 직후 HL_LAG 로 t 가 직전 문장 단어로 내려가 카라오케가 깜빡이던 것 방지.
-    if (shadowMode === 'loop' && loopSent >= 0 && sentRanges[loopSent]) t = Math.max(t, sentRanges[loopSent].start);
+    if (shadowMode === 'loop' && loopPara >= 0) t = Math.max(t, loopStart);
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
