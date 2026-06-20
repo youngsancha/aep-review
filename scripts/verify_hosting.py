@@ -17,6 +17,7 @@ import json
 import re
 import statistics
 import sys
+import time
 import urllib.request
 
 from ingest import store
@@ -43,6 +44,38 @@ def _head_len(url):
     req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return int(r.headers.get("Content-Length") or 0)
+
+
+_BR = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+_SR = [44100, 48000, 32000]
+
+
+def mp3_duration(url, clen):
+    """R2 mp3 의 '실제' 길이(초). VBR=Xing 프레임수(정확), CBR=Content-Length/비트레이트(±수초).
+    회차마다 비트레이트가 달라서 바이트/일정비트레이트 비율로는 못 잰다 → 헤더를 직접 파싱."""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Range": "bytes=0-131071"})
+    data = urllib.request.urlopen(req, timeout=30).read()
+    off = 0
+    if data[:3] == b"ID3":
+        off = 10 + (((data[6] & 0x7f) << 21) | ((data[7] & 0x7f) << 14) | ((data[8] & 0x7f) << 7) | (data[9] & 0x7f))
+    i = off
+    while i < len(data) - 36:
+        if data[i] == 0xFF and (data[i + 1] & 0xE0) == 0xE0:
+            b1, b2 = data[i + 1], data[i + 2]
+            ver = (b1 >> 3) & 3; layer = (b1 >> 1) & 3
+            bi = (b2 >> 4) & 0xF; si = (b2 >> 2) & 3
+            if ver == 3 and layer == 1 and 0 < bi < 15 and si < 3:
+                br = _BR[bi] * 1000; sr = _SR[si]
+                xo = i + 4 + 32
+                if data[xo:xo + 4] in (b"Xing", b"Info"):
+                    if int.from_bytes(data[xo + 4:xo + 8], "big") & 1:
+                        fr = int.from_bytes(data[xo + 8:xo + 12], "big")
+                        return fr * 1152 / sr
+                return (clen - off) * 8 / br
+            i += 1
+        else:
+            i += 1
+    return None
 
 
 # ───────────────── resegment 포팅 (ui/views/episode.js 와 동일 기준) ─────────────────
@@ -116,8 +149,7 @@ def main():
     if not_hosted:
         print(f"  미호스팅: {sorted(not_hosted)[:40]}")
 
-    # B,C 회차별
-    ratios = []
+    # B,C 회차별 — R2 '실제' 오디오 길이를 헤더 파싱으로 측정(회차별 비트레이트 무관)
     rows = []
     for e in transcribed:
         eid = e["id"]
@@ -125,34 +157,33 @@ def main():
             continue
         if len(rows) >= args.limit:
             break
+        time.sleep(0.03)  # rate-limit 회피
+        url = f"https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev/{eid}.mp3"
         try:
             t = _get_json(f"{STORAGE}/transcripts/{eid}.json")
             tdur = t.get("duration") or (t["segments"][-1]["end"] if t.get("segments") else 0)
-            clen = _head_len(f"https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev/{eid}.mp3")
-            ratio = (clen / tdur) if tdur else 0
+            clen = _head_len(url)
+            adur = mp3_duration(url, clen) or 0
             q = seg_quality(t.get("segments"))
-            ratios.append(ratio)
-            rows.append((eid, tdur, clen, ratio, q))
+            rows.append((eid, tdur, adur, q))
         except Exception as ex:
-            rows.append((eid, None, None, None, {"err": str(ex)[:60]}))
+            rows.append((eid, None, None, {"err": str(ex)[:60]}))
 
-    med = statistics.median(ratios) if ratios else 0
-    print(f"\n=== B. 싱크(오디오길이==자막길이) — 기준 비율(median) {med:.1f} B/s ===")
+    TOL = 15.0  # CBR 파서오차(±수초)+미세 트레일링 허용; 그 이상은 실제 길이 불일치(싱크 불량)
+    print(f"\n=== B. 싱크(R2 실제 오디오길이 vs 자막길이, |Δ|>{TOL:.0f}s 플래그) ===")
     sync_bad = []
-    for (eid, tdur, clen, ratio, q) in rows:
-        if ratio is None:
-            sync_bad.append((eid, "fetch-err")); continue
-        dev = abs(ratio - med) / med if med else 1
-        # 비율 4% 이상 벗어나면 오디오 길이 != 자막 길이 → 싱크 불량 후보
-        if dev > 0.04:
-            est_audio = clen / med
-            sync_bad.append((eid, f"자막{tdur:.0f}s vs 오디오추정{est_audio:.0f}s (Δ{est_audio-tdur:+.0f}s)"))
-    print(f"싱크 의심 회차: {len(sync_bad)} / {len(rows)}")
-    for eid, why in sync_bad[:40]:
+    for (eid, tdur, adur, q) in rows:
+        if not adur or not tdur:
+            sync_bad.append((eid, "측정실패")); continue
+        d = adur - tdur
+        if abs(d) > TOL:
+            sync_bad.append((eid, f"자막{tdur:.0f}s vs 오디오{adur:.0f}s (Δ{d:+.0f}s)"))
+    print(f"싱크 불일치 회차: {len(sync_bad)} / {len(rows)}")
+    for eid, why in sync_bad[:60]:
         print(f"  ep{eid}: {why}")
 
     print(f"\n=== C. 문장분할(런온 잔존) ===")
-    seg_bad = [(eid, q) for (eid, _, _, _, q) in rows if q.get("runons")]
+    seg_bad = [(eid, q) for (eid, _, _, q) in rows if isinstance(q, dict) and q.get("runons")]
     print(f"런온 잔존 회차: {len(seg_bad)} / {len(rows)}")
     for eid, q in seg_bad[:40]:
         print(f"  ep{eid}: 문장{q['n']} 최대{q['max_w']}단어/{q['max_dur']}s 런온{q['runons']}")
