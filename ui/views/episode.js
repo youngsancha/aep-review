@@ -1033,6 +1033,9 @@ function resegment(segments) {
   // 끊어 "…is so | alive", "…layer of | yellow" 같은 구(句) 중간 하드캡 절단을 막는다.
   // 관계대명사(that/which/who)는 제외 — "the pollen that is in our area" 처럼 붙어야 자연스러운 절을 안 쪼개려고.
   const CONJ = /^(and|but|so|or|because|when|while|if|since|though|although|unless)$/i;
+  // 종결 구두점이 빠진(소형 STT) 자막에서도 문장 경계를 잡는 대문자 '문장-시작어'. 절이 ≥3단어
+  // 찼고 다음 단어가 대문자 시작어(But/They/If/He…)면 그 앞에서 끊는다('I'·고유명사는 목록에 없어 제외).
+  const STARTER = /^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also)$/;
   const out = [];
   let cur = null;
   let prevEnd = null;
@@ -1052,6 +1055,11 @@ function resegment(segments) {
     if (cur && cur.words.length >= 11) {
       const lead = (w.word || '').trim().replace(/^[^A-Za-z']+/, '').toLowerCase();
       if (CONJ.test(lead)) close();
+    }
+    // ②'' 대문자 문장-시작어 앞 분할 — 구두점이 빠진 자막의 문장 경계 복원(절이 ≥3단어일 때).
+    if (cur && cur.words.length >= 3) {
+      const raw = (w.word || '').trim().replace(/^[^A-Za-z']+/, '');
+      if (/^[A-Z]/.test(raw) && STARTER.test(raw.split("'")[0])) close();
     }
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);

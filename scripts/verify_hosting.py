@@ -83,6 +83,7 @@ ENDS = re.compile(r'[.!?…]["\')\]]?$')
 COMMA = re.compile(r'[,;:]["\')\]]?$')
 CONJ = re.compile(r"^(and|but|so|or|because|when|while|if|since|though|although|unless)$", re.I)
 _LEAD = re.compile(r"^[^A-Za-z']+")
+STARTER = re.compile(r"^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also)$")
 
 
 def resegment(segments):
@@ -106,6 +107,10 @@ def resegment(segments):
             out.append(cur); cur = None
         if cur and len(cur["words"]) >= 11 and CONJ.match(_LEAD.sub("", (w["word"] or "").strip()).lower()):
             out.append(cur); cur = None
+        if cur and len(cur["words"]) >= 3:
+            raw = _LEAD.sub("", (w["word"] or "").strip())
+            if raw[:1].isupper() and STARTER.match(raw.split("'")[0]):
+                out.append(cur); cur = None
         if not cur:
             cur = {"start": w["start"], "end": w["end"], "words": []}
         cur["words"].append(w)
