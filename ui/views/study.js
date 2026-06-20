@@ -10,12 +10,12 @@ const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', w
 
 // Study 예문 재생 — 가능하면 Shana '실제 음성'(에피소드 클립)으로, 없으면 TTS 폴백.
 // 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
-function playExample(c) {
+function playExample(c, rate) {
   if (!c) return;
   if (c.audio_url && c.sentence_start_sec != null)
-    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null);
+    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate);
   else
-    speak(c.example_sentence);
+    speak(c.example_sentence, rate ? { playbackRate: rate } : undefined);
 }
 
 export async function renderStudy(root) {
@@ -412,7 +412,7 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="d-exit">← Study 홈</button>`;
       const input = root.querySelector('#d-in');
       input.focus();
-      const replay = (pb) => speak(c.example_sentence, pb ? { playbackRate: pb } : undefined);
+      const replay = (pb) => playExample(c, pb);  // Shana 실제 음성(없으면 TTS), 천천히=속도인자
       requestAnimationFrame(() => replay());
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#d-spk').addEventListener('click', () => replay());

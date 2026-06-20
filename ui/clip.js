@@ -15,10 +15,10 @@ export function stopClip() {
   if (_btn) { _btn.classList.remove('ctx-playing'); _btn = null; }
 }
 
-// url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택).
-export function playSentenceClip(url, start, end, btn) {
+// url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택). rate: 재생속도(받아쓰기 천천히 등).
+export function playSentenceClip(url, start, end, btn, rate) {
   if (!url) return;
-  const toggleOff = (_btn === btn && _clip);  // 같은 버튼 재탭 → 정지
+  const toggleOff = (_btn === btn && _clip && btn);  // 같은 버튼 재탭 → 정지(버튼 없으면 토글 안 함)
   stopClip();
   if (toggleOff) return;
   try { player.pause(); } catch (e) {}        // 전역 에피소드 재생은 멈추고 '문장만'
@@ -26,9 +26,10 @@ export function playSentenceClip(url, start, end, btn) {
   const e = (Number.isFinite(+end) && +end > s) ? +end : s + 14;  // end 없으면 14s 캡
   const a = new Audio(url);
   a.preload = 'auto';
+  if (rate && rate > 0) a.playbackRate = rate;  // currentTime 은 미디어시각이라 종료판정엔 영향 없음
   _clip = a; _btn = btn || null;
   if (btn) btn.classList.add('ctx-playing');
-  const go = () => { try { a.currentTime = s; } catch (_) {} a.play().catch(() => {}); };
+  const go = () => { try { a.currentTime = s; } catch (_) {} if (rate && rate > 0) a.playbackRate = rate; a.play().catch(() => {}); };
   if (a.readyState >= 1) go();
   else a.addEventListener('loadedmetadata', go, { once: true });
   a.ontimeupdate = () => { if (a.currentTime >= e) stopClip(); };  // 문장 끝에서 정지
