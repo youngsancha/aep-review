@@ -78,7 +78,10 @@ export async function getEpisode(id) {
 async function fetchTranscript(id, transcribedAt) {
   if (!transcribedAt) return null;
   try {
-    const r = await fetch(`${STORAGE_URL}/transcripts/${id}.json`, { cache: 'force-cache' });
+    // 캐시버스트: transcribed_at 을 URL 버전키로 → 재싱크(--from-r2)로 transcript 가 바뀌면
+    // URL 이 달라져 항상 새 자막을 받는다. force-cache 는 '버전별 불변 URL' 이라 그대로 유지
+    // (한 번 받은 버전은 영구 캐시 → 빠름). 이게 없으면 옛 자막이 새 R2 오디오와 ~1s 어긋나던 버그.
+    const r = await fetch(`${STORAGE_URL}/transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`, { cache: 'force-cache' });
     if (!r.ok) return null;
     return await r.json();
   } catch {
