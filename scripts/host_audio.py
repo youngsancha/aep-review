@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import tempfile
 import time
@@ -23,6 +24,15 @@ from ingest.audio_download import clean_audio_url, download_to
 log = logging.getLogger(__name__)
 
 
+def realigned_ids() -> set[int]:
+    # clean-URL 로 재정렬(aligned)된 회차만 호스팅해야 R2(clean) 오디오와 자막이 일치한다.
+    # 구버전 podtrac 자막 회차를 호스팅하면 어긋나므로 제외.
+    try:
+        return set(json.loads((store.PROJECT_ROOT / "data" / "retranscribe_done.json").read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=300, help="이번 실행 호스팅 상한")
@@ -32,14 +42,17 @@ def main() -> None:
 
     rows = store.episodes_by_recency()  # 최신부터
     hosted = set() if args.redo else store.load_hosted()
+    aligned = realigned_ids()
     ok = skip = fail = 0
     t0 = time.time()
     for r in rows:
         if ok >= args.limit:
             break
         ep_id = r["id"]
-        if not r.get("transcribed_at"):
-            continue  # 자막 없는 회차 — 아직 호스팅 불가
+        if ep_id not in aligned:
+            continue  # 재정렬(clean-URL)된 회차만 — 자막=clean오디오 일치 보장
+        if not r.get("audio_url"):
+            continue
         if not r.get("audio_url"):
             continue
         if ep_id in hosted:
