@@ -1587,6 +1587,9 @@ body.logged-out #app-version { display: none; }
 .speak-ab-row .study-cta-btn { flex: 0 0 auto; white-space: nowrap; }
 .speak-ab-row .speak-audio { flex: 1; margin: 0; }
 
+/* 한→영 말로 생산: 한국어 제시문(영어는 가림 → 직접 산출) */
+.prod-ko { font-size: 20px; font-weight: 700; line-height: 1.5; color: var(--text); letter-spacing: -0.01em; margin: 6px 0; }
+
 /* ── 빈칸 채우기(Cloze) ── */
 .cloze-card { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-card); padding: 22px 18px; margin-bottom: 14px; }
 .cloze-sent { font-family: var(--font); font-size: 19px; line-height: 1.6; color: var(--text); letter-spacing: -0.01em; }

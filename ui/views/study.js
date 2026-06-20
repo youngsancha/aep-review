@@ -4,6 +4,7 @@ import { escapeHtml, highlightTerm } from '/app.js';
 import { studyOverview, expressionsByKind, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
+import { translateEnKo } from '/translate.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
@@ -108,6 +109,7 @@ export async function renderStudy(root) {
         <button class="study-quiz-btn" id="study-quiz-dict">✍️ 받아쓰기</button>
         <button class="study-quiz-btn" id="study-quiz-cloze">🧩 빈칸</button>
         <button class="study-quiz-btn" id="study-quiz-speak">🎤 스피킹</button>
+        <button class="study-quiz-btn" id="study-quiz-prod">🗣️ 한→영</button>
         <button class="study-quiz-btn" id="study-quiz-sent">💬 문장</button>
       </div>
     `;
@@ -190,6 +192,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
+    root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
     if (sq) {
@@ -620,6 +623,155 @@ export async function renderStudy(root) {
     }
 
     paintSp();
+  }
+
+  // ── 한→영 '말로 생산'(Production) — 한국어 뜻만 보고 영어를 직접 '말한다' → 이해/모방을 넘어 '구사' ──
+  // 기존 스피킹(영어 보고 따라말하기=모방)과 달리 영어를 가리고 한국어→영어 산출. 네이티브 회화 핵심.
+  function startProduction() {
+    stopClip();
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3);
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">말하기 연습할 예문이 아직 없어요.</div>';
+      return;
+    }
+    const cards = _shuffle(pool).slice(0, Math.min(10, pool.length));
+    let idx = 0, scoreSum = 0, scored = 0;
+
+    function finishPr() {
+      const avg = scored ? Math.round(scoreSum / scored) : 0;
+      const msg = !scored ? '연습 완료! 🗣️' : avg >= 80 ? '원어민처럼 구사했어요! 🌟' : avg >= 55 ? '좋아요, 더 자연스럽게! 💪' : '천천히 영어로 옮겨봐요 🔁';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${scored ? avg + '점' : cards.length}</div>
+          <div class="quiz-sum-pct">${scored ? '평균 생산(말하기) 정확도' : '한→영 말하기 완료'}</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="pr-again">다시</button>
+            <button class="study-cta-btn secondary" id="pr-home">Study 홈</button>
+          </div>
+        </div>`;
+      root.querySelector('#pr-again').addEventListener('click', startProduction);
+      root.querySelector('#pr-home').addEventListener('click', () => renderStudy(root));
+    }
+
+    async function paintPr() {
+      if (idx >= cards.length) return finishPr();
+      const c = cards[idx];
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">🗣️ 한→영</span></div>
+        <div class="speak-card">
+          <div class="speak-label">🇰🇷 한국어를 보고 영어로 말하세요</div>
+          <div class="prod-ko" id="pr-ko">번역 불러오는 중…</div>
+          ${c.term ? `<div class="speak-def">힌트 표현: <b>${escapeHtml(c.term)}</b></div>` : ''}
+        </div>
+        <button class="speak-mic" id="pr-mic"><span class="speak-mic-ico">🎤</span><span id="pr-mic-label">${SR ? '말하기' : '녹음'}</span></button>
+        <div class="speak-hint" id="pr-hint">${SR ? '영어로 말한 뒤 정답과 비교돼요' : '⚠️ 음성 인식 미지원 — 녹음 후 정답과 비교 (Chrome·Android 권장)'}</div>
+        <div id="pr-result"></div>
+        <div class="dict-actions"><button class="study-cta-btn secondary" id="pr-reveal">모르겠어요 (정답 보기)</button></div>
+        <button class="quiz-exit" id="pr-exit">← Study 홈</button>`;
+      root.querySelector('#pr-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#pr-reveal').addEventListener('click', () => revealPr('', c));
+      // 한국어는 비동기 로드(실패해도 진행: 표현 뜻 폴백). translateEnKo 는 절대 throw 안 함.
+      const ko = await translateEnKo(c.example_sentence);
+      const koEl = root.querySelector('#pr-ko');
+      if (koEl) koEl.textContent = ko || (c.definition ? `(뜻 힌트) ${c.definition}` : '표현을 활용해 영어로 말해보세요');
+      const mic = root.querySelector('#pr-mic');
+      if (SR) wirePrRec(mic, c); else wirePrRecorder(mic, c);
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
+    }
+
+    function revealPr(said, c, recUrl) {
+      const sc = said ? Math.round(scoreText(said, c.example_sentence) * 100) : 0;
+      if (said) { scoreSum += sc; scored++; }
+      const cls = !said ? 'partial' : sc >= 80 ? 'correct' : sc >= 55 ? 'partial' : 'wrong';
+      root.querySelector('#pr-result').innerHTML = `
+        <div class="dict-result ${cls}">
+          <div class="dict-score">${said ? `생산 정확도 ${sc}점` : '정답'}</div>
+          <div class="dict-answer">${said ? diffHtml(said, c.example_sentence) : escapeHtml(c.example_sentence)}</div>
+          ${said ? `<div class="speak-heard">내가 말함: “${escapeHtml(said)}”</div>` : ''}
+          <div id="pr-compare" class="speak-compare"></div>
+          <button class="study-cta-btn" id="pr-next">다음 →</button>
+        </div>`;
+      root.querySelector('#pr-next').addEventListener('click', () => { idx++; paintPr(); });
+      requestAnimationFrame(() => playExample(c));  // 정답 원어민 음성 자동 재생(귀로 확인)
+      if (recUrl) {
+        const box = root.querySelector('#pr-compare');
+        if (box) {
+          box.innerHTML = `
+            <div class="speak-ab-label">🎧 내 발음 다시 듣기 · 원문과 비교</div>
+            <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig2">🔊 원문</button><audio class="speak-audio" controls src="${recUrl}"></audio></div>`;
+          box.querySelector('#pr-orig2').addEventListener('click', () => playExample(c));
+        }
+      }
+    }
+
+    // 인식(점수) + 병렬 녹음(내 발음 비교) — v93 스피킹과 동일 패턴, 완전 가드.
+    function wirePrRec(mic, c) {
+      let listening = false, rec = null, myRec = null, myStream = null, chunks = [];
+      const label = () => root.querySelector('#pr-mic-label');
+      function reset() { listening = false; mic.classList.remove('listening'); const l = label(); if (l) l.textContent = '말하기'; }
+      function stopMyRec() { try { if (myRec && myRec.state !== 'inactive') myRec.stop(); } catch (e) {} }
+      mic.addEventListener('click', async () => {
+        if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+        chunks = [];
+        let pendingUrl = null;
+        try {
+          myStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          myRec = new MediaRecorder(myStream); myRec.ondataavailable = (e) => chunks.push(e.data);
+          myRec.onstop = () => {
+            try { myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+            if (chunks.length) { pendingUrl = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+              const box = root.querySelector('#pr-compare'); if (box) revealAttachRec(box, pendingUrl, c); }
+          };
+          myRec.start();
+        } catch (e) { myRec = null; }
+        rec = new SR();
+        rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+        listening = true; mic.classList.add('listening');
+        const l = label(); if (l) l.textContent = '듣는 중…';
+        rec.onresult = (e) => { reset(); revealPr((e.results[0][0].transcript || '').trim(), c); stopMyRec(); };
+        rec.onerror = (e) => { reset(); stopMyRec(); const h = root.querySelector('#pr-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해주세요' : '인식 실패 — 다시 시도'; };
+        rec.onend = () => { if (listening) { reset(); stopMyRec(); } };
+        try { rec.start(); } catch (e) { reset(); stopMyRec(); }
+      });
+    }
+    // revealPr 가 먼저 #pr-compare 를 만들고, 녹음 blob 이 준비되면 그 안에 A/B 를 채운다.
+    function revealAttachRec(box, url, c) {
+      box.innerHTML = `
+        <div class="speak-ab-label">🎧 내 발음 다시 듣기 · 원문과 비교</div>
+        <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig3">🔊 원문</button><audio class="speak-audio" controls src="${url}"></audio></div>`;
+      box.querySelector('#pr-orig3').addEventListener('click', () => playExample(c));
+    }
+
+    function wirePrRecorder(mic, c) {
+      let recorder = null, chunks = [], recording = false;
+      const label = () => root.querySelector('#pr-mic-label');
+      mic.addEventListener('click', async () => {
+        if (recording) { try { recorder && recorder.stop(); } catch (e) {} return; }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const h = root.querySelector('#pr-hint'); if (h) h.textContent = '이 브라우저는 녹음을 지원하지 않아요.'; mic.disabled = true; return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          recorder = new MediaRecorder(stream); chunks = [];
+          recorder.ondataavailable = (e) => chunks.push(e.data);
+          recorder.onstop = () => {
+            stream.getTracks().forEach((t) => t.stop());
+            const url = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+            recording = false; mic.classList.remove('listening');
+            revealPr('', c, url);  // 인식 불가 → 점수 없이 정답+내 녹음 비교만
+          };
+          recorder.start(); recording = true; mic.classList.add('listening');
+          const l = label(); if (l) l.textContent = '녹음 중… (탭하면 종료)';
+        } catch (e) {
+          const h = root.querySelector('#pr-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
+        }
+      });
+    }
+
+    paintPr();
   }
 
   // ── 빈칸 채우기(Cloze) — 예문에서 표현을 가리고 떠올려 입력 → 능동 회상 ──
