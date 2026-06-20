@@ -974,24 +974,32 @@ body.on-episode {
 }
 .tx-card.show-ts .tx-para .ts { display: inline; }
 
-.tx-para.played { color: rgba(60, 60, 67, 0.30); }
+/* 지나간 문단: 너무 어두워 안 보이던 문제(#) 수정 — 테마 인식 색으로 '살짝만' 흐리게.
+   (이전 rgba(60,60,67,.30) 은 라이트색 고정이라 다크에서 배경에 묻혀 안 보였다.) */
+.tx-para.played { color: var(--text-3); }
 .tx-para.active {
   color: var(--text-2);
   font-weight: 500;
 }
 
-/* 현재 "문장"이 시각 강조의 주체 (Apple식): 또렷한 검정 + 굵게 */
+/* 현재 "문장"이 시각 강조의 주체 (Apple식): '색'으로만 또렷하게.
+   ⚠ 굵기(font-weight)는 절대 바꾸지 않는다 — 굵어지면 글자폭이 늘어 줄바꿈이 달라지고,
+   문장이 위로 올라올 때 오른쪽 끝 단어가 다음 줄로 밀리며 레이아웃이 튄다(사용자 보고). */
 .tx-sent {
   border-radius: 6px;
   padding: 1px 0;
   transition: color 0.15s ease;
 }
-.tx-sent.active { color: var(--text); font-weight: 600; }
-/* 문장 안 단어 음영 (Apple식): 다음 단어 흐림 → 현재 tint → 지나간 단어 진함 */
-.tx-scroll .w { transition: color 0.22s ease; }
+.tx-sent.active { color: var(--text); }   /* 굵게 X — 색만 또렷이(리플로우 방지) */
+/* 문장 안 단어 음영 (Apple식): 다음 단어 흐림 → 현재 tint → 지나간 단어 진함. 모두 '색'만 변경 */
+.tx-scroll .w { transition: color 0.18s ease; }
 .tx-sent.active .w { color: var(--text-3); }        /* 아직 안 지난(다음) 단어 */
 .tx-sent.active .w.spoken { color: var(--text); }   /* 이미 지나간 단어 */
-.tx-sent.active .w.cur { color: var(--tint); font-weight: 700; }  /* 지금 말하는 단어 */
+.tx-sent.active .w.cur {
+  color: var(--tint);                                /* 지금 말하는 단어 */
+  /* faux-weight: 레이아웃에 영향 없는 text-shadow 로만 살짝 또렷하게(굵기 변경 금지 → 리플로우 0) */
+  text-shadow: 0 0 0.6px currentColor;
+}
 
 /* Words: just clickable, no visual treatment */
 .w { cursor: pointer; }
@@ -1673,8 +1681,9 @@ a { color: var(--tint); }
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
   border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
-  padding: 11px 15px;
+  border: 0.5px solid var(--separator-thin);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  padding: 13px 16px;
   z-index: 2;
   max-height: 36vh; overflow-y: auto;
   opacity: 0; transform: translateY(10px) scale(0.98);
@@ -1709,23 +1718,28 @@ a { color: var(--tint); }
 
 /* ========== 현재 문장 한국어 번역 행 (#8) ========== */
 .tx-trans-row {
-  display: flex; gap: 9px; align-items: flex-start;
+  display: flex; gap: 12px; align-items: stretch;
 }
 .tx-trans-row:not(:last-child) {
   padding-bottom: 10px; margin-bottom: 10px;
   border-bottom: 0.5px solid var(--separator-thin);
 }
+/* 캔디 박스 대신 슬림 그라데이션 악센트 바 — 자막처럼 화면과 더 자연스럽게 어울리게(#). */
 .tx-trans-ico {
-  flex: 0 0 auto; margin-top: 2px;
-  width: 22px; height: 22px; border-radius: 7px;
-  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
-  font-size: 11px; font-weight: 800;
-  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+  width: 3px; align-self: stretch; min-height: 1.2em;
+  margin-top: 3px; margin-bottom: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--grad-1), var(--grad-3));
+  color: transparent; font-size: 0; line-height: 0; overflow: hidden;  /* "한" 글자는 막대로 대체 */
 }
 .tx-trans-ko {
-  /* 기본 21px(24px에서 한 단계↓), A−/A＋ 글자크기와 함께 스케일(--tx-scale) */
-  font-family: var(--font); font-size: calc(21px * var(--tx-scale, 1)); line-height: 1.5;
-  color: var(--text); font-weight: 600; letter-spacing: -0.01em;
+  /* 한글 번역은 '고정 크기'(21px) — A−/A＋(본문 --tx-scale)와 함께 커지/작아지지 않는다(사용자 요청).
+     본문(영어)만 A−/A＋ 로 조절되고, 번역은 늘 같은 크기로 안정적으로 보인다.
+     한글은 600 이 다소 무거워 500 으로 — 자막처럼 가볍고 읽기 좋게. */
+  font-family: var(--font); font-size: 21px; line-height: 1.55;
+  color: var(--text); font-weight: 500; letter-spacing: -0.01em;
+  align-self: center;
 }
 
 /* 번역 토글 on 상태 */

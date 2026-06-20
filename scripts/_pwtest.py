@@ -217,6 +217,14 @@ def main() -> int:
                 pg.click("#tx-fs-up"); time.sleep(0.1)
                 _a = pg.eval_on_selector(".tx-card", "el=>parseFloat(getComputedStyle(el).getPropertyValue('--tx-scale'))||1")
                 fs_ok = _a > _b
+            # 한글 번역 고정 크기(#): A＋ 로 본문(--tx-scale)이 커져도 .tx-trans-ko 폰트는 그대로여야(사용자 요청).
+            trans_fixed = None
+            pg.evaluate("window.__player.seek(71)"); time.sleep(0.3)  # 번역 패널 다시 노출
+            if pg.query_selector(".tx-trans-ko"):
+                _tb = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)")
+                if pg.query_selector("#tx-fs-up"): pg.click("#tx-fs-up"); time.sleep(0.1)
+                _ta = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)")
+                trans_fixed = (_tb is not None and _ta is not None and abs(_ta - _tb) < 0.5)
             # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지
             pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
             time.sleep(0.1)
@@ -231,7 +239,7 @@ def main() -> int:
             # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (term 이 없어야 정상)
             notes_no_vocab = "fill in the gap" not in (notes_text or "")
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
-            print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs)
+            print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
@@ -239,7 +247,7 @@ def main() -> int:
             ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and notes_no_vocab and about == 1
                      and trans_ok == "(테스트 번역)" and trans_default_on is True
-                     and trans_fs is not None and trans_fs >= 20
+                     and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok)
 

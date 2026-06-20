@@ -504,8 +504,8 @@ export async function renderEpisode(root, idStr, tStr) {
   // 글자 크기 조절 (#17) — 읽기 영역 스케일을 localStorage 에 저장
   const FS_KEY = 'aep-tx-scale';
   let txScale = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
-  // --tx-scale 을 시트 카드(.tx-card 와 .tx-notes 의 공통 조상)에 두어 본문 + 한글번역이
-  // 함께 스케일되도록(#: 번역 폰트도 A−/A＋ 로 조절).
+  // --tx-scale 은 시트 카드(.tx-card 와 .tx-notes 의 공통 조상)에 둔다 → 본문(영어 transcript)만
+  // A−/A＋ 로 스케일된다. 한글 번역(.tx-trans-ko)은 고정 크기라 --tx-scale 영향을 받지 않는다(사용자 요청).
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
@@ -891,8 +891,11 @@ function resegment(segments) {
   };
   for (const w of words) {
     const gap = (prevEnd != null && Number.isFinite(w.start)) ? (w.start - prevEnd) : 0;
-    // ② 현재 문장이 어느 정도 차고 큰 쉼(>0.7s)이 오면, 이 단어 전에서 끊는다(자연스러운 경계)
-    if (cur && cur.words.length >= 4 && gap > 0.7) close();
+    // ② 쉼(gap) 기반 분할 — diarization 없이 화자 전환/문장 경계를 추정한다.
+    //    큰 쉼(≥0.8s)은 거의 항상 경계(화자 교대 포함)라 짧아도 끊고, 중간 쉼(≥0.45s)은
+    //    절이 어느 정도 찼을 때만 끊는다 → Shana↔게스트가 한 문장으로 길게 이어지던 문제(#) 완화.
+    if (cur && ((cur.words.length >= 3 && gap > 0.8) ||
+                (cur.words.length >= 7 && gap > 0.45))) close();
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);
     if (Number.isFinite(w.end)) { cur.end = w.end; prevEnd = w.end; }
@@ -900,8 +903,8 @@ function resegment(segments) {
     const n = cur.words.length;
     const dur = cur.end - cur.start;
     if ((ENDS.test(txt) && n >= 2) ||           // ① 종결 구두점
-        (COMMA.test(txt) && n >= 12) ||         // ③ 긴 절은 콤마에서
-        dur > 14 || n >= 22) {                  // ④ 하드캡(너무 길면 무조건)
+        (COMMA.test(txt) && n >= 9) ||          // ③ 긴 절은 콤마에서(12→9: 더 적절한 길이로)
+        dur > 10 || n >= 16) {                  // ④ 하드캡(14s/22w → 10s/16w: 과하게 길지 않게)
       close();
     }
   }
