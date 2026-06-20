@@ -66,7 +66,7 @@ def resegment(segments):
     prev_end = None
     for w in words:
         gap = (w["start"] - prev_end) if (prev_end is not None and isinstance(w["start"], (int, float))) else 0
-        if cur and ((len(cur["words"]) >= 3 and gap > 0.8) or (len(cur["words"]) >= 7 and gap > 0.45)):
+        if cur and (gap > 1.5 or (len(cur["words"]) >= 3 and gap > 0.8) or (len(cur["words"]) >= 7 and gap > 0.45)):
             out.append(cur); cur = None
         if not cur:
             cur = {"start": w["start"], "end": w["end"], "words": []}

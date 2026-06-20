@@ -1070,7 +1070,8 @@ function resegment(segments) {
     // ② 쉼(gap) 기반 분할 — diarization 없이 화자 전환/문장 경계를 추정한다.
     //    큰 쉼(≥0.8s)은 거의 항상 경계(화자 교대 포함)라 짧아도 끊고, 중간 쉼(≥0.45s)은
     //    절이 어느 정도 찼을 때만 끊는다 → Shana↔게스트가 한 문장으로 길게 이어지던 문제(#) 완화.
-    if (cur && ((cur.words.length >= 3 && gap > 0.8) ||
+    if (cur && (gap > 1.5 ||                       // 큰 비발화 간격(긴 쉼·음악·광고구간 등)은 단어수 무관 분리
+                (cur.words.length >= 3 && gap > 0.8) ||
                 (cur.words.length >= 7 && gap > 0.45))) close();
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);
