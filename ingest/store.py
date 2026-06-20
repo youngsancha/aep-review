@@ -181,7 +181,7 @@ def insert_vocab_and_srs(ep_id: int, vocab_list: list[dict[str, Any]]) -> tuple[
 
 # ─────────────────────────── TTS (Storage) ───────────────────────────
 def tts_key(text: str, voice: str = TTS_VOICE, rate: str = TTS_RATE) -> str:
-    """api/routes_tts.py::_cache_path · ui/tts.js · 마이그레이션과 동일한 sha1 키."""
+    """ui/tts.js 와 동일한 sha1 키 — 미리 생성 TTS 파일명의 단일 출처."""
     return hashlib.sha1(f"{voice}|{rate}|{text}".encode("utf-8")).hexdigest()
 
 

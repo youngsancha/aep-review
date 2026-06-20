@@ -13,7 +13,7 @@ export const VOICES = [
   { id: 'en-US-DavisNeural',   label: 'Davis',   sub: 'M · casual' },
   { id: 'en-US-AndrewNeural',  label: 'Andrew',  sub: 'M · calm' },
 ];
-// 인제스트가 미리 생성하는 기본 보이스/속도 (migrate_to_supabase.py 와 일치해야 함)
+// 인제스트가 미리 생성하는 기본 보이스/속도 (ingest/store.py 와 일치해야 함)
 const DEFAULT_VOICE = VOICES[0].id;
 const DEFAULT_RATE  = '-5%';
 
@@ -53,7 +53,7 @@ function browserFallback(text, playbackRate) {
   speechSynthesis.speak(u);
 }
 
-// migrate_to_supabase.py::tts_key / api/routes_tts.py::_cache_path 와 동일한 sha1 키.
+// ingest/store.py::tts_key 와 동일한 sha1 키.
 async function sha1Hex(s) {
   const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');

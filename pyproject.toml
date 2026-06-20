@@ -11,10 +11,6 @@ dependencies = [
     "claude-agent-sdk>=0.1",
     "python-dotenv>=1.0",
     "edge-tts>=7.0",
-    # 아래 fastapi/uvicorn 은 레거시 로컬 서버(api/)용 — 클라우드 배포엔 불필요
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
-    "python-multipart>=0.0.20",
 ]
 
 [project.optional-dependencies]
@@ -25,4 +21,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["api*", "ingest*"]
+include = ["ingest*"]

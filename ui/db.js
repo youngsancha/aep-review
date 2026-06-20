@@ -5,7 +5,7 @@ import { supabase, STORAGE_URL } from '/supabase.js';
 const NEW_LIMIT = 5;
 const REVIEW_LIMIT = 50;
 
-// 로컬(폰) 기준 오늘 날짜 YYYY-MM-DD — srs due_date 비교용 (api/routes_srs.py 의 date.today() 대응)
+// 로컬(폰) 기준 오늘 날짜 YYYY-MM-DD — srs due_date 비교용
 function todayStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -125,7 +125,7 @@ export async function expressionsByKind(kind, limit = 800) {
 // ─────────────────────────── SRS ───────────────────────────
 const GRADE_TO_Q = { again: 0, hard: 3, good: 4, easy: 5 };
 
-// api/routes_srs.py::sm2_update 포팅
+// SM-2 업데이트 — SRS 채점의 단일 출처(클라이언트)
 function sm2(ease, interval, reps, grade) {
   const q = GRADE_TO_Q[grade];
   if (q < 3) return { ease: Math.max(1.3, ease - 0.2), interval: 1, reps: 0 };

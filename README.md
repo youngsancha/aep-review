@@ -29,24 +29,16 @@ American English Podcast (Shana Thompson) 복습 PWA.
 
 ### 2. 키 채우기
 - 프론트: `ui/config.js` 에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
-- 인제스트/마이그레이션: 루트 `.env` 에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (`.env.example` 참고).
+- 인제스트: 루트 `.env` 에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (`.env.example` 참고).
 
-### 3. 기존 데이터 이관 (1회)
-```pwsh
-pip install -e .
-python -m scripts.migrate_to_supabase      # SQLite→Postgres + transcripts/tts→Storage
-```
-확인: Supabase Table Editor 에서 episodes 264 / vocab_cards 1905 / srs_cards 1905,
-Storage 에 `transcripts/1.json`·`tts/*.mp3`.
-
-### 4. 로컬 확인
+### 3. 로컬 확인
 ```pwsh
 npx serve ui          # 또는: python -m http.server 8000 --directory ui
 ```
 브라우저로 열어 로그인 → 타임라인/오디오/트랜스크립트/SRS 동작 확인.
 (crypto.subtle 은 https 또는 localhost 에서만 동작 — LAN IP http 로는 TTS 키 계산 불가)
 
-### 5. Vercel 배포
+### 4. Vercel 배포
 이 폴더는 git 미초기화 → GitHub repo 를 만들고(인제스트 cron 에도 필요) Vercel 에 연결.
 ```pwsh
 git init && git add -A && git commit -m "supabase+vercel migration"
@@ -69,10 +61,7 @@ python -m ingest.cron_fetch --no-vocab   # STT 만 (claude CLI 없을 때)
 ## 구조
 - `ui/` — PWA (vanilla JS). `db.js`=Supabase 데이터 shim, `supabase.js`/`config.js`=클라이언트.
 - `ingest/` — RSS/STT/vocab/TTS 파이프라인. `store.py`=Supabase sink(단일 출처).
-- `scripts/migrate_to_supabase.py` — 기존 로컬 데이터 1회 이관.
 - `supabase/` — `schema.sql` + 셋업 가이드.
-- `api/` — **레거시** 로컬 FastAPI+SQLite 서버. 클라우드 배포엔 미사용
-  (`api/db.py` 만 마이그레이션 소스로 쓰임).
 
 ## 비용
 $0 — Supabase 무료(DB 500MB / Storage 1GB / 대역폭 5GB) + Vercel Hobby +
