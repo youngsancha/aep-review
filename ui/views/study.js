@@ -490,8 +490,8 @@ export async function renderStudy(root) {
         <div id="sp-result"></div>
         <div class="dict-actions"><button class="study-cta-btn secondary" id="sp-skip">넘어가기</button></div>
         <button class="quiz-exit" id="sp-exit">← Study 홈</button>`;
-      root.querySelector('#sp-target').addEventListener('click', () => speak(c.example_sentence));
-      requestAnimationFrame(() => speak(c.example_sentence));
+      root.querySelector('#sp-target').addEventListener('click', () => playExample(c));
+      requestAnimationFrame(() => playExample(c));
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#sp-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#sp-skip').addEventListener('click', () => { idx++; paintSp(); });
@@ -557,7 +557,7 @@ export async function renderStudy(root) {
                   <button class="study-cta-btn" id="sp-next">다음 →</button>
                 </div>
               </div>`;
-            root.querySelector('#sp-orig').addEventListener('click', () => speak(c.example_sentence));
+            root.querySelector('#sp-orig').addEventListener('click', () => playExample(c));
             root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
           };
           recorder.start(); recording = true; mic.classList.add('listening');
