@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -117,29 +118,38 @@ def remap_vocab(ep_id: int, transcript: dict[str, Any]) -> int:
 
 
 # ─────────────────────── 재정렬 한 건 ───────────────────────
-def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = True) -> dict[str, Any]:
+def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = True,
+                     from_r2: bool = False) -> dict[str, Any]:
     ep_id = row["id"]
-    url = clean_audio_url(row["audio_url"])
+    if from_r2:
+        # 앱이 '실제로 트는' R2 오디오를 받아 그걸 STT → 자막 = 서빙 오디오 (완벽 일치).
+        # host_audio 의 별도 다운로드(광고 적재 다름)로 생긴 불일치를 근본 해결. 재업로드 불필요.
+        base = (os.environ.get("R2_PUBLIC_BASE") or "").rstrip("/")
+        url = f"{base}/{ep_id}.mp3"
+    else:
+        url = clean_audio_url(row["audio_url"])
     hosted = False
     with tempfile.TemporaryDirectory(prefix="aep_re_") as tmpdir:
         apath = Path(tmpdir) / f"{ep_id}.mp3"
         nbytes = download_to(url, apath)
         data = transcribe_one(apath)
-        if host_r2:  # 자막과 '같은 바이트'를 R2 에 올림 → 앱이 그걸 스트리밍, 영구 일치(완전 자동 싱크)
+        if host_r2 and not from_r2:  # 자막과 '같은 바이트'를 R2 에 올림(신규 호스팅용). from_r2 면 이미 R2 에 있음
             try:
                 store.upload_audio_r2(ep_id, apath)
                 hosted = True
             except Exception:
                 log.exception("R2 업로드 실패 ep=%s (자막은 계속 저장)", ep_id)
     data["aligned"] = True  # clean URL 정렬 → 클라이언트 offset 0
+    if host_r2 or from_r2:
+        data["r2_audio"] = True
     store.upload_transcript(ep_id, data)
     store.mark_transcribed(ep_id, data.get("duration"))
     n_remap = remap_vocab(ep_id, data) if remap else 0
-    if hosted:
+    if hosted or from_r2:
         store.mark_hosted(ep_id)
     return {
         "ep": ep_id, "bytes": nbytes, "dur": data.get("duration"),
-        "segments": len(data.get("segments", [])), "remap": n_remap, "hosted": hosted,
+        "segments": len(data.get("segments", [])), "remap": n_remap, "hosted": hosted or from_r2,
     }
 
 
@@ -160,6 +170,8 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=20, help="이번 실행 처리 상한")
     p.add_argument("--redo", action="store_true", help="이미 done 인 것도 다시")
     p.add_argument("--no-remap", action="store_true", help="vocab 타임스탬프 재매핑 생략")
+    p.add_argument("--from-r2", action="store_true",
+                   help="megaphone 대신 R2(서빙 오디오)를 받아 재STT → 자막=서빙오디오 완벽 일치(재업로드 X)")
     args = p.parse_args()
 
     if not (args.ids or args.recent or args.all):
@@ -181,7 +193,7 @@ def main() -> None:
             log.warning("skip ep=%s (no audio_url)", ep_id)
             continue
         try:
-            res = retranscribe_one(row, remap=not args.no_remap)
+            res = retranscribe_one(row, remap=not args.no_remap, from_r2=args.from_r2)
         except Exception:
             log.exception("retranscribe 실패 ep=%s", ep_id)
             continue
