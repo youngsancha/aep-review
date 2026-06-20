@@ -130,19 +130,10 @@ export async function renderEpisode(root, idStr, tStr) {
   let shadowMode = 'off';  // off | loop(문장 반복)
   let loopSent = -1;       // 반복 모드에서 되풀이할 문장의 고정 인덱스(누르는 순간 오디오 위치로 확정)
 
-  // === 싱크 보정 (#) ===
-  // megaphone DAI 는 재생마다 '다른 길이의 광고'를 끼워, 우리가 STT 한 오디오와 실제 스트림의
-  // 광고 길이가 달라질 수 있다(재STT 로도 광고 로테이션은 못 따라감). 그래서 회차별 '상수 오프셋'
-  // 보정을 둔다: syncOffset = (오디오 시각 − 자막 시각). 사용자가 '지금 들리는 문장'을 한 번 탭하면
-  // 계산·저장(localStorage)되어 이후 자막↔오디오가 정확히 맞는다. 기본 0(보정 안 함).
-  // 완벽 싱크의 '진짜' 조건은 자막이 '서빙되는 R2 오디오 그 자체'로 STT 됐을 때다 → 그 표시가
-  // transcript.r2_audio === true (scripts/retranscribe.py --from-r2). 이 회차만 offset 0·보정 불필요.
-  // 단순히 R2 에 올라가 있기만 한(host_audio 로 별도 다운로드 업로드) 회차는 자막≠서빙오디오일 수 있어
-  // (DAI 광고 적재 다름) → 보정 버튼을 남겨 사용자가 맞출 수 있게 한다. R2 는 세션마다 안 바뀌므로
-  // 한 번 보정하면 영구 고정. 재싱크 백필이 끝나면 모든 회차가 isSynced 가 된다.
-  const isSynced = ep.transcript?.r2_audio === true;
-  const SYNC_KEY = 'aep-sync-' + ep.id;
-  let syncOffset = isSynced ? 0 : (parseFloat(localStorage.getItem(SYNC_KEY) || '0') || 0);
+  // === 싱크 (자동) ===
+  // 모든 회차는 '서빙되는 R2 오디오 그 자체'로 STT(scripts/retranscribe.py --from-r2)되어
+  // 자막 ≡ 스트림이 보장된다 → 클라이언트 오프셋 0(자동 싱크). 수동 보정(🎯) UI 는 제거됨.
+  const syncOffset = 0;
   // HL_LAG: whisper 단어 타임스탬프가 음성보다 살짝 빨라, 하이라이트를 약간 늦게 따라오게(>0).
   const HL_LAG = 0.2;
   const txTime = () => player.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
@@ -362,6 +353,18 @@ export async function renderEpisode(root, idStr, tStr) {
       return;
     }
     lastAdEl = null;
+    // 반복(loop) 모드: 활성 문장을 loopSent 에 고정한다. 매 되감기 직후 txTime 이 HL_LAG 만큼
+    // 뒤로 가 '직전 문장'이 잠깐 잡히면서 화면이 앞뒤로 튀던 '뒤틀림'을 제거 — 문장은 고정하고
+    // 단어 카라오케만 그 안에서 진행. 들어올 때 1회 정렬(토글 핸들러)했으니 스크롤도 멈춘다.
+    if (shadowMode === 'loop' && loopSent >= 0) {
+      if (lastActiveSent !== loopSent && sentRanges[loopSent]) {
+        if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
+        sentRanges[loopSent].el.classList.add('active');
+        lastActiveSent = loopSent;
+        renderNotes(loopSent);
+      }
+      return;
+    }
     const idx = findActiveSentIdx(t);
     if (idx === lastActiveSent) return;
 
@@ -446,42 +449,7 @@ export async function renderEpisode(root, idStr, tStr) {
     const target = relTop + $tx.scrollTop - Math.max(8, h * 0.22);
     smoothScrollTo(Math.max(0, Math.min(target, $tx.scrollHeight - h)));
   }
-  // === 싱크 보정 — DAI 로 어긋난 회차를 '지금 들리는 문장' 한 번 탭으로 맞춤 ===
-  let calibrating = false;
-  let syncBannerTimer = 0;
-  function showSyncBanner(msg, hideAfter) {
-    if (!$sheet) return;
-    let el = $sheet.querySelector('.tx-sync-banner');
-    if (!el) { el = document.createElement('div'); el.className = 'tx-sync-banner'; ($sheet.querySelector('.tx-sheet-card') || $sheet).appendChild(el); }
-    el.textContent = msg; el.classList.add('show');
-    clearTimeout(syncBannerTimer);
-    if (hideAfter) syncBannerTimer = setTimeout(() => el.classList.remove('show'), hideAfter);
-  }
-  const $syncBtn = document.getElementById('tx-sync');
-  function reflectSyncBtn() {
-    if (!$syncBtn) return;
-    const on = Math.abs(syncOffset) > 0.05;
-    $syncBtn.classList.toggle('on', on);
-    $syncBtn.textContent = on ? `🎯 ${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s` : '🎯 싱크';
-  }
-  reflectSyncBtn();
-  if (isSynced && $syncBtn) $syncBtn.style.display = 'none';  // 재싱크(r2_audio) 회차만 완벽 → 버튼 숨김; 미재싱크는 보정 가능하게 유지
-  function applySync(offset) {
-    syncOffset = Math.round(offset * 100) / 100;
-    try { localStorage.setItem(SYNC_KEY, String(syncOffset)); } catch (e) {}
-    lastActiveSent = -1; lastAdEl = null;        // 강제 재평가
-    highlightActiveSegment(); updateWord();
-    reflectSyncBtn();
-  }
-  $syncBtn?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (calibrating) { calibrating = false; $syncBtn.classList.remove('calibrating'); reflectSyncBtn(); showSyncBanner('보정 취소', 1200); return; }
-    calibrating = true; $syncBtn.classList.add('calibrating');
-    showSyncBanner('🎯 지금 들리는 문장을 탭하세요 (버튼 길게누르면 해제)');
-  });
-  let syncHold = 0;   // 버튼 길게누르기 → 보정 0 으로 해제
-  $syncBtn?.addEventListener('pointerdown', () => { syncHold = setTimeout(() => { calibrating = false; $syncBtn.classList.remove('calibrating'); applySync(0); showSyncBanner('싱크 보정 해제', 1200); }, 600); });
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => $syncBtn?.addEventListener(ev, () => clearTimeout(syncHold)));
+  // (수동 싱크 보정 UI 제거됨 — 모든 회차가 R2 재STT 로 자동 싱크(offset 0))
 
   if ($tx) {
     $tx.addEventListener('click', (e) => {
@@ -493,14 +461,7 @@ export async function renderEpisode(root, idStr, tStr) {
       else if (sent) txSec = parseFloat(sent.dataset.start);
       else if (para) txSec = parseFloat(para.dataset.start);
       if (txSec == null) return;
-      if (calibrating) {        // '지금 들리는 문장' → offset = 현재 오디오 시각 − 자막 시각
-        calibrating = false; $syncBtn?.classList.remove('calibrating');
-        applySync(player.time - txSec);
-        showSyncBanner(`✓ 싱크 맞춤 (${syncOffset > 0 ? '+' : ''}${syncOffset.toFixed(1)}s) · 이 회차에 저장됨`, 1800);
-        scrollSentToCenter(sent || para);
-        return;
-      }
-      player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각(보정 반영)
+      player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
       player.play();
       scrollSentIntoViewIfNeeded(sent || para);   // 이미 보이면 안 움직임(탭 그 자리서 시작)
     });
@@ -577,7 +538,15 @@ export async function renderEpisode(root, idStr, tStr) {
       // 하이라이트(lastActiveSent)는 0.2s 지연이라 경계서 직전 문장을 집을 수 있어 audio 시각을 쓴다.
       const audioTx = player.time - syncOffset;
       loopSent = findActiveSentIdx(audioTx);
-      if (loopSent >= 0 && sentRanges[loopSent]) player.seek(toAudio(sentRanges[loopSent].start) + 0.01);
+      if (loopSent >= 0 && sentRanges[loopSent]) {
+        player.seek(toAudio(sentRanges[loopSent].start) + 0.01);
+        // 하이라이트·번역카드를 즉시 그 문장으로 고정하고, 화면은 1회만 살짝 정렬(이후 _highlightImpl 이 고정).
+        if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
+        sentRanges[loopSent].el.classList.add('active');
+        lastActiveSent = loopSent;
+        renderNotes(loopSent);
+        scrollSentIntoViewIfNeeded(sentRanges[loopSent].el);
+      }
     } else {
       loopSent = -1;
     }
@@ -695,7 +664,9 @@ export async function renderEpisode(root, idStr, tStr) {
   function updateWord() {
     if (!wordTimed.length) return;
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
-    const t = txTime();
+    let t = txTime();
+    // 반복 모드: 되감기 직후 HL_LAG 로 t 가 직전 문장 단어로 내려가 카라오케가 깜빡이던 것 방지.
+    if (shadowMode === 'loop' && loopSent >= 0 && sentRanges[loopSent]) t = Math.max(t, sentRanges[loopSent].start);
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
@@ -964,7 +935,6 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-sync" class="tx-toggle tx-sync-btn" aria-label="싱크 맞추기">🎯 싱크</button>
             <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
             <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
           </div>
