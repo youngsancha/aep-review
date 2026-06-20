@@ -8,6 +8,26 @@ import { playSentenceClip, stopClip } from '/clip.js';
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
 
+// 데일리 학습 스트릭 — 매일 꾸준함이 유창성의 핵심. Study 를 연 날을 기록해 연속일을 센다(추가형).
+const _dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function markStudyDay() {
+  try {
+    const s = new Set(JSON.parse(localStorage.getItem('aep-study-days') || '[]'));
+    s.add(_dayKey(new Date()));
+    localStorage.setItem('aep-study-days', JSON.stringify([...s].slice(-400)));
+  } catch (e) { /* quota */ }
+}
+function getStreak() {
+  try {
+    const s = new Set(JSON.parse(localStorage.getItem('aep-study-days') || '[]'));
+    const d = new Date();
+    if (!s.has(_dayKey(d))) d.setDate(d.getDate() - 1);  // 오늘 아직이면 어제부터 카운트
+    let n = 0;
+    while (s.has(_dayKey(d))) { n++; d.setDate(d.getDate() - 1); }
+    return n;
+  } catch (e) { return 0; }
+}
+
 // Study 예문 재생 — 가능하면 Shana '실제 음성'(에피소드 클립)으로, 없으면 TTS 폴백.
 // 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
 function playExample(c, rate) {
@@ -20,6 +40,7 @@ function playExample(c, rate) {
 
 export async function renderStudy(root) {
   stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
+  markStudyDay();  // 오늘 학습 기록(스트릭)
   root.innerHTML = `
     <div class="study-greet"><h2>Study</h2></div>
     <div class="skel-hero" style="height:84px"></div>
@@ -60,6 +81,7 @@ export async function renderStudy(root) {
         <div class="study-progress-meta">
           <div class="study-progress-big"><b id="study-known-n">${knownCount.toLocaleString()}</b><span> / ${ov.total.toLocaleString()} 표현 마스터</span></div>
           <div class="study-progress-pills">
+            ${getStreak() > 0 ? `<span class="study-pill streak">🔥 ${getStreak()}일 연속</span>` : ''}
             <span class="study-pill">📚 학습 ${ov.learned.toLocaleString()}</span>
             <span class="study-pill">🔁 복습 ${ov.due.toLocaleString()}</span>
           </div>

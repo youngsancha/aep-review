@@ -1505,6 +1505,7 @@ body.logged-out #app-version { display: none; }
 .study-progress-big b { font-size: 26px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
 .study-progress-pills { display: flex; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
 .study-pill { font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 5px 11px; border-radius: 999px; }
+.study-pill.streak { background: var(--chip-warn-bg); color: var(--chip-warn-tx); }  /* 데일리 스트릭 — 따뜻한 강조 */
 
 /* ── "알아요" 마크 버튼 + 마스터된 행 ── */
 .study-x-know {
