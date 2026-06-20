@@ -1440,13 +1440,18 @@ body.logged-out #app-version { display: none; }
 }
 .study-x-tts:active { transform: scale(0.9); }
 .study-x-def { font-size: 13.5px; color: var(--text-2); line-height: 1.45; margin-top: 5px; }
-/* Shana 팟캐스트에서 이 표현이 실제로 쓰인 문장 (학습 맥락) */
+.study-x-def .def-en { display: block; }
+.study-x-def .def-ko { display: block; margin-top: 2px; color: var(--text-3, var(--text-2)); font-size: 13px; }  /* 한글 뜻은 다음 줄 */
+/* Shana 팟캐스트에서 이 표현이 실제로 쓰인 문장 (학습 맥락) — 문장 자체를 탭하면 실제 음성 재생 */
 .study-x-ex {
   display: flex; align-items: flex-start; gap: 8px;
   margin-top: 8px; padding: 8px 10px;
   background: var(--surface-2); border-radius: 10px;
   border-left: 3px solid var(--tint-soft-2);
 }
+.study-x-ex.tappable { cursor: pointer; transition: background 0.15s, transform 0.1s; }
+.study-x-ex.tappable::after { content: '🎧'; flex: 0 0 auto; font-size: 14px; opacity: 0.65; align-self: center; }
+.study-x-ex.tappable:active { transform: scale(0.99); background: var(--tint-soft); }
 .study-x-ex-q { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-2); font-style: italic; }
 .study-x-exspk {
   flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;

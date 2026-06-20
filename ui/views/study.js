@@ -125,8 +125,18 @@ export async function renderStudy(root) {
     const pctEl = root.querySelector('#study-ring-pct'); if (pctEl) pctEl.textContent = pct + '%';
   }
 
+  // 정의 끝의 (한글 뜻) 을 다음 줄로 분리 — 영어 정의에 한글이 이어붙지 않게.
+  function defHtml(def) {
+    const s = String(def || '');
+    const m = s.match(/^(.*\S)\s*([(\[（].*?[)\]）])\s*$/);
+    if (m && /[가-힣]/.test(m[2])) {
+      return `<span class="def-en">${escapeHtml(m[1])}</span><span class="def-ko">${escapeHtml(m[2])}</span>`;
+    }
+    return escapeHtml(s);
+  }
   function rowHtml(v) {
     const epTitle = (v.episode_title || '').replace(/^\d+\s*[-:.]\s*/, '');
+    const hasClip = !!(v.audio_url && v.sentence_start_sec != null);
     return `
       <li class="study-x${v.known ? ' known' : ''}" data-id="${v.id}" data-ep="${v.episode_id}" data-t="${v.sentence_start_sec != null ? Math.floor(v.sentence_start_sec) : ''}">
         <div class="study-x-top">
@@ -134,13 +144,10 @@ export async function renderStudy(root) {
           <button class="study-x-tts" data-text="${escapeHtml(v.term)}" aria-label="발음 듣기">🔊</button>
           <button class="study-x-know" data-id="${v.id}" aria-label="알아요로 표시">${v.known ? '✓ 알아요' : '알아요'}</button>
         </div>
-        ${v.definition ? `<div class="study-x-def">${escapeHtml(v.definition)}</div>` : ''}
+        ${v.definition ? `<div class="study-x-def">${defHtml(v.definition)}</div>` : ''}
         ${v.example_sentence ? `
-          <div class="study-x-ex">
+          <div class="study-x-ex${hasClip ? ' tappable' : ''}" data-id="${v.id}" aria-label="${hasClip ? '눌러서 맥락(실제 음성) 듣기' : ''}">
             <span class="study-x-ex-q">“${highlightTerm(v.example_sentence, v.term)}”</span>
-            ${(v.audio_url && v.sentence_start_sec != null)
-              ? `<button class="study-x-ctx" data-url="${escapeHtml(v.audio_url)}" data-s="${v.sentence_start_sec}" data-e="${v.sentence_end_sec ?? ''}" aria-label="맥락에서 듣기(실제 음성)">🎧</button>` : ''}
-            <button class="study-x-exspk" data-text="${escapeHtml(v.example_sentence)}" aria-label="문장 듣기(TTS)">🔊</button>
           </div>` : ''}
         ${epTitle ? `<div class="study-x-ep">🎧 ${escapeHtml(epTitle)}</div>` : ''}
       </li>`;
@@ -155,11 +162,16 @@ export async function renderStudy(root) {
   }
 
   function wireList() {
-    root.querySelectorAll('.study-x-tts, .study-x-exspk').forEach((b) =>
+    root.querySelectorAll('.study-x-tts').forEach((b) =>
       b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
-    // '맥락에서 듣기'(#19/#20): 화면 전환 없이 그 문장의 '실제 음성'만 인라인 재생.
-    root.querySelectorAll('.study-x-ctx').forEach((b) =>
-      b.addEventListener('click', (e) => { e.stopPropagation(); playSentenceClip(b.dataset.url, b.dataset.s, b.dataset.e, b); }));
+    // 맥락 듣기 = 기본 동작: 예문을 탭하면 그 문장의 Shana '실제 음성'(없으면 TTS)을 인라인 재생.
+    // 별도 🎧 버튼 없이 문장 자체가 재생 트리거 → 화면 전환 X.
+    root.querySelectorAll('.study-x-ex.tappable').forEach((el) =>
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const it = items.find((x) => x.id === Number(el.dataset.id));
+        if (it) playExample(it);
+      }));
     root.querySelectorAll('.study-x-know').forEach((b) =>
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -237,7 +249,7 @@ export async function renderStudy(root) {
       if (el) el.innerHTML = '<div class="empty">퀴즈를 만들 표현이 부족해요(4개 이상 필요).</div>';
       return;
     }
-    const N = Math.min(10, pool.length);
+    const N = Math.min(20, pool.length);
     const qs = _shuffle(pool).slice(0, N).map((correct) => {
       const others = _shuffle(pool.filter((x) => x.id !== correct.id)).slice(0, 3);
       return { correct, options: _shuffle([correct, ...others]) };
@@ -424,7 +436,7 @@ export async function renderStudy(root) {
       if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
       return;
     }
-    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
     let idx = 0, correct = 0;
     prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
 
@@ -505,7 +517,7 @@ export async function renderStudy(root) {
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
     let idx = 0, scoreSum = 0, scored = 0;
     prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
 
@@ -662,7 +674,7 @@ export async function renderStudy(root) {
       if (el) el.innerHTML = '<div class="empty">말하기 연습할 예문이 아직 없어요.</div>';
       return;
     }
-    const cards = _shuffle(pool).slice(0, Math.min(10, pool.length));
+    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
     let idx = 0, scoreSum = 0, scored = 0;
 
     function finishPr() {
@@ -822,7 +834,7 @@ export async function renderStudy(root) {
       if (el) el.innerHTML = '<div class="empty">빈칸을 만들 예문이 아직 없어요.</div>';
       return;
     }
-    const cards = _shuffle(pool).slice(0, Math.min(12, pool.length));
+    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
     let idx = 0, correct = 0;
     prefetch(cards.slice(0, 4).map((c) => c.term));
 

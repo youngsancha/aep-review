@@ -298,19 +298,19 @@ def main() -> int:
             # 각 표현에 Shana 예문(+term 강조)이 함께 표시되는지 (학습 맥락)
             study_ex = pg.eval_on_selector_all(".study-x-ex", "els=>els.length")
             study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
-            # 맥락에서 듣기(#20): 인라인 재생 버튼 .study-x-ctx 존재
-            study_ctx = pg.eval_on_selector_all(".study-x-ctx", "els=>els.length")
+            # 맥락에서 듣기: 별도 버튼 없이 예문(.study-x-ex.tappable) 자체가 재생 트리거
+            study_ctx = pg.eval_on_selector_all(".study-x-ex.tappable", "els=>els.length")
             # 카드 본문 클릭 버그(#19): 더 이상 에피소드로 네비게이트 안 함
             pg.evaluate("location.hash=''")
             if pg.query_selector(".study-x"):
                 pg.eval_on_selector(".study-x", "el=>el.click()")
                 time.sleep(0.1)
             study_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
-            # 맥락 버튼 클릭 → 화면전환 없이 인라인(에러 없이, 네비 X)
+            # 예문 탭 → 화면전환 없이 인라인 재생(에러 없이, 네비 X)
             ctx_no_nav = None
-            if pg.query_selector(".study-x-ctx"):
+            if pg.query_selector(".study-x-ex.tappable"):
                 pg.evaluate("location.hash=''")
-                pg.eval_on_selector(".study-x-ctx", "el=>el.click()")
+                pg.eval_on_selector(".study-x-ex.tappable", "el=>el.click()")
                 time.sleep(0.1)
                 ctx_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
