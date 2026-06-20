@@ -530,25 +530,54 @@ export async function renderStudy(root) {
           <div class="dict-score">발음 정확도 ${sc}점</div>
           <div class="dict-answer">${diffHtml(said, c.example_sentence)}</div>
           <div class="speak-heard">인식: “${escapeHtml(said || '—')}”</div>
+          <div id="sp-compare" class="speak-compare"></div>
           <button class="study-cta-btn" id="sp-next">다음 →</button>
         </div>`;
       root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
     }
 
+    // 내 발음 녹음이 준비되면 결과에 'A/B 비교'(원문 ↔ 내 발음)를 끼워넣는다.
+    // 네이티브 발음을 익히는 가장 강력한 도구 = 내 목소리를 원어민 모델과 바로 들어비교.
+    function injectCompare(url, c) {
+      const box = root.querySelector('#sp-compare');
+      if (!box) return;
+      box.innerHTML = `
+        <div class="speak-ab-label">🎧 내 발음 다시 듣기 · 원문과 비교</div>
+        <div class="speak-ab-row">
+          <button class="study-cta-btn secondary" id="sp-orig2">🔊 원문</button>
+          <audio class="speak-audio" controls src="${url}"></audio>
+        </div>`;
+      box.querySelector('#sp-orig2').addEventListener('click', () => playExample(c));
+    }
+
     function wireRecognition(mic, c) {
       let listening = false, rec = null;
+      let myRec = null, myStream = null, chunks = [];
       const label = () => root.querySelector('#sp-mic-label');
       function reset() { listening = false; mic.classList.remove('listening'); const l = label(); if (l) l.textContent = '말하기'; }
-      mic.addEventListener('click', () => {
+      function stopMyRec() { try { if (myRec && myRec.state !== 'inactive') myRec.stop(); } catch (e) {} }
+      mic.addEventListener('click', async () => {
         if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+        // 인식과 '동시에' 내 목소리를 녹음(추가형) — 점수만이 아니라 원문과 직접 들어비교.
+        // getUserMedia 실패/미지원이어도 아래 인식 로직은 그대로 동작(완전 가드).
+        chunks = [];
+        try {
+          myStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          myRec = new MediaRecorder(myStream); myRec.ondataavailable = (e) => chunks.push(e.data);
+          myRec.onstop = () => {
+            try { myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+            if (chunks.length) injectCompare(URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' })), c);
+          };
+          myRec.start();
+        } catch (e) { myRec = null; }
         rec = new SR();
         rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
         listening = true; mic.classList.add('listening');
         const l = label(); if (l) l.textContent = '듣는 중…';
-        rec.onresult = (e) => { reset(); showResult((e.results[0][0].transcript || '').trim(), c); };
-        rec.onerror = (e) => { reset(); const h = root.querySelector('#sp-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해주세요' : '인식 실패 — 다시 시도'; };
-        rec.onend = () => { if (listening) reset(); };
-        try { rec.start(); } catch (e) { reset(); }
+        rec.onresult = (e) => { reset(); showResult((e.results[0][0].transcript || '').trim(), c); stopMyRec(); };
+        rec.onerror = (e) => { reset(); stopMyRec(); const h = root.querySelector('#sp-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해주세요' : '인식 실패 — 다시 시도'; };
+        rec.onend = () => { if (listening) { reset(); stopMyRec(); } };
+        try { rec.start(); } catch (e) { reset(); stopMyRec(); }
       });
     }
 

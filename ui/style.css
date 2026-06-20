@@ -1577,6 +1577,16 @@ body.logged-out #app-version { display: none; }
 .speak-heard { font-size: 13px; color: var(--text-3); margin: 8px 0 14px; font-style: italic; }
 .speak-audio { width: 100%; margin: 12px 0; }
 
+/* 내 발음 ↔ 원문 A/B 비교 (인식 점수와 함께 표시) */
+.speak-compare:not(:empty) {
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+  animation: pop-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.speak-ab-label { font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 8px; }
+.speak-ab-row { display: flex; align-items: center; gap: 10px; }
+.speak-ab-row .study-cta-btn { flex: 0 0 auto; white-space: nowrap; }
+.speak-ab-row .speak-audio { flex: 1; margin: 0; }
+
 /* ── 빈칸 채우기(Cloze) ── */
 .cloze-card { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-card); padding: 22px 18px; margin-bottom: 14px; }
 .cloze-sent { font-family: var(--font); font-size: 19px; line-height: 1.6; color: var(--text); letter-spacing: -0.01em; }
