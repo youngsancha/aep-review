@@ -119,7 +119,7 @@ def resegment(segments):
         txt = (w["word"] or "").strip()
         n = len(cur["words"])
         dur = (cur["end"] or 0) - (cur["start"] or 0)
-        if (ENDS.search(txt) and n >= 2) or (COMMA.search(txt) and n >= 9) or dur > 12 or n >= 18:
+        if (ENDS.search(txt) and n >= 2) or (COMMA.search(txt) and n >= 7) or dur > 9 or n >= 14:
             out.append(cur); cur = None
     if cur:
         out.append(cur)

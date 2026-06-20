@@ -393,8 +393,9 @@ export async function renderEpisode(root, idStr, tStr) {
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.16);
-      } else if (sRelBot > h * 0.90 || sRelTop < h * 0.04) {
-        target = sRelTop + scroll.scrollTop - Math.max(8, h * 0.30);
+      } else if (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04) {
+        // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(20%)로 올려 카드와 안 겹치게.
+        target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.20 : 0.30));
       }
       if (target != null) {
         const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
@@ -1078,9 +1079,9 @@ function resegment(segments) {
     const n = cur.words.length;
     const dur = cur.end - cur.start;
     if ((ENDS.test(txt) && n >= 2) ||           // ① 종결 구두점
-        (COMMA.test(txt) && n >= 9) ||          // ③ 긴 절은 콤마에서(12→9: 더 적절한 길이로)
-        dur > 12 || n >= 18) {                  // ④ 하드캡(백스톱) — 접속사/구두점 경계를 우선 쓰되,
-                                                //    그 이상은 강제(10s/16w→12s/18w: 종결 구두점까지 닿게 살짝 상향)
+        (COMMA.test(txt) && n >= 7) ||          // ③ 긴 절은 콤마에서(9→7: 더 짧게)
+        dur > 9 || n >= 14) {                   // ④ 하드캡 — 18w/12s→14w/9s: 한 문장이 4줄↑로
+                                                //    번역카드와 겹쳐 안 보이던 문제 방지(전체적으로 짧게)
       close();
     }
   }

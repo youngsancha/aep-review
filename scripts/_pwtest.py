@@ -58,9 +58,10 @@ const FIX_SENTS = [
   [110, 'Thanks for listening and we will see you next time.'],
 ];
 function buildTranscript(){
-  const starts = FIX_SENTS.map(s=>s[0]).concat([122]);
   const segments = FIX_SENTS.map((s,i)=>{
-    const st=s[0], en=starts[i+1]-0.3, toks=s[1].split(' '), per=(en-st)/toks.length;
+    // 현실적 발화속도(~0.45s/단어)로 단어를 앞쪽에 채우고, 문장 사이는 자연스러운 쉼으로 남긴다.
+    // (예전엔 단어를 문장 간격 전체에 균등분배 → 1.3s/단어의 비현실적 느린 속도로 dur 하드캡 오작동)
+    const st=s[0], toks=s[1].split(' '), per=0.45, en=+(st+per*toks.length).toFixed(2);
     const words=toks.map((w,j)=>({start:+(st+per*j).toFixed(2), end:+(st+per*(j+1)).toFixed(2), word:(j?' ':'')+w}));
     return {idx:i, start:st, end:en, text:s[1], words};
   });
