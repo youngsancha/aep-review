@@ -180,6 +180,15 @@ export async function renderEpisode(root, idStr, tStr) {
   // Cache offsetTop now (stable until DOM mutates) — survives scroll animations.
   const paraTops = paraEls.map((el) => el.offsetTop);
 
+  // 프리롤 광고 바(감지된 경우에만 존재): 광고 구간이면 강조, 탭하면 본편(첫 콘텐츠 문장)으로 점프.
+  const $adSkip = $sheet ? $sheet.querySelector('.tx-ad-skip') : null;
+  const firstContentStart = sentRanges.length ? sentRanges[0].start : 0;
+  $adSkip?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    player.seek(firstContentStart + 0.01);
+    player.play();
+  });
+
   // 즉시 해설: 각 vocab(어려운 표현)을 그 example 시점이 속한 문장에 매핑 → 그 문장이
   // 재생될 때 하단 패널에 term + 한국어 해설을 띄운다(쉐도잉하며 바로 이해).
   const vNotes = sentRanges.map(() => []);
@@ -319,6 +328,8 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!sentRanges.length) return;
     const t = txTime();
     const idx = findActiveSentIdx(t);
+    // 광고 구간(첫 콘텐츠 문장 시작 전, idx<0)이면 상단 '광고' 바를 강조 — 본편 진입 시 자동 해제.
+    if ($adSkip) $adSkip.classList.toggle('active', idx < 0);
     if (idx === lastActiveSent) return;
 
     if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) {
@@ -733,10 +744,44 @@ function bindSheetDrag($sheet, closeSheet) {
   document.addEventListener('mouseup', end);
 }
 
+// === 프리롤 광고(DAI) 구간 감지 (#) ===
+// megaphone 동적광고(DAI)는 '재생할 때마다 다른' 광고를 끼워넣는다 → 우리가 STT 한 광고(자막)와
+// 사용자가 실제로 듣는 광고(음성)가 서로 다르다. 그래서 광고 구간 자막은 음성과 절대 일치할 수 없다
+// (재정렬·재STT 로도 못 고침). 본편 시작(진행자 인트로 "...my name is Shana...")을 앵커로 찾아
+// 그 앞 광고 문장들을 자막에서 감추고 '광고' 플레이스홀더로 대체한다. 본편 자막/싱크는 손대지 않는다.
+const AD_CONTENT_RE = /(my name is sh|welcome to the american english|this is the american english podcast)/i;
+const AD_GREET_RE = /^["'\s]*(hi\b|hey\b|hello\b|welcome back|what'?s up|good (morning|afternoon|evening))/i;
+export function detectContentStart(sentences) {
+  const limit = Math.min(sentences.length, 50);  // 프리롤 영역만 탐색(본편/아웃트로 언급 오탐 방지)
+  for (let i = 0; i < limit; i++) {
+    if (AD_CONTENT_RE.test(sentences[i].text || '')) {
+      let k = i;  // 바로 앞 인사말("Hi everybody")이 있으면 그것을 본편 시작으로 포함
+      for (let j = i - 1; j >= 0 && j >= i - 2; j--) {
+        if (AD_GREET_RE.test(sentences[j].text || '')) k = j; else break;
+      }
+      return k;
+    }
+  }
+  return 0;  // 앵커 없음 → 아무것도 감추지 않음(안전 폴백 — 기존 동작 유지)
+}
+function adBlockHtml(adSents, contentStart) {
+  const adStart = Number.isFinite(adSents[0]?.start) ? adSents[0].start : 0;
+  return `<button class="tx-ad-skip" type="button" data-skip="${contentStart}" data-start="${adStart}" data-end="${contentStart}" aria-label="광고 건너뛰고 본편으로">
+    <span class="tx-ad-ico">📢</span>
+    <span class="tx-ad-text"><b>광고 구간</b><small>음성 광고는 재생마다 달라 자막과 다를 수 있어요</small></span>
+    <span class="tx-ad-go">본편으로 ›</span>
+  </button>`;
+}
+
 function transcriptSheetHtml(segments, title, sub) {
-  segments.forEach((s, i) => { s._idx = i; });
-  const paras = groupIntoParagraphs(segments);
-  const body = paras.map((para) => {
+  // 프리롤 광고(DAI) 분리 — 본편 앵커 앞 문장은 광고로 보고 감춘다(앵커 없으면 K=0, 전부 표시).
+  const K = detectContentStart(segments);
+  const adSents = K > 0 ? segments.slice(0, K) : [];
+  const content = adSents.length ? segments.slice(K) : segments;
+  content.forEach((s, i) => { s._idx = i; });
+  const paras = groupIntoParagraphs(content);
+  const adHtml = adSents.length ? adBlockHtml(adSents, content[0].start) : '';
+  const body = adHtml + paras.map((para) => {
     const sentsHtml = para.segments.map((s) => {
       return `<span class="tx-sent" data-i="${s._idx}" data-start="${s.start}" data-end="${s.end}">${renderSegmentWords(s)}</span>`;
     }).join(' ');

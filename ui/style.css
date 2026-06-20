@@ -1004,6 +1004,27 @@ body.on-episode {
 /* Words: just clickable, no visual treatment */
 .w { cursor: pointer; }
 
+/* 프리롤 광고(DAI) 바 — 음성 광고는 재생마다 달라 자막과 못 맞추므로, 광고 문장 대신 표시 */
+.tx-ad-skip {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  margin: 0 0 26px; padding: 12px 14px;
+  border: 0; border-radius: 14px; cursor: pointer; text-align: left;
+  background: var(--surface-2); color: var(--text-2);
+  font-family: var(--font);
+  transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.1s;
+}
+.tx-ad-skip:active { transform: scale(0.99); }
+.tx-ad-skip.active {                         /* 광고 재생 중: 부드럽게 강조 */
+  background: var(--tint-soft);
+  box-shadow: inset 0 0 0 1px var(--tint-soft-2);
+  color: var(--text);
+}
+.tx-ad-ico { font-size: 17px; flex: 0 0 auto; line-height: 1; }
+.tx-ad-text { display: flex; flex-direction: column; line-height: 1.25; flex: 1 1 auto; min-width: 0; }
+.tx-ad-text b { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.tx-ad-text small { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.tx-ad-go { flex: 0 0 auto; font-size: 12.5px; font-weight: 700; color: var(--tint); white-space: nowrap; }
+
 /* "Now playing" pill — appears only when user has scrolled away from current */
 .tx-live-badge {
   position: absolute;

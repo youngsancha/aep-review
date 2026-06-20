@@ -117,8 +117,15 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
   "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
-  import { renderEpisode } from '/views/episode.js';
+  import { renderEpisode, detectContentStart } from '/views/episode.js';
   window.__ready=false;
+  // 프리롤 광고 감지 단위검증: 광고2 + 인사말 + 진행자 인트로 → 본편 시작 인덱스 2('Hi everybody')
+  window.__adK = detectContentStart([
+    {text:'Support for this show comes from a sponsor you will hear now.'},
+    {text:'New markdowns up to seventy percent off at the store today.'},
+    {text:'Hi everybody, welcome back to the show.'},
+    {text:'My name is Shana and this is the American English Podcast.'}
+  ]);
   renderEpisode(document.getElementById('app'),'1').then(()=>{window.__ready=true;})
     .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
 </script></body></html>
@@ -175,6 +182,9 @@ def main() -> int:
             pg.wait_for_function("window.__ready===true", timeout=10000)
             n_sent = pg.eval_on_selector_all(".tx-sent", "els=>els.length")
             about = pg.eval_on_selector_all(".np-about-text", "els=>els.length")
+            # 프리롤 광고(DAI): detectContentStart 단위검증(=2) + 앵커없는 픽스처엔 광고바 미표시(폴백 안전)
+            ad_detect = pg.evaluate("window.__adK")
+            ad_none = pg.query_selector(".tx-ad-skip") is None
             if pg.query_selector("#np-play"):
                 pg.click("#np-play")
             sheet_open = None
@@ -235,7 +245,7 @@ def main() -> int:
             calls = pg.evaluate("window.__calls||[]")
             werr = pg.evaluate("window.__err||[]")
             print("dark_bg=", dark_bg, " dark_ok=", dark_ok)
-            print("sentences=", n_sent, " sheet_open=", sheet_open)
+            print("sentences=", n_sent, " sheet_open=", sheet_open, " ad_detect=", ad_detect, " ad_none=", ad_none)
             # VOCAB 은 더 이상 노트에 안 뜸 — 번역만. (term 이 없어야 정상)
             notes_no_vocab = "fill in the gap" not in (notes_text or "")
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
@@ -249,7 +259,7 @@ def main() -> int:
                      and trans_ok == "(테스트 번역)" and trans_default_on is True
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
-                     and fs_ok is True and dark_ok)
+                     and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
