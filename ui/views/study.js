@@ -8,6 +8,16 @@ import { playSentenceClip, stopClip } from '/clip.js';
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
 
+// Study 예문 재생 — 가능하면 Shana '실제 음성'(에피소드 클립)으로, 없으면 TTS 폴백.
+// 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
+function playExample(c) {
+  if (!c) return;
+  if (c.audio_url && c.sentence_start_sec != null)
+    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null);
+  else
+    speak(c.example_sentence);
+}
+
 export async function renderStudy(root) {
   stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
   root.innerHTML = `
@@ -309,8 +319,8 @@ export async function renderStudy(root) {
         </div>
         <button class="study-cta-btn" id="sent-action">뜻 보기</button>
         <button class="quiz-exit" id="sent-exit">← Study 홈</button>`;
-      root.querySelector('#sent-card').addEventListener('click', () => speak(c.example_sentence));
-      requestAnimationFrame(() => speak(c.example_sentence));
+      root.querySelector('#sent-card').addEventListener('click', () => playExample(c));
+      requestAnimationFrame(() => playExample(c));
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#sent-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#sent-action').addEventListener('click', (e) => {
