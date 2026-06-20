@@ -128,6 +128,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $speed = document.getElementById('np-speed');
   let speedIdx = 0;
   let shadowMode = 'off';  // off | loop(문장 반복)
+  let loopSent = -1;       // 반복 모드에서 되풀이할 문장의 고정 인덱스(누르는 순간 오디오 위치로 확정)
 
   // === 싱크 보정 (#) ===
   // megaphone DAI 는 재생마다 '다른 길이의 광고'를 끼워, 우리가 STT 한 오디오와 실제 스트림의
@@ -167,9 +168,11 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
 
-    // 쉐도잉 반복(loop): 현재 문장 끝에서 그 문장 처음으로 되돌려 무한 반복
-    if (shadowMode === 'loop' && lastActiveSent >= 0 && !player.paused) {
-      const cur = sentRanges[lastActiveSent];
+    // 쉐도잉 반복(loop): 누를 때 확정한 그 문장(loopSent)을 끝에서 처음으로 되돌려 무한 반복.
+    // lastActiveSent(=하이라이트, HL_LAG 만큼 지연)를 쓰면 경계 직후 '이전 문장'이 잡혀
+    // 엉뚱한 문장이 반복된다(사용자 보고). → 고정 loopSent 사용.
+    if (shadowMode === 'loop' && loopSent >= 0 && !player.paused) {
+      const cur = sentRanges[loopSent];
       if (cur && Number.isFinite(cur.end) && txTime() >= cur.end - 0.06) {
         player.seek(toAudio(cur.start) + 0.01);
       }
@@ -429,6 +432,20 @@ export async function renderEpisode(root, idStr, tStr) {
     userScrolledUntil = Date.now() + 3000;  // give user 3s to read before auto-follow resumes
     smoothScrollTo(Math.max(0, target));    // 부드러운 ease 로 가운데 정렬
   }
+  // 단어/문장 탭으로 그 지점부터 재생할 때: 이미 화면에 잘 보이면 스크롤하지 않는다(사용자 보고:
+  // 탭하면 화면이 '밀리며' 시작되는 위화감 제거 → 탭한 그 자리에서 바로 시작). 머리가 잘리거나
+  // 하단 번역·컨트롤에 가리거나 화면 밖일 때만 자동추적과 동일한 22% 줄에 살짝 정렬한다.
+  function scrollSentIntoViewIfNeeded(sentEl) {
+    if (!sentEl || !$tx) return;
+    userScrolledUntil = Date.now() + 3000;  // 어느 경우든 자동추적은 3s 보류(탭 지점 유지)
+    const rect = sentEl.getBoundingClientRect();
+    const cont = $tx.getBoundingClientRect();
+    const relTop = rect.top - cont.top, relBot = rect.bottom - cont.top;
+    const h = $tx.clientHeight;
+    if (relTop >= h * 0.12 && relBot <= h * 0.60) return;   // 편안한 밴드 안 → 그대로 둔다
+    const target = relTop + $tx.scrollTop - Math.max(8, h * 0.22);
+    smoothScrollTo(Math.max(0, Math.min(target, $tx.scrollHeight - h)));
+  }
   // === 싱크 보정 — DAI 로 어긋난 회차를 '지금 들리는 문장' 한 번 탭으로 맞춤 ===
   let calibrating = false;
   let syncBannerTimer = 0;
@@ -485,7 +502,7 @@ export async function renderEpisode(root, idStr, tStr) {
       }
       player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각(보정 반영)
       player.play();
-      scrollSentToCenter(sent || para);
+      scrollSentIntoViewIfNeeded(sent || para);   // 이미 보이면 안 움직임(탭 그 자리서 시작)
     });
   }
 
@@ -555,6 +572,15 @@ export async function renderEpisode(root, idStr, tStr) {
     $shadow.textContent = s.label;
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
+    if (shadowMode === 'loop') {
+      // '지금 들리는' 문장을 오디오 위치(HL_LAG 미적용)로 확정 → 그 문장 처음으로 즉시 되감아 반복.
+      // 하이라이트(lastActiveSent)는 0.2s 지연이라 경계서 직전 문장을 집을 수 있어 audio 시각을 쓴다.
+      const audioTx = player.time - syncOffset;
+      loopSent = findActiveSentIdx(audioTx);
+      if (loopSent >= 0 && sentRanges[loopSent]) player.seek(toAudio(sentRanges[loopSent].start) + 0.01);
+    } else {
+      loopSent = -1;
+    }
     if (player.paused) player.play();  // 모드 전환 즉시 이어 재생 (반복→쉐도잉도 버튼 없이 바로 재생)
   });
 
