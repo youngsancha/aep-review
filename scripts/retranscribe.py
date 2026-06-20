@@ -164,11 +164,26 @@ def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = Tr
 
 
 # ─────────────────────── 선택 + 실행 ───────────────────────
+def _vocab_counts() -> dict[int, int]:
+    """episode_id → vocab 개수 (episodes_list 뷰). 학습 빈도 우선순위용."""
+    try:
+        res = store.client().table("episodes_list").select("id,vocab_count").execute()
+        return {r["id"]: (r.get("vocab_count") or 0) for r in res.data}
+    except Exception:
+        return {}
+
+
 def select_ids(args) -> list[int]:
     if args.ids:
         return [int(x) for x in args.ids.split(",") if x.strip()]
     rows = store.episodes_by_recency(limit=args.recent if args.recent else None)
-    return [r["id"] for r in rows]
+    ids = [r["id"] for r in rows]
+    if getattr(args, "by_vocab", False):
+        # vocab 많은(=Study 에서 자주 보는) 회차 먼저 → 예문 탭 정확도가 학습 지점에 빨리 도달.
+        # 동률은 최신순(recency) 유지. 재싱크되면 그 회차 예문이 즉시 정확히 재생됨.
+        vc = _vocab_counts()
+        ids.sort(key=lambda i: vc.get(i, 0), reverse=True)
+    return ids
 
 
 def main() -> None:
@@ -182,6 +197,8 @@ def main() -> None:
     p.add_argument("--no-remap", action="store_true", help="vocab 타임스탬프 재매핑 생략")
     p.add_argument("--from-r2", action="store_true",
                    help="megaphone 대신 R2(서빙 오디오)를 받아 재STT → 자막=서빙오디오 완벽 일치(재업로드 X)")
+    p.add_argument("--by-vocab", action="store_true",
+                   help="recency 대신 vocab 많은(자주 학습) 회차 먼저 — 예문 정확도를 학습지점에 빨리 도달")
     args = p.parse_args()
 
     if not (args.ids or args.recent or args.all):
@@ -189,7 +206,7 @@ def main() -> None:
 
     done = set() if args.redo else load_done()
     skip = load_skip()
-    ids = [i for i in select_ids(args) if args.ids or (i not in done and i not in skip)]
+    ids = [i for i in select_ids(args) if i not in done and i not in skip]
     ids = ids[: args.limit]
     if not ids:
         log.info("처리할 episode 없음 (모두 done?). 총 done=%d", len(done))

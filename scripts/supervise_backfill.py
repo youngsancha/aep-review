@@ -55,7 +55,11 @@ def main() -> None:
     except Exception:
         pass
 
-    order = [r["id"] for r in store.episodes_by_recency()]   # 최신순(그라인드와 동일)
+    # 그라인드와 동일 순서: vocab 많은(자주 학습) 회차 먼저 → 예문 정확도가 학습지점에 빨리 도달.
+    from scripts.retranscribe import _vocab_counts
+    order = [r["id"] for r in store.episodes_by_recency()]
+    vc = _vocab_counts()
+    order.sort(key=lambda i: vc.get(i, 0), reverse=True)
     total = len(order)
     log.info("슈퍼바이저 시작: 전체 %d회차", total)
 
@@ -65,7 +69,7 @@ def main() -> None:
         "AEP_WHISPER_BEAM": "1",
         "AEP_WHISPER_MODEL": "small.en",
     }
-    cmd = [sys.executable, "-m", "scripts.retranscribe", "--all", "--from-r2", "--limit", "300"]
+    cmd = [sys.executable, "-m", "scripts.retranscribe", "--all", "--from-r2", "--by-vocab", "--limit", "300"]
 
     stall = 0
     while True:
