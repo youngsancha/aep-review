@@ -110,7 +110,7 @@ export async function markKnown(vocabId) {
 export async function expressionsByKind(kind, limit = 800) {
   const { data, error } = await supabase
     .from('vocab_cards')
-    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, episodes(title), srs:srs_cards(interval_days)')
+    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)')
     .eq('kind', kind)
     .order('term', { ascending: true })
     .limit(limit);
@@ -118,6 +118,7 @@ export async function expressionsByKind(kind, limit = 800) {
   return (data || []).map((v) => ({
     ...v,
     episode_title: v.episodes?.title || '',
+    audio_url: cleanAudioUrl(v.episodes?.audio_url || ''),  // '맥락에서 듣기' 인라인 재생용(실제 음성)
     known: Array.isArray(v.srs) && v.srs.some((s) => (s.interval_days || 0) >= KNOWN_INTERVAL),
   }));
 }
@@ -139,12 +140,13 @@ function sm2(ease, interval, reps, grade) {
 }
 
 const QUEUE_SELECT =
-  '*, episodes(title), vocab_cards(example_sentence, sentence_start_sec, sentence_end_sec, kind)';
+  '*, episodes(title, audio_url), vocab_cards(example_sentence, sentence_start_sec, sentence_end_sec, kind)';
 
 function flattenCard(r) {
   return {
     ...r,
     episode_title: r.episodes?.title || '',
+    audio_url: cleanAudioUrl(r.episodes?.audio_url || ''),  // '맥락에서 듣기' 인라인 재생용(실제 음성)
     example_sentence: r.vocab_cards?.example_sentence ?? null,
     sentence_start_sec: r.vocab_cards?.sentence_start_sec ?? null,
     sentence_end_sec: r.vocab_cards?.sentence_end_sec ?? null,

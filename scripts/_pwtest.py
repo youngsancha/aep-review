@@ -88,6 +88,7 @@ export async function expressionsByKind(kind) {
   ];
   return base.map((b,i) => ({ id:i+1, term:b[0], kind, definition:b[1],
     example_sentence:'I had to '+b[0]+' all day long.', episode_id:1, sentence_start_sec:100+i,
+    sentence_end_sec:105+i, audio_url:'http://localhost:8123/_clip_test.mp3',
     episode_title:'211 - Test', known:false }));
 }
 export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
@@ -269,6 +270,21 @@ def main() -> int:
             # 각 표현에 Shana 예문(+term 강조)이 함께 표시되는지 (학습 맥락)
             study_ex = pg.eval_on_selector_all(".study-x-ex", "els=>els.length")
             study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
+            # 맥락에서 듣기(#20): 인라인 재생 버튼 .study-x-ctx 존재
+            study_ctx = pg.eval_on_selector_all(".study-x-ctx", "els=>els.length")
+            # 카드 본문 클릭 버그(#19): 더 이상 에피소드로 네비게이트 안 함
+            pg.evaluate("location.hash=''")
+            if pg.query_selector(".study-x"):
+                pg.eval_on_selector(".study-x", "el=>el.click()")
+                time.sleep(0.1)
+            study_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
+            # 맥락 버튼 클릭 → 화면전환 없이 인라인(에러 없이, 네비 X)
+            ctx_no_nav = None
+            if pg.query_selector(".study-x-ctx"):
+                pg.evaluate("location.hash=''")
+                pg.eval_on_selector(".study-x-ctx", "el=>el.click()")
+                time.sleep(0.1)
+                ctx_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             ring_pct = pg.eval_on_selector("#study-ring-pct", "el=>el.textContent") if pg.query_selector("#study-ring-pct") else None
             # 알아요 마크(#10): 버튼 클릭 → markKnown 호출 + 행 known + 카운트 증가
@@ -312,6 +328,7 @@ def main() -> int:
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
             study_err = pg.evaluate("window.__err||[]")
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
+                  " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
                   " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
                   " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked,
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok, " err=", study_err)
@@ -319,7 +336,8 @@ def main() -> int:
                         and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True
-                        and cloze_ok is True and speak_ok is True)
+                        and cloze_ok is True and speak_ok is True
+                        and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True)
 
             # === Timeline(Library) 회귀 ===
             pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건
@@ -334,6 +352,9 @@ def main() -> int:
             tl_feat = pg.eval_on_selector_all(".feat-card", "els=>els.length")
             tl_rows = pg.eval_on_selector_all(".ep-row", "els=>els.length")
             tl_hero = pg.eval_on_selector_all(".show-hero", "els=>els.length")
+            # 컴팩트 히어로(#): 로고 헤더 높이를 줄여 이어듣기+최신이 한 화면에 — 높이 < 130px
+            tl_hero_h = pg.eval_on_selector(".show-hero", "el=>el.offsetHeight") if pg.query_selector(".show-hero") else 999
+            tl_compact = tl_hero_h is not None and tl_hero_h < 130
             tl_featplay = bool(pg.query_selector(".feat-play"))
             tl_cont = bool(pg.query_selector(".cont-card"))   # 이어듣기 카드(#15)
             # 접이식 시즌: 최신만 펼침, 이전 시즌은 접힘
@@ -366,11 +387,12 @@ def main() -> int:
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
                   " cont=", tl_cont, " contplay=", tl_contplay, " script_flag=", tl_script_flag,
                   " seasons=", tl_seasons, " first_open=", tl_first_open, " has_collapsed=", tl_has_collapsed,
-                  " progress=", tl_progress, " done=", tl_done, " search_rows=", tl_search, " overflow_px=", tl_overflow, " err=", tl_err)
+                  " progress=", tl_progress, " done=", tl_done, " search_rows=", tl_search,
+                  " hero_h=", tl_hero_h, " compact=", tl_compact, " overflow_px=", tl_overflow, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
                            and tl_cont and tl_contplay is True and tl_script_flag == "1"
                            and tl_seasons >= 2 and tl_first_open is True and tl_has_collapsed is True
-                           and tl_progress is True and tl_done is True
+                           and tl_progress is True and tl_done is True and tl_compact is True
                            and tl_search == 1 and tl_no_pan and not tl_err)
 
             ok = ep_ok and study_ok and timeline_ok

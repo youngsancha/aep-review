@@ -154,12 +154,14 @@ function heroHtml({total, ready, due}) {
     <div class="show-hero">
       <div class="show-hero-bg" style="background-image:url('${SHOW_COVER}')"></div>
       <img class="show-hero-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
-      <h1 class="show-hero-title">American English Podcast</h1>
-      <p class="show-hero-host">Shana Thompson · Language Learning</p>
-      <div class="show-hero-stats">
-        <span class="show-stat">${total} episodes</span>
-        <span class="show-stat">${ready} ready</span>
-        <span class="show-stat">${due} due</span>
+      <div class="show-hero-text">
+        <h1 class="show-hero-title">American English Podcast</h1>
+        <p class="show-hero-host">Shana Thompson · Language Learning</p>
+        <div class="show-hero-stats">
+          <span class="show-stat">${total} episodes</span>
+          <span class="show-stat">${ready} ready</span>
+          <span class="show-stat">${due} due</span>
+        </div>
       </div>
     </div>
   `;

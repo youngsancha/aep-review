@@ -3,11 +3,13 @@
 import { escapeHtml, highlightTerm } from '/app.js';
 import { studyOverview, expressionsByKind, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
+import { playSentenceClip, stopClip } from '/clip.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
 
 export async function renderStudy(root) {
+  stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
   root.innerHTML = `
     <div class="study-greet"><h2>Study</h2></div>
     <div class="skel-hero" style="height:84px"></div>
@@ -102,7 +104,9 @@ export async function renderStudy(root) {
         ${v.example_sentence ? `
           <div class="study-x-ex">
             <span class="study-x-ex-q">“${highlightTerm(v.example_sentence, v.term)}”</span>
-            <button class="study-x-exspk" data-text="${escapeHtml(v.example_sentence)}" aria-label="문장 듣기">🔊</button>
+            ${(v.audio_url && v.sentence_start_sec != null)
+              ? `<button class="study-x-ctx" data-url="${escapeHtml(v.audio_url)}" data-s="${v.sentence_start_sec}" data-e="${v.sentence_end_sec ?? ''}" aria-label="맥락에서 듣기(실제 음성)">🎧</button>` : ''}
+            <button class="study-x-exspk" data-text="${escapeHtml(v.example_sentence)}" aria-label="문장 듣기(TTS)">🔊</button>
           </div>` : ''}
         ${epTitle ? `<div class="study-x-ep">🎧 ${escapeHtml(epTitle)}</div>` : ''}
       </li>`;
@@ -119,6 +123,9 @@ export async function renderStudy(root) {
   function wireList() {
     root.querySelectorAll('.study-x-tts, .study-x-exspk').forEach((b) =>
       b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
+    // '맥락에서 듣기'(#19/#20): 화면 전환 없이 그 문장의 '실제 음성'만 인라인 재생.
+    root.querySelectorAll('.study-x-ctx').forEach((b) =>
+      b.addEventListener('click', (e) => { e.stopPropagation(); playSentenceClip(b.dataset.url, b.dataset.s, b.dataset.e, b); }));
     root.querySelectorAll('.study-x-know').forEach((b) =>
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -137,11 +144,8 @@ export async function renderStudy(root) {
           b.disabled = false;
         }
       }));
-    root.querySelectorAll('.study-x').forEach((li) =>
-      li.addEventListener('click', () => {
-        if (!li.dataset.ep) return;
-        location.hash = li.dataset.t ? `#/episode/${li.dataset.ep}/${li.dataset.t}` : `#/episode/${li.dataset.ep}`;
-      }));
+    // (#19) 카드 본문을 클릭하면 에피소드(사용자 인지: Library)로 튕기던 동작 제거 —
+    // 카드는 '학습용'(읽기 + 발음·맥락·알아요 버튼)으로만 동작. 의도치 않은 화면전환 X.
     prefetch([...root.querySelectorAll('.study-x-term')].slice(0, 8).map((e) => e.textContent));
   }
 
@@ -173,6 +177,7 @@ export async function renderStudy(root) {
   }
 
   async function loadKind(k) {
+    stopClip();
     selected = k;
     q = '';
     paintShell();
@@ -190,6 +195,7 @@ export async function renderStudy(root) {
   // ── 4지선다 퀴즈 (현재 종류의 표현으로 능동 회상) ──
   const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
   function startQuiz(mode = 'read') {
+    stopClip();
     const pool = items.filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
@@ -261,6 +267,7 @@ export async function renderStudy(root) {
 
   // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
   function startSentences() {
+    stopClip();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -286,6 +293,7 @@ export async function renderStudy(root) {
       root.querySelector('#s-home').addEventListener('click', () => renderStudy(root));
     }
     function paintS() {
+      stopClip();  // 다음 문장 카드로 넘어가면 이전 맥락 재생 정지
       if (idx >= cards.length) return finishS();
       const c = cards[idx];
       revealed = false;
@@ -296,7 +304,7 @@ export async function renderStudy(root) {
           <div class="sent-reveal" id="sent-reveal" hidden>
             <div class="sent-term">${escapeHtml(c.term)}</div>
             <div class="sent-def">${escapeHtml(c.definition || '')}</div>
-            ${(c.sentence_start_sec != null && c.episode_id) ? `<button class="srs-context-btn" id="sent-ctx" data-ep="${c.episode_id}" data-t="${Math.floor(c.sentence_start_sec)}">🎧 맥락에서 듣기</button>` : ''}
+            ${(c.sentence_start_sec != null && c.audio_url) ? `<button class="srs-context-btn" id="sent-ctx" data-url="${escapeHtml(c.audio_url)}" data-s="${c.sentence_start_sec}" data-e="${c.sentence_end_sec ?? ''}">🎧 맥락에서 듣기</button>` : ''}
           </div>
         </div>
         <button class="study-cta-btn" id="sent-action">뜻 보기</button>
@@ -312,7 +320,7 @@ export async function renderStudy(root) {
           root.querySelector('#sent-reveal').hidden = false;
           e.target.textContent = '다음 ▸';
           const cx = root.querySelector('#sent-ctx');
-          if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); location.hash = `#/episode/${cx.dataset.ep}/${cx.dataset.t}`; });
+          if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); playSentenceClip(cx.dataset.url, cx.dataset.s, cx.dataset.e, cx); });
         } else { idx++; paintS(); }
       });
     }
@@ -348,6 +356,7 @@ export async function renderStudy(root) {
     }).join('');
   }
   function startDictation() {
+    stopClip();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -427,6 +436,7 @@ export async function renderStudy(root) {
 
   // ── 스피킹(Speaking) — 듣고 따라 말하기. Web Speech 인식으로 발음을 글로 받아 채점, 미지원시 녹음 후 비교(스피킹) ──
   function startSpeaking() {
+    stopClip();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -565,6 +575,7 @@ export async function renderStudy(root) {
     return out + escapeHtml(ex.slice(last));
   }
   function startCloze() {
+    stopClip();
     const pool = items.filter((v) => v.example_sentence && v.term &&
       v.example_sentence.toLowerCase().includes(v.term.toLowerCase()));
     if (!pool.length) {

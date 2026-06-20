@@ -11,6 +11,7 @@
 import { escapeHtml, highlightTerm } from '/app.js';
 import { srsQueue, srsReview } from '/db.js';
 import { speak, prefetch } from '/tts.js';
+import { playSentenceClip, stopClip } from '/clip.js';
 
 const GRADES = {
   again: { label: 'Again',  cls: 'again', dir: 'left',  arrow: '↺', requeue: true  },
@@ -128,7 +129,7 @@ export async function renderSrs(root) {
                 <div class="srs-example" ${startSec ? `data-start="${startSec}"` : ''}>
                   ${highlightTerm(example, term)}
                 </div>
-                ${(startSec && c.episode_id) ? `<button class="srs-context-btn" data-ep="${c.episode_id}" data-t="${Math.floor(startSec)}">🎧 맥락에서 듣기</button>` : ''}
+                ${(startSec && c.audio_url) ? `<button class="srs-context-btn" data-url="${escapeHtml(c.audio_url)}" data-s="${startSec}" data-e="${c.sentence_end_sec ?? ''}">🎧 맥락에서 듣기</button>` : ''}
               ` : ''}
             ` : ''}
 
@@ -201,10 +202,11 @@ export async function renderSrs(root) {
         e.stopPropagation();
         speak(exEl.textContent.trim());
       });
+      // '맥락에서 듣기' — 화면 전환 없이 그 문장의 '실제 음성'만 인라인 재생(#20).
       const ctxBtn = root.querySelector('.srs-context-btn');
       if (ctxBtn) ctxBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        location.hash = `#/episode/${ctxBtn.dataset.ep}/${ctxBtn.dataset.t}`;
+        playSentenceClip(ctxBtn.dataset.url, ctxBtn.dataset.s, ctxBtn.dataset.e, ctxBtn);
       });
       attachBookFlip(card, (dir) => {
         if (dir === 'right') grade('good');
@@ -238,6 +240,7 @@ export async function renderSrs(root) {
     else mastered++;
 
     setTimeout(() => {
+      stopClip();  // 다음 카드로 넘어가면 이전 맥락 재생 정지
       const removed = queue.shift();
       if (g.requeue) queue.push(removed);
       stage = 0;
