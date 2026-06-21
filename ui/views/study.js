@@ -97,12 +97,12 @@ export async function renderStudy(root) {
           </button>`).join('')}
       </div>
       <div class="study-quiz-row">
-        <button class="study-quiz-btn" id="study-quiz-read">🎯 Quiz</button>
-        <button class="study-quiz-btn" id="study-quiz-listen">🎧 Listen</button>
-        <button class="study-quiz-btn" id="study-quiz-dict">✍️ Dictation</button>
-        <button class="study-quiz-btn" id="study-quiz-cloze">🧩 Cloze</button>
-        <button class="study-quiz-btn" id="study-quiz-speak">🎤 Speak</button>
-        <button class="study-quiz-btn" id="study-quiz-sent">💬 Sentences</button>
+        <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span></button>
+        <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span></button>
+        <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span></button>
+        <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span></button>
+        <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span></button>
+        <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span></button>
       </div>
     `;
   }
@@ -385,6 +385,7 @@ export async function renderStudy(root) {
         <div class="sent-card" id="sent-card">
           <div class="sent-en">${escapeHtml(c.example_sentence)} <span class="sent-spk">🔊</span></div>
           <div class="sent-reveal" id="sent-reveal" hidden>
+            ${c.example_ko ? `<div class="sent-ko">${escapeHtml(c.example_ko)}</div>` : ''}
             <div class="sent-term">${escapeHtml(c.term)}</div>
             <div class="sent-def">${escapeHtml(c.definition || '')}</div>
             ${(c.sentence_start_sec != null && c.audio_url) ? `<button class="srs-context-btn" id="sent-ctx" data-url="${escapeHtml(c.audio_url)}" data-s="${c.sentence_start_sec}" data-e="${c.sentence_end_sec ?? ''}">🎧 Hear in context</button>` : ''}
