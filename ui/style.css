@@ -1445,9 +1445,42 @@ body.logged-out #app-version { display: none; }
 .study-search:focus { outline: none; background: var(--tint-soft); }
 .study-xlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .study-x {
+  position: relative; overflow: hidden;
   background: var(--surface); border-radius: 14px; padding: 13px 15px;
   box-shadow: var(--shadow-card); cursor: pointer;
   transition: transform 0.08s;
+}
+.study-x.known { opacity: 0.6; }
+/* 오른쪽 스와이프 → Known 안내 (카드가 밀리면 뒤에서 드러남) */
+.study-x-swipe-hint {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 132px;
+  display: flex; align-items: center; padding-left: 18px;
+  font-weight: 800; font-size: 15px; color: #fff;
+  background: linear-gradient(90deg, var(--tint), var(--tint-soft-2, var(--tint)));
+  opacity: 0; transition: opacity 0.15s; pointer-events: none;
+}
+.study-x.swipe-armed .study-x-swipe-hint { opacity: 1; }
+.study-x-known-badge {
+  display: none; margin-left: auto; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--tint); color: #fff; font-size: 14px; font-weight: 700;
+  align-items: center; justify-content: center;
+}
+.study-x.known .study-x-known-badge { display: inline-flex; }
+/* KR 번역 버튼 */
+.study-x-tr {
+  margin-left: auto; flex-shrink: 0; height: 28px; padding: 0 13px; border-radius: 14px;
+  border: 0; background: var(--tint-soft); color: var(--tint); font-size: 12.5px; font-weight: 800;
+  letter-spacing: 0.02em; cursor: pointer;
+}
+.study-x.known .study-x-tr { margin-left: auto; }
+.study-x.known .study-x-known-badge { margin-left: 8px; }
+.study-x-tr.on { background: var(--tint); color: #fff; }
+.study-x-tr:active { transform: scale(0.92); }
+.study-x-tr-out {
+  margin-top: 7px; padding: 9px 12px; border-radius: 10px;
+  background: var(--tint-soft); color: var(--text); font-size: 14px; line-height: 1.5;
+  border-left: 3px solid var(--tint);
 }
 .study-x:active { transform: scale(0.985); }
 .study-x-top { display: flex; align-items: center; gap: 10px; }
@@ -1638,7 +1671,12 @@ body.logged-out #app-version { display: none; }
 .quiz-opt:active { transform: scale(0.99); }
 .quiz-opt.right { background: #E8F8EE; border-color: #2BB673; color: #1A7A4A; }
 .quiz-opt.wrong { background: #FDECEF; border-color: #E0245E; color: #C01B4C; }
-.quiz-exit { display: block; margin: 22px auto 0; border: 0; background: transparent; color: var(--text-3); font-size: 13px; cursor: pointer; font-family: var(--font); }
+.quiz-exit {
+  display: block; margin: 22px auto 0; padding: 12px 24px; border-radius: 14px;
+  border: 1.5px solid var(--separator-thin); background: var(--surface-2);
+  color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer; font-family: var(--font);
+}
+.quiz-exit:active { transform: scale(0.97); }
 .quiz-summary { text-align: center; padding: 56px 20px; }
 .quiz-sum-msg { font-family: var(--font); font-size: 20px; font-weight: 800; color: var(--text); }
 .quiz-sum-score { font-size: 48px; font-weight: 800; color: var(--tint); margin: 10px 0 2px; font-variant-numeric: tabular-nums; }

@@ -316,11 +316,17 @@ def main() -> int:
                 ctx_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             ring_pct = pg.eval_on_selector("#study-ring-pct", "el=>el.textContent") if pg.query_selector("#study-ring-pct") else None
-            # 알아요 마크(#10): 버튼 클릭 → markKnown 호출 + 행 known + 카운트 증가
+            # KR 번역 버튼 존재(#36) + 오른쪽 스와이프 → Known(#39): 버튼 대신 제스처로 마킹
+            study_tr = pg.eval_on_selector_all(".study-x-tr", "els=>els.length")
             known_before = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
             know_marked = known_after = None
-            if pg.query_selector(".study-x-know"):
-                pg.eval_on_selector(".study-x-know", "el=>el.click()")
+            if pg.query_selector(".study-x"):
+                pg.eval_on_selector(".study-x", """el=>{
+                  const o={bubbles:true,cancelable:true};
+                  el.dispatchEvent(new PointerEvent('pointerdown',Object.assign({},o,{clientX:12,clientY:20})));
+                  el.dispatchEvent(new PointerEvent('pointermove',Object.assign({},o,{clientX:120,clientY:22})));
+                  el.dispatchEvent(new PointerEvent('pointerup',Object.assign({},o,{clientX:120,clientY:22})));
+                }""")
                 time.sleep(0.3)
                 know_marked = pg.evaluate("(window.__known||[]).length>0")
                 known_after = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
@@ -359,14 +365,15 @@ def main() -> int:
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
                   " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
                   " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
-                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked,
+                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked, " tr_btns=", study_tr,
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True
-                        and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True)
+                        and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
+                        and study_tr >= 4)
 
             # === Timeline(Library) 회귀 ===
             pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건

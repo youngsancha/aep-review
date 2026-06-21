@@ -103,7 +103,6 @@ export async function renderStudy(root) {
         <button class="study-quiz-btn" id="study-quiz-dict">✍️ Dictation</button>
         <button class="study-quiz-btn" id="study-quiz-cloze">🧩 Cloze</button>
         <button class="study-quiz-btn" id="study-quiz-speak">🎤 Speak</button>
-        <button class="study-quiz-btn" id="study-quiz-prod">🗣️ KR→EN</button>
         <button class="study-quiz-btn" id="study-quiz-sent">💬 Sentences</button>
       </div>
     `;
@@ -131,18 +130,21 @@ export async function renderStudy(root) {
   function rowHtml(v) {
     const epTitle = (v.episode_title || '').replace(/^\d+\s*[-:.]\s*/, '');
     const hasClip = !!(v.audio_url && v.sentence_start_sec != null);
+    // 상호작용: 카드 탭 → 발음(term), 예문 탭 → 맥락 실음성, 오른쪽 스와이프 → Known, KR → 예문 번역.
     return `
-      <li class="study-x${v.known ? ' known' : ''}" data-id="${v.id}" data-ep="${v.episode_id}" data-t="${v.sentence_start_sec != null ? Math.floor(v.sentence_start_sec) : ''}">
+      <li class="study-x tap${v.known ? ' known' : ''}" data-id="${v.id}" data-ep="${v.episode_id}" data-term="${escapeHtml(v.term)}">
+        <div class="study-x-swipe-hint">✓ Known</div>
         <div class="study-x-top">
           <span class="study-x-term">${escapeHtml(v.term)}</span>
-          <button class="study-x-tts" data-text="${escapeHtml(v.term)}" aria-label="Play pronunciation">🔊</button>
-          <button class="study-x-know" data-id="${v.id}" aria-label="Mark as known">${v.known ? '✓ Known' : 'Known'}</button>
+          ${v.example_sentence ? `<button class="study-x-tr" data-id="${v.id}" aria-label="Show Korean translation">KR</button>` : ''}
+          <span class="study-x-known-badge" aria-hidden="true">✓</span>
         </div>
         ${v.definition ? `<div class="study-x-def">${defHtml(v.definition)}</div>` : ''}
         ${v.example_sentence ? `
           <div class="study-x-ex${hasClip ? ' tappable' : ''}" data-id="${v.id}" aria-label="${hasClip ? 'Tap to hear in context' : ''}">
             <span class="study-x-ex-q">“${highlightTerm(v.example_sentence, v.term)}”</span>
-          </div>` : ''}
+          </div>
+          <div class="study-x-tr-out" hidden></div>` : ''}
         ${epTitle ? `<div class="study-x-ep">🎧 ${escapeHtml(epTitle)}</div>` : ''}
       </li>`;
   }
@@ -155,37 +157,69 @@ export async function renderStudy(root) {
     return `<ul class="study-xlist">${filtered.map(rowHtml).join('')}</ul>`;
   }
 
+  async function markKnownLi(li) {
+    if (!li || li.classList.contains('known')) return;
+    const id = Number(li.dataset.id);
+    try {
+      await markKnown(id);
+      li.classList.add('known');
+      const item = items.find((x) => x.id === id); if (item) item.known = true;
+      applyKnown(1);
+      if (navigator.vibrate) navigator.vibrate(12);
+    } catch (err) { /* keep */ }
+  }
+  // 오른쪽 스와이프 → Known (#39). 손가락을 오른쪽으로 끌면 카드가 따라오고, 임계 넘기면 Known 처리.
+  function wireSwipeKnown(li) {
+    let x0 = null, y0 = null, sw = false;
+    const reset = () => { li.style.transition = ''; li.style.transform = ''; li.classList.remove('swipe-armed'); x0 = null; };
+    li.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; sw = false; });
+    li.addEventListener('pointermove', (e) => {
+      if (x0 == null) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (!sw && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4) sw = true;
+      if (sw && dx > 0) { li.style.transition = 'none'; li.style.transform = `translateX(${Math.min(dx, 132)}px)`; li.classList.toggle('swipe-armed', dx > 78); }
+    });
+    li.addEventListener('pointerup', (e) => {
+      const dx = x0 != null ? e.clientX - x0 : 0;
+      if (sw) { li.dataset.swiped = '1'; setTimeout(() => { li.dataset.swiped = ''; }, 350); }  // 뒤따르는 click(발음) 무시
+      if (sw && dx > 78) markKnownLi(li);
+      reset();
+    });
+    ['pointercancel', 'pointerleave'].forEach((ev) => li.addEventListener(ev, reset));
+  }
   function wireList() {
-    root.querySelectorAll('.study-x-tts').forEach((b) =>
-      b.addEventListener('click', (e) => { e.stopPropagation(); speak(b.dataset.text); }));
-    // 맥락 듣기 = 기본 동작: 예문을 탭하면 그 문장의 Shana '실제 음성'(없으면 TTS)을 인라인 재생.
-    // 별도 🎧 버튼 없이 문장 자체가 재생 트리거 → 화면 전환 X.
+    // 예문 탭 → 맥락 실음성(기존). stopPropagation 으로 카드 탭(발음)과 분리.
     root.querySelectorAll('.study-x-ex.tappable').forEach((el) =>
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         const it = items.find((x) => x.id === Number(el.dataset.id));
         if (it) playExample(it);
       }));
-    root.querySelectorAll('.study-x-know').forEach((b) =>
+    // KR 버튼 → 예문의 한국어 번역을 그 자리에 토글 표시 (#36).
+    root.querySelectorAll('.study-x-tr').forEach((b) =>
       b.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const li = b.closest('.study-x');
-        if (!li || li.classList.contains('known')) return;  // 이미 알아요
-        const id = Number(b.dataset.id);
-        b.disabled = true;
-        try {
-          await markKnown(id);
-          li.classList.add('known');
-          b.textContent = '✓ Known';
-          const item = items.find((x) => x.id === id); if (item) item.known = true;
-          applyKnown(1);
-          if (navigator.vibrate) navigator.vibrate(10);
-        } catch (err) {
-          b.disabled = false;
+        const li = b.closest('.study-x'); const out = li && li.querySelector('.study-x-tr-out');
+        const it = items.find((x) => x.id === Number(b.dataset.id));
+        if (!out || !it) return;
+        if (!out.hidden) { out.hidden = true; b.classList.remove('on'); return; }
+        out.hidden = false; b.classList.add('on');
+        if (!out.dataset.loaded) {
+          out.textContent = '…';
+          const ko = await translateEnKo(it.example_sentence);
+          out.textContent = ko || '번역을 불러오지 못했어요';
+          out.dataset.loaded = '1';
         }
       }));
-    // (#19) 카드 본문을 클릭하면 에피소드(사용자 인지: Library)로 튕기던 동작 제거 —
-    // 카드는 '학습용'(읽기 + 발음·맥락·알아요 버튼)으로만 동작. 의도치 않은 화면전환 X.
+    // 카드 탭 → 발음(term) 재생 (#38). 예문/KR 버튼은 stopPropagation 으로 제외. 스와이프 직후면 무시.
+    root.querySelectorAll('.study-x').forEach((li) => {
+      li.addEventListener('click', (e) => {
+        if (li.dataset.swiped === '1') return;
+        if (e.target.closest('.study-x-ex') || e.target.closest('.study-x-tr')) return;
+        speak(li.dataset.term);
+      });
+      wireSwipeKnown(li);
+    });
     prefetch([...root.querySelectorAll('.study-x-term')].slice(0, 8).map((e) => e.textContent));
   }
 
@@ -198,7 +232,6 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
-    root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     const sq = root.querySelector('#study-q');
     if (sq) {
