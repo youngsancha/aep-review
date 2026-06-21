@@ -602,8 +602,22 @@ export async function renderEpisode(root, idStr, tStr) {
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
+    // 글자 크기 변경 시 보던 위치 유지: 화면에 보이는 문장을 앵커로 잡고, 리플로우 후 같은 화면
+    // 위치로 스크롤을 보정한다(예전엔 scrollTop 고정이라 글자가 커지며 내용이 아래로 쭉 밀렸다).
+    const sc = document.querySelector('.tx-scroll');
+    let anchor = null, before = 0;
+    if (sc) {
+      const cont = sc.getBoundingClientRect();
+      anchor = sc.querySelector('.tx-sent.active')
+        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom - cont.top > 4);
+      if (anchor) before = anchor.getBoundingClientRect().top - cont.top;
+    }
     if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
+    if (sc && anchor) {
+      const after = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;  // 읽기→리플로우 강제
+      sc.scrollTop += (after - before);   // 앵커를 변경 전과 같은 화면 위치로
+    }
   }
   applyTxScale();
   document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
