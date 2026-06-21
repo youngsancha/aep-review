@@ -15,8 +15,9 @@ export function stopClip() {
   if (_btn) { _btn.classList.remove('ctx-playing'); _btn = null; }
 }
 
-// url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택). rate: 재생속도(받아쓰기 천천히 등).
-export function playSentenceClip(url, start, end, btn, rate) {
+// url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택). rate: 재생속도. loop: 끝에서
+// 처음으로 되감아 무한 반복(드릴 자동반복용). 다음 카드/정지 시 stopClip 으로 종료.
+export function playSentenceClip(url, start, end, btn, rate, loop) {
   if (!url) return;
   const toggleOff = (_btn === btn && _clip && btn);  // 같은 버튼 재탭 → 정지(버튼 없으면 토글 안 함)
   stopClip();
@@ -32,8 +33,9 @@ export function playSentenceClip(url, start, end, btn, rate) {
   const go = () => { try { a.currentTime = s; } catch (_) {} if (rate && rate > 0) a.playbackRate = rate; a.play().catch(() => {}); };
   if (a.readyState >= 1) go();
   else a.addEventListener('loadedmetadata', go, { once: true });
-  a.ontimeupdate = () => { if (a.currentTime >= e) stopClip(); };  // 문장 끝에서 정지
-  a.onended = stopClip;
+  const atEnd = () => { if (loop) { try { a.currentTime = s; } catch (_) {} a.play().catch(() => {}); } else stopClip(); };
+  a.ontimeupdate = () => { if (a.currentTime >= e) atEnd(); };  // 문장 끝 → 반복 or 정지
+  a.onended = atEnd;
   a.onerror = stopClip;
 }
 

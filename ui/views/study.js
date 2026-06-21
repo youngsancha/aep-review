@@ -31,12 +31,12 @@ function getStreak() {
 
 // Study 예문 재생 — 가능하면 Shana '실제 음성'(에피소드 클립)으로, 없으면 TTS 폴백.
 // 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
-function playExample(c, rate) {
+function playExample(c, rate, loop) {
   if (!c) return;
   if (c.audio_url && c.sentence_start_sec != null)
-    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate);
+    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate, loop);
   else
-    speak(c.example_sentence, rate ? { playbackRate: rate } : undefined);
+    speak(c.example_sentence, rate ? { playbackRate: rate } : undefined);  // TTS 폴백은 단발
 }
 
 export async function renderStudy(root) {
@@ -96,7 +96,6 @@ export async function renderStudy(root) {
             <span class="study-kind-n">${k.total}</span>
           </button>`).join('')}
       </div>
-      <input class="study-search" id="study-q" type="search" placeholder="🔍 Search expressions" value="${escapeHtml(q)}" />
       <div class="study-quiz-row">
         <button class="study-quiz-btn" id="study-quiz-read">🎯 Quiz</button>
         <button class="study-quiz-btn" id="study-quiz-listen">🎧 Listen</button>
@@ -233,21 +232,6 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
-    const sq = root.querySelector('#study-q');
-    if (sq) {
-      let t = 0;
-      sq.addEventListener('input', () => {
-        clearTimeout(t);
-        t = setTimeout(() => {
-          q = sq.value.trim();
-          root.querySelector('#study-list').innerHTML = listHtml();
-          wireList();
-          const s2 = root.querySelector('#study-q');
-          s2.focus();
-          s2.setSelectionRange(s2.value.length, s2.value.length);
-        }, 150);
-      });
-    }
   }
 
   async function loadKind(k) {
@@ -301,6 +285,7 @@ export async function renderStudy(root) {
         </div>
         <button class="quiz-exit" id="q-exit">← Study Home</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
+      requestAnimationFrame(() => speak(c.term));  // 진입/다음 카드 시 발음 자동재생
       if (mode === 'listen') requestAnimationFrame(() => speak(c.term));
       root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
@@ -384,7 +369,7 @@ export async function renderStudy(root) {
         <button class="study-cta-btn" id="sent-action">Show meaning</button>
         <button class="quiz-exit" id="sent-exit">← Study Home</button>`;
       root.querySelector('#sent-card').addEventListener('click', () => playExample(c));
-      requestAnimationFrame(() => playExample(c));
+      requestAnimationFrame(() => playExample(c, undefined, true));  // 문장 음성 자동 반복
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#sent-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#sent-action').addEventListener('click', (e) => {
@@ -502,8 +487,8 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="d-exit">← Study Home</button>`;
       const input = root.querySelector('#d-in');
       input.focus();
-      const replay = (pb) => playExample(c, pb);  // Shana 실제 음성(없으면 TTS), 천천히=속도인자
-      requestAnimationFrame(() => replay());
+      const replay = (pb, loop) => playExample(c, pb, loop);  // Shana 실제 음성(없으면 TTS), 천천히=속도인자
+      requestAnimationFrame(() => replay(undefined, true));  // 답 쓸 때까지 자동 반복(채점/스킵 시 정지)
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#d-spk').addEventListener('click', () => replay());
       root.querySelector('#d-slow').addEventListener('click', () => replay(0.62));
@@ -515,6 +500,7 @@ export async function renderStudy(root) {
       });
 
       function reveal(score) {
+        stopClip();  // 답 제출 → 자동반복 정지
         if (score >= 0.9) correct++;
         const cls = score >= 0.9 ? 'correct' : score >= 0.6 ? 'partial' : 'wrong';
         const label = score >= 0.9 ? 'Correct! 🎉' : score >= 0.6 ? 'Almost!' : 'Listen again';
@@ -902,12 +888,14 @@ export async function renderStudy(root) {
       input.focus();
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].term]);
       root.querySelector('#cz-spk').addEventListener('click', () => playExample(c));  // 힌트: Shana 실제 문장 듣기(선택)
+      requestAnimationFrame(() => playExample(c, undefined, true));  // 카드 표시 즉시 음성 자동 반복
       root.querySelector('#cz-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#cz-skip').addEventListener('click', () => reveal(0));
       root.querySelector('#cz-check').addEventListener('click', () => reveal(scoreText(input.value, c.term)));
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') reveal(scoreText(input.value, c.term)); });
 
       function reveal(score) {
+        stopClip();  // 답 제출 → 자동반복 정지
         if (score >= 0.85) correct++;
         const cls = score >= 0.85 ? 'correct' : score >= 0.5 ? 'partial' : 'wrong';
         const label = score >= 0.85 ? 'Correct! 🎉' : score >= 0.5 ? 'Almost!' : 'Wrong';
