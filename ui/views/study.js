@@ -766,8 +766,9 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="pr-exit">← Study Home</button>`;
       root.querySelector('#pr-exit').addEventListener('click', () => renderStudy(root));
       root.querySelector('#pr-reveal').addEventListener('click', () => revealPr('', c));
-      // 한국어는 비동기 로드(실패해도 진행: 표현 뜻 폴백). translateEnKo 는 절대 throw 안 함.
-      const ko = await translateEnKo(c.example_sentence);
+      // 한국어 프롬프트: 사전번역(claude·고품질) 우선 → 즉시 표시(await 생략, 깜빡임 제거).
+      // 없을 때만 온디맨드(MyMemory) 폴백. 한→영 드릴에선 '한국어 자극'의 품질이 곧 산출 품질이라 중요.
+      const ko = c.example_ko || await translateEnKo(c.example_sentence);
       const koEl = root.querySelector('#pr-ko');
       if (koEl) koEl.textContent = ko || (c.definition ? `(meaning) ${c.definition}` : 'Use the expression and say it in English');
       const mic = root.querySelector('#pr-mic');
