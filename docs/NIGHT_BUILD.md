@@ -236,3 +236,16 @@ NowPlaying/About·로딩스켈레톤·뷰전환·a11y(reduced-motion/focus)·per
 **기능 완성·홀드.** 덱이 구조적으로 완비(content+pragmatics+discourse). 추가 확장은 bloat이라
 중단, 10분 간격 모니터링하며 피드백 대기. (말하기 드릴의 음성인식 채점은 마이크 검증 필요 →
 사용자 깨어있을 때 추가 권장 — 야간엔 미검증 mic 기능 미배포.)
+
+### ⚠️ 아침에 확인 필요 — Vercel 배포 멈춤 (03:23)
+- **코드는 모두 정상**: `main` 에 v131 까지 정상 푸시됨(origin 일치, unpushed 0).
+- **그러나 프로덕션(aep-review.vercel.app)이 v129 에서 멈춤** — v130·v131·docs 커밋이
+  배포 안 됨. `/data/essentials.json` 이 **프로덕션 404**(아래 버그 수정이 아직 라이브 아님).
+- **발견·수정한 진짜 버그**: `ui/data/essentials.json` 이 `.gitignore` 의 `data/` 규칙에 걸려
+  **한 번도 커밋 안 됨** → 프로덕션에서 Essentials 모드가 "Failed to load" 로 깨져 있었음.
+  → `.gitignore` 에 `!ui/data/` 부정규칙 추가 + 파일 커밋(v131). **로컬은 정상**(하니스/로컬서버는
+  디스크 파일 서빙). 프로덕션만 배포되면 해결.
+- **막힌 이유 추정**: Vercel 자동배포가 안 도는 중(야간 다수 푸시 후 큐/한도 의심). 로컬에서
+  **Vercel 토큰·deploy hook 없음 → 강제 배포 불가**.
+- **조치(택1)**: ① Vercel 대시보드에서 최신 커밋 **Redeploy**, 또는 ② 잠시 후 자동배포 복구 대기
+  (복구되면 v131 가 라이브되며 Essentials 정상 동작). 코드 추가 작업 불필요.
