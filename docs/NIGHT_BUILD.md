@@ -237,6 +237,17 @@ NowPlaying/About·로딩스켈레톤·뷰전환·a11y(reduced-motion/focus)·per
 중단, 10분 간격 모니터링하며 피드백 대기. (말하기 드릴의 음성인식 채점은 마이크 검증 필요 →
 사용자 깨어있을 때 추가 권장 — 야간엔 미검증 mic 기능 미배포.)
 
+### ✅ 404 진짜 원인 규명 — `.vercelignore` (04:21)
+**프로덕션 Essentials 404 의 진짜 원인은 3겹이었음:**
+1. `.gitignore` 의 `data/` → `ui/data/essentials.json` 커밋 누락 (→ v131 에서 `!ui/data/` 로 수정).
+2. **`.vercelignore` 의 `data/`** → git 엔 들어갔어도 **Vercel 업로드에서 제외** → 여전히 404.
+   (→ **v132** 에서 `/data/` 루트앵커로 수정 = 진짜 해결.)
+3. Vercel 웹훅 ~80분 정지 후 한 번만 따라잡아 v131(93d085e) 배포 → 그러나 v131 은 아직
+   `.vercelignore` 미수정본이라 **배포돼도 404**. **v132(5dabd75)가 배포돼야 200.**
+- 재발방지: `scripts/release.py` 에 **2겹 가드**(git 비추적 + .vercelignore 앵커없는 패턴) 추가.
+- **아침 조치**: Vercel 대시보드에서 **최신 커밋(v132 이상) Redeploy** → essentials.json 200 →
+  Essentials 정상. (v131 만 보이면 still 404 니 반드시 최신으로.)
+
 ### ⚠️ 아침에 확인 필요 — Vercel 배포 멈춤 (03:23)
 - **코드는 모두 정상**: `main` 에 v131 까지 정상 푸시됨(origin 일치, unpushed 0).
 - **그러나 프로덕션(aep-review.vercel.app)이 v129 에서 멈춤** — v130·v131·docs 커밋이
