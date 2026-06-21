@@ -45,6 +45,18 @@ export async function hostedSet() {
   }
   return _hostedP;
 }
+// 예문 한국어 사전번역 맵(vocab_id → ko). 1회 fetch 후 메모리 캐시. (scripts/translate_examples 생성)
+let _exKo = null, _exKoP = null;
+export async function examplesKo() {
+  if (_exKo) return _exKo;
+  if (!_exKoP) {
+    _exKoP = fetch(`${STORAGE_URL}/transcripts/examples_ko.json`, { cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((m) => { _exKo = m || {}; return _exKo; })
+      .catch(() => { _exKo = {}; return _exKo; });
+  }
+  return _exKoP;
+}
 // 회차 오디오 소스 결정: 호스팅됐으면 R2(광고 로테이션 무관·완전 일치), 아니면 기존 megaphone clean.
 export async function audioSrcFor(id, audioUrl) {
   const h = await hostedSet();
@@ -146,13 +158,14 @@ export async function expressionsByKind(kind, limit = 800) {
     .order('term', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  const hosted = await hostedSet();
+  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
   return (data || []).map((v) => ({
     ...v,
     episode_title: v.episodes?.title || '',
     // 인라인 문장 재생용 — 호스팅된 회차는 R2(자막 문장시각과 일치) 아니면 megaphone clean.
     audio_url: hosted.has(Number(v.episode_id)) ? hostedAudioUrl(v.episode_id) : cleanAudioUrl(v.episodes?.audio_url || ''),
     known: Array.isArray(v.srs) && v.srs.some((s) => (s.interval_days || 0) >= KNOWN_INTERVAL),
+    example_ko: exKo[String(v.id)] || null,   // 사전번역(있으면 KR 버튼 즉시 표시)
   }));
 }
 

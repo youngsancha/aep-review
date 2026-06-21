@@ -224,9 +224,13 @@ export async function renderStudy(root) {
         if (!out.hidden) { out.hidden = true; b.classList.remove('on'); return; }
         out.hidden = false; b.classList.add('on');
         if (!out.dataset.loaded) {
-          out.textContent = '…';
-          const ko = await translateEnKo(it.example_sentence);
-          out.textContent = ko || '번역을 불러오지 못했어요';
+          if (it.example_ko) {            // 사전번역(전체 예문) 있으면 즉시 표시
+            out.textContent = it.example_ko;
+          } else {                         // 없으면(아직 생성 전 등) 온디맨드 폴백
+            out.textContent = '…';
+            const ko = await translateEnKo(it.example_sentence);
+            out.textContent = ko || 'Translation unavailable';
+          }
           out.dataset.loaded = '1';
         }
       }));
