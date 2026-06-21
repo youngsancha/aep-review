@@ -303,6 +303,24 @@ def main() -> int:
             study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
             # 맥락에서 듣기: 별도 버튼 없이 예문(.study-x-ex.tappable) 자체가 재생 트리거
             study_ctx = pg.eval_on_selector_all(".study-x-ex.tappable", "els=>els.length")
+            # Essentials 별도 모드: CTA → 카테고리/리스트/카드게임 진입 + Known 진행 + #ess-back 복귀
+            ess_ok = None
+            if pg.query_selector("#study-essentials"):
+                pg.click("#study-essentials")
+                pg.wait_for_selector(".ess-cats", timeout=5000)
+                ess_cats = pg.eval_on_selector_all(".ess-cat", "els=>els.length")
+                ess_list = pg.eval_on_selector_all(".ess-x", "els=>els.length")
+                has_play = bool(pg.query_selector("#ess-play"))
+                pg.click("#ess-play"); time.sleep(0.3)
+                has_card = bool(pg.query_selector("#ess-card") and pg.query_selector("#ess-g-known"))
+                before = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
+                pg.click("#ess-g-known"); time.sleep(0.25)
+                after = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
+                pg.click("#ess-g-exit") if pg.query_selector("#ess-g-exit") else None
+                time.sleep(0.2)
+                pg.click("#ess-back") if pg.query_selector("#ess-back") else None
+                time.sleep(0.4)
+                ess_ok = bool(ess_cats >= 9 and ess_list > 0 and has_play and has_card and before != after)
             # 카드 본문 클릭 버그(#19): 더 이상 에피소드로 네비게이트 안 함
             pg.evaluate("location.hash=''")
             if pg.query_selector(".study-x"):
@@ -400,13 +418,13 @@ def main() -> int:
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
                   " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
-                  " err=", study_err)
+                  " ess=", ess_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True
-                        and sent_ko_ok is True and sent_game_ok is True
+                        and sent_ko_ok is True and sent_game_ok is True and ess_ok is True
                         and qb_ico == 6 and qb_txt == 6 and qb_uniform is True
                         and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
                         and study_tr >= 4)

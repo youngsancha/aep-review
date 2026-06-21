@@ -5,6 +5,7 @@ import { studyOverview, expressionsByKind, markKnown, markUnknown } from '/db.js
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
+import { renderEssentials } from '/views/essentials.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
@@ -92,6 +93,11 @@ export async function renderStudy(root) {
           <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
       </div>
+      <button class="study-ess-cta" id="study-essentials">
+        <span class="study-ess-ico">✨</span>
+        <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현 — 빠르게 네이티브로</span></span>
+        <span class="study-ess-go">›</span>
+      </button>
       <div class="study-kinds">
         ${kinds.map((k) => `
           <button class="study-kind-chip${k.kind === selected ? ' on' : ''}" data-kind="${k.kind}">
@@ -260,6 +266,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
+    root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
   }
 
   async function loadKind(k) {
