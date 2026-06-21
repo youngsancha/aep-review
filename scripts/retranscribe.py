@@ -84,19 +84,24 @@ def _build_word_index(transcript: dict[str, Any]):
 
 
 def _anchor(probe: list[str], words: list[str], lo: int, hi: int) -> int | None:
-    """probe 토큰열이 words[lo:hi] 에서 ≥70% 일치하는 시작 인덱스. 없으면 None."""
+    """probe 토큰열이 words[lo:hi] 에서 '가장 잘' 맞는 시작 인덱스. 끝(tail) 경계용이라 단순 첫매칭이
+    아니라 (1) 일치수 최대, (2) 마지막 토큰 일치를 강하게 가산 — 동일단어가 반복되는 예문
+    ('…want to get fit. They want to get in shape')에서 앞쪽 'want' 에 오매칭해 클립이 일찍
+    잘리던 버그 방지, (3) 동점이면 더 뒤(예문 끝에 가까운) 위치 채택. 임계 미만이면 None."""
     L = len(probe)
     if L == 0:
         return None
-    first = probe[0]
+    first, last = probe[0], probe[-1]
     hi = min(hi, len(words))
+    best_i, best_score = None, 0
     for i in range(lo, hi - L + 1):
         if words[i] != first:
             continue
         hit = sum(1 for k in range(L) if words[i + k] == probe[k])
-        if hit >= max(2, int(L * 0.7)):
-            return i
-    return None
+        score = hit + (2 if words[i + L - 1] == last else 0)  # 끝 토큰 일치 가산(경계 정확도)
+        if score >= best_score:   # '>=' → 동점이면 더 뒤(꼬리에 가까운) 위치
+            best_score, best_i = score, i
+    return best_i if best_score >= max(2, int(L * 0.7)) else None
 
 
 def _find_span(ex_tokens: list[str], words: list[str], spans):
