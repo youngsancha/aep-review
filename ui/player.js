@@ -21,7 +21,10 @@ class Player {
   }
 
   load(track) {
-    if (this.current && this.current.id === track.id) return;
+    if (this.current && this.current.id === track.id) {
+      if (!this.audio.src && track.src) this.audio.src = track.src;  // 방어: src 비었으면 복구
+      return;
+    }
     this.current = track;
     this.audio.src = track.src;
     this._emit('track');
@@ -29,15 +32,26 @@ class Player {
 
   play() {
     const a = this.audio;
-    // 새로고침 직후 등 src 가 에러/미로드 상태면 복구
-    if (a.error && this.current && this.current.src) { a.src = this.current.src; }
-    const p = a.play();
-    if (p && p.catch) p.catch((err) => {
-      if (err && err.name === 'NotAllowedError') return;  // 제스처 없는 자동재생 차단은 그대로 둠
-      // 아직 로드 전이라 실패한 경우 → 재생 가능 시점에 1회 자동 재시도 (재생버튼 먹통 방지)
-      const retry = () => { a.removeEventListener('canplay', retry); a.play().catch(() => {}); };
-      a.addEventListener('canplay', retry, { once: true });
-    });
+    // 딥링크/새로고침 직후 콜드 스타트: src 가 비었거나 에러면 현재 트랙으로 (재)설정 + 강제 로드.
+    // (네비게이션과 달리 직접 에피소드 로드 시 오디오가 한 번도 '워밍업' 안 돼 첫 재생이 먹통이던 문제)
+    if (this.current && this.current.src && (a.error || !a.currentSrc)) {
+      a.src = this.current.src;
+      try { a.load(); } catch (e) {}
+    }
+    const tryPlay = () => { const p = a.play(); if (p && p.catch) p.catch((err) => { if (!(err && err.name === 'NotAllowedError')) { /* 로드 후 재시도가 처리 */ } }); };
+    tryPlay();  // 제스처 보존: 클릭 스택에서 즉시 1회
+    // 아직 로드 전이라 못 켜졌으면, 재생 가능해지는 즉시 1회 자동 재시도(여러 이벤트로 견고하게).
+    if (a.paused) {
+      const onReady = () => {
+        a.removeEventListener('canplay', onReady);
+        a.removeEventListener('loadeddata', onReady);
+        a.removeEventListener('canplaythrough', onReady);
+        a.play().catch(() => {});
+      };
+      a.addEventListener('canplay', onReady, { once: true });
+      a.addEventListener('loadeddata', onReady, { once: true });
+      a.addEventListener('canplaythrough', onReady, { once: true });
+    }
   }
   pause()   { this.audio.pause(); }
   toggle()  { this.audio.paused ? this.play() : this.pause(); }
