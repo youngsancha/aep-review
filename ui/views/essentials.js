@@ -73,7 +73,11 @@ export async function renderEssentials(root, goBack) {
         <button class="ess-dir-btn${dir === 'en' ? ' on' : ''}" data-dir="en">EN → 뜻 <small>인식</small></button>
         <button class="ess-dir-btn${dir === 'ko' ? ' on' : ''}" data-dir="ko">🇰🇷 → EN <small>말하기</small></button>
       </div>
-      <button class="ess-play" id="ess-play">🃏 Study as cards (${pool.length})</button>
+      <button class="ess-play" id="ess-play">🃏 ${(() => {
+        const u = pool.filter((c) => !kn.has(c.id)).length;
+        const n = Math.min(18, u || pool.length);
+        return u ? `Study ${n} new card${n > 1 ? 's' : ''}` : `Review ${n} card${n > 1 ? 's' : ''}`;
+      })()}</button>
       <div class="ess-list" id="ess-list"></div>`;
     root.querySelector('#ess-back').addEventListener('click', () => goBack());
     root.querySelectorAll('.ess-cat').forEach((b) => b.addEventListener('click', () => { sel = b.dataset.cat; overview(); }));
@@ -149,7 +153,12 @@ export async function renderEssentials(root, goBack) {
     stopClip();
     if (!srcCards.length) return;
     const prod = dir === 'ko';
-    let deck = _shuffle(srcCards);
+    // 한 라운드는 '아직 모르는 것 우선'으로 최대 18장만 — 작은 분량을 끝까지 마스터하는 성취가
+    // 매일 습관·빠른 진척의 핵심. 다 알면 전체에서 복습. ('Play again' 이 다음 미지 배치로 이어감)
+    const kn = knownSet();
+    const unknown = srcCards.filter((c) => !kn.has(c.id));
+    const base = unknown.length ? unknown : srcCards;
+    let deck = _shuffle(base).slice(0, Math.min(18, base.length));
     const total = deck.length;
     let mastered = 0, againCnt = 0;
     prefetch(deck.slice(0, 6).map((c) => c.term));
