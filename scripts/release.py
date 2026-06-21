@@ -45,8 +45,37 @@ def bump() -> str:
     return new
 
 
+def check_ui_tracked() -> None:
+    """ui/ 하위 정적 자산이 전부 git 추적되는지 확인 — 누락 시 release 중단.
+
+    `.gitignore` 의 'data/' 규칙이 `ui/data/essentials.json` 까지 잡아 **한 번도 커밋 안 되고
+    프로덕션 404** 였던 사고(2026-06-21) 재발 방지. gitignore 로 묻혀 `git status` 에도 안 뜨는
+    파일을 잡으려면 '디스크 vs git ls-files' 비교가 유일한 방법(staging/ignore 무관).
+    """
+    ui = ROOT / "ui"
+    tracked = set(subprocess.run(
+        ["git", "ls-files", "ui"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split())
+    missing = []
+    for p in ui.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(ROOT).as_posix()
+        if p.name.startswith("_"):   # 하니스 픽스처(_mocks.js/_harness*.html)는 일시 생성물 → 제외
+            continue
+        if rel not in tracked:
+            missing.append(rel)
+    if missing:
+        raise SystemExit(
+            "release 중단 — ui/ 하위 비추적 파일(배포 누락 위험, 프로덕션 404 유발):\n  "
+            + "\n  ".join(sorted(missing))
+            + "\n→ .gitignore 확인(예: !ui/data/) 후 git add 하고 재시도."
+        )
+
+
 def main() -> None:
     msg = sys.argv[1] if len(sys.argv) > 1 else "update"
+    check_ui_tracked()   # 배포 누락 가드(아래 bump/commit 전에)
     new = bump()
     full = f"{msg}\n\nv{new}\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
     subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)
