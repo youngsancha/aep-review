@@ -128,6 +128,15 @@ export async function markKnown(vocabId) {
   if (error) throw new Error(error.message);
 }
 
+// "알아요" 해제 — SRS 카드를 다시 복습 대상으로 되돌린다(known 진도에서 빠짐). 카드 왼쪽 스와이프용.
+export async function markUnknown(vocabId) {
+  const { error } = await supabase
+    .from('srs_cards')
+    .update({ interval_days: 0, reps: 0, ease: 2.5, due_date: todayStr(new Date()) })
+    .eq('vocab_id', vocabId);
+  if (error) throw new Error(error.message);
+}
+
 // 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
 export async function expressionsByKind(kind, limit = 800) {
   const { data, error } = await supabase

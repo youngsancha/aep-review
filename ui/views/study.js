@@ -1,7 +1,7 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml, highlightTerm } from '/app.js';
-import { studyOverview, expressionsByKind, markKnown } from '/db.js';
+import { studyOverview, expressionsByKind, markKnown, markUnknown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
@@ -167,21 +167,43 @@ export async function renderStudy(root) {
       if (navigator.vibrate) navigator.vibrate(12);
     } catch (err) { /* keep */ }
   }
-  // 오른쪽 스와이프 → Known (#39). 손가락을 오른쪽으로 끌면 카드가 따라오고, 임계 넘기면 Known 처리.
+  async function markUnknownLi(li) {
+    if (!li || !li.classList.contains('known')) return;
+    const id = Number(li.dataset.id);
+    try {
+      await markUnknown(id);
+      li.classList.remove('known');
+      const item = items.find((x) => x.id === id); if (item) item.known = false;
+      applyKnown(-1);
+      if (navigator.vibrate) navigator.vibrate(12);
+    } catch (err) { /* keep */ }
+  }
+  // 스와이프: 오른쪽 → Known(미지일 때), 왼쪽 → Unknown(known 일 때 되돌리기). 임계 넘기면 처리.
   function wireSwipeKnown(li) {
     let x0 = null, y0 = null, sw = false;
-    const reset = () => { li.style.transition = ''; li.style.transform = ''; li.classList.remove('swipe-armed'); x0 = null; };
+    const hint = li.querySelector('.study-x-swipe-hint');
+    const reset = () => { li.style.transition = ''; li.style.transform = ''; li.classList.remove('swipe-armed', 'swipe-left'); x0 = null; };
     li.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; sw = false; });
     li.addEventListener('pointermove', (e) => {
       if (x0 == null) return;
       const dx = e.clientX - x0, dy = e.clientY - y0;
       if (!sw && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4) sw = true;
-      if (sw && dx > 0) { li.style.transition = 'none'; li.style.transform = `translateX(${Math.min(dx, 132)}px)`; li.classList.toggle('swipe-armed', dx > 78); }
+      if (!sw) return;
+      const known = li.classList.contains('known');
+      const allow = (dx > 0 && !known) || (dx < 0 && known);   // 방향별 허용
+      if (!allow) return;
+      if (hint) hint.textContent = dx < 0 ? '↺ Unknown' : '✓ Known';
+      li.style.transition = 'none';
+      li.style.transform = `translateX(${Math.max(-132, Math.min(dx, 132))}px)`;
+      li.classList.toggle('swipe-armed', Math.abs(dx) > 78);
+      li.classList.toggle('swipe-left', dx < 0);
     });
     li.addEventListener('pointerup', (e) => {
       const dx = x0 != null ? e.clientX - x0 : 0;
+      const known = li.classList.contains('known');
       if (sw) { li.dataset.swiped = '1'; setTimeout(() => { li.dataset.swiped = ''; }, 350); }  // 뒤따르는 click(발음) 무시
-      if (sw && dx > 78) markKnownLi(li);
+      if (sw && dx > 78 && !known) markKnownLi(li);
+      else if (sw && dx < -78 && known) markUnknownLi(li);
       reset();
     });
     ['pointercancel', 'pointerleave'].forEach((ev) => li.addEventListener(ev, reset));
@@ -624,13 +646,31 @@ export async function renderStudy(root) {
           };
           myRec.start();
         } catch (e) { myRec = null; }
+        // continuous+interim: 말 도중 쉬어도 끊기지 않고 계속 듣는다(예전엔 첫 쉼에서 끊겨 피드백 없이
+        // Speak 로 복귀하던 버그). 탭하면 끝내고, 끝나면 '무엇이든' 인식된 텍스트로 반드시 채점·피드백.
         rec = new SR();
-        rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
+        rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = true;
         listening = true; mic.classList.add('listening');
-        const l = label(); if (l) l.textContent = 'Listening…';
-        rec.onresult = (e) => { reset(); showResult((e.results[0][0].transcript || '').trim(), c); stopMyRec(); };
-        rec.onerror = (e) => { reset(); stopMyRec(); const h = root.querySelector('#sp-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ Please allow mic access' : 'Recognition failed — try again'; };
-        rec.onend = () => { if (listening) { reset(); stopMyRec(); } };
+        const l = label(); if (l) l.textContent = 'Listening… (tap to finish)';
+        let finalText = '';
+        rec.onresult = (e) => {
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += t + ' '; else interim += t;
+          }
+          const h = root.querySelector('#sp-hint'); if (h) h.textContent = (finalText + interim).trim() || 'Listening…';
+        };
+        rec.onerror = (e) => {
+          const h = root.querySelector('#sp-hint');
+          if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ Please allow mic access'
+            : (e.error === 'no-speech') ? '🎙️ No speech heard — tap and speak' : 'Recognition error — try again';
+        };
+        rec.onend = () => {
+          reset(); stopMyRec();
+          const said = finalText.trim();
+          if (said) showResult(said, c);   // 인식된 게 있으면 반드시 채점·피드백(끊겨도 피드백 보장)
+        };
         try { rec.start(); } catch (e) { reset(); stopMyRec(); }
       });
     }

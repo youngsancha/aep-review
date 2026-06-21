@@ -94,6 +94,7 @@ export async function expressionsByKind(kind) {
     episode_title:'211 - Test', known:false }));
 }
 export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
+export async function markUnknown(id) { window.__unknown = (window.__unknown || []).concat(id); }
 export function cleanAudioUrl(u) { return u; }
 export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }

@@ -1462,6 +1462,11 @@ body.logged-out #app-version { display: none; }
   opacity: 0; transition: opacity 0.15s; pointer-events: none;
 }
 .study-x.swipe-armed .study-x-swipe-hint { opacity: 1; }
+/* 왼쪽 스와이프(Unknown 되돌리기) — 힌트를 오른쪽에 */
+.study-x.swipe-left .study-x-swipe-hint {
+  left: auto; right: 0; padding-left: 0; padding-right: 18px; justify-content: flex-end;
+  background: linear-gradient(270deg, var(--text-3), var(--surface-2));
+}
 .study-x-known-badge {
   display: none; margin-left: auto; flex-shrink: 0;
   width: 24px; height: 24px; border-radius: 50%;
