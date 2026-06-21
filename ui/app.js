@@ -241,10 +241,14 @@ if ('serviceWorker' in navigator) {
     })
     .catch((e) => console.warn('SW register failed:', e));
 
-  let reloaded = false;
+  // 새 버전(SW) 적용 시 새로고침 — 단, '사용 중'엔 끊지 않는다. 재생 중 페이지가 갑자기 reload 되면
+  // 오디오가 끊기고 재생버튼이 안 먹는 것처럼 보였다(사용자 보고). 그래서 화면이 가려질 때(백그라운드)
+  // 또는 사용자가 직접 새로고침할 때만 적용 → 활성 사용 중엔 절대 끊기지 않음.
+  let reloaded = false, pendingReload = false;
+  const doReload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded) return;
-    reloaded = true;
-    location.reload();
+    if (document.hidden) doReload();
+    else pendingReload = true;
   });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && pendingReload) doReload(); });
 }
