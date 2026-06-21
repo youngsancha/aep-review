@@ -189,6 +189,11 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     player.seek((b.end || 0) + 0.01);
     player.play();
+    // 광고 스킵은 명시적 '본편으로' 동작 → 자동추적을 즉시 재개한다. (이 버튼이 .tx-scroll 안에 있어
+    // 탭의 touchstart 가 userScrolledUntil 을 4초 세팅해 본편 따라가기가 멈추던 버그 수정.)
+    userScrolledUntil = 0;
+    lastAdEl = null; lastActivePara = -1;   // 본편 첫 문장으로 즉시 재정렬되게 강제 재평가
+    highlightActiveSegment();
   }));
 
   // 즉시 해설: 각 vocab(어려운 표현)을 그 example 시점이 속한 문장에 매핑 → 그 문장이
@@ -337,8 +342,10 @@ export async function renderEpisode(root, idStr, tStr) {
     if (shadowMode === 'loop' && loopPara >= 0) t = Math.max(t, loopStart);
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
+    // 광고 경계는 '정확한 컷'이라 HL_LAG 미적용한 실제 오디오 위치로 판정 → 스킵 직후 즉시 본편 인식.
+    const tAd = player.time - syncOffset;
     let inAd = null;
-    for (const b of adBars) { const on = t >= b.start && t < b.end; b.el.classList.toggle('active', on); if (on) inAd = b; }
+    for (const b of adBars) { const on = tAd >= b.start && tAd < b.end; b.el.classList.toggle('active', on); if (on) inAd = b; }
     if (inAd) {
       if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) sentRanges[lastActiveSent].el.classList.remove('active');
       if (lastActiveSent !== -1) { lastActiveSent = -1; renderNotes(-1); }
