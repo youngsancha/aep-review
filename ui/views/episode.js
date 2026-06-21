@@ -602,22 +602,23 @@ export async function renderEpisode(root, idStr, tStr) {
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
-    // 글자 크기 변경 시 '보던 위치 그대로' 유지. 브라우저 자동 스크롤 앵커링과 우리 보정이 겹쳐 두 번
-    // 밀리던 문제 때문에 .tx-scroll 은 overflow-anchor:none(CSS)으로 끄고, 여기서만 단일 보정한다.
+    // 글자 크기 변경 시 '보던 문장 그대로'. 동기적으로 보정하면 레이아웃/브라우저 앵커링이 덜 정착돼
+    // 과보정(위로 쭉)/이중보정(아래로 쭉)이 났다. 그래서 보정은 rAF(레이아웃 정착 후) 에서 '딱 한 번'.
     const sc = document.querySelector('.tx-scroll');
-    let anchor = null, before = 0, contTop = 0;
+    let anchor = null, desired = 0;
     if (sc) {
-      contTop = sc.getBoundingClientRect().top;
+      const top = sc.getBoundingClientRect().top + 20;  // 마스크 여백 고려한 상단 읽기선
       anchor = sc.querySelector('.tx-sent.active')
-        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom - contTop > 4);
-      if (anchor) before = anchor.getBoundingClientRect().top - contTop;
+        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom > top);
+      if (anchor) desired = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;
     }
     if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
     if (sc && anchor) {
-      void sc.offsetHeight;  // 리플로우 강제 → 새 레이아웃의 anchor 위치를 정확히 읽는다
-      const after = anchor.getBoundingClientRect().top - contTop;  // 동일 contTop(컨테이너는 안 움직임)
-      sc.scrollTop += (after - before);   // 앵커를 변경 전과 같은 화면 위치로(딱 한 번)
+      requestAnimationFrame(() => {   // 레이아웃 완전 정착 후 앵커를 원래 화면 위치로(단일 보정)
+        const now = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+        sc.scrollTop += (now - desired);
+      });
     }
   }
   applyTxScale();
