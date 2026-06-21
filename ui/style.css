@@ -1712,6 +1712,25 @@ body.logged-out #app-version { display: none; }
 /* 문장 학습 덱 */
 .sent-ko { font-size: 15px; color: var(--text); font-weight: 600; line-height: 1.5; margin-bottom: 10px; letter-spacing: -0.01em; }
 .sent-card { background: var(--surface); border-radius: 18px; padding: 24px 20px; box-shadow: var(--shadow-card); margin: 8px 0 14px; cursor: pointer; }
+/* 카드게임(Sentences) 스와이프: 세로 스크롤은 허용하되 가로 스와이프는 JS가 받음(touch-action) */
+.sent-card.sent-swipe { position: relative; touch-action: pan-y; user-select: none; will-change: transform; min-height: 120px; }
+.sent-card.swipe-armed { box-shadow: 0 0 0 2px var(--grad-3), var(--shadow-card); }
+.sent-card.swipe-armed.swipe-left { box-shadow: 0 0 0 2px #ff5a7a, var(--shadow-card); }
+.sent-swipe-badge {
+  position: absolute; top: 12px; right: 16px; font-size: 13px; font-weight: 800;
+  color: var(--grad-3); letter-spacing: -0.01em; min-height: 16px;
+}
+.sent-card.swipe-left .sent-swipe-badge { left: 16px; right: auto; color: #ff5a7a; }
+.sent-game-row { display: flex; align-items: stretch; gap: 8px; margin: 6px 0 8px; }
+.sent-game-row .study-cta-btn { flex: 1 1 auto; margin: 0; }
+.sent-game-btn {
+  flex: 0 0 auto; min-width: 74px; border: 0; border-radius: 14px; cursor: pointer;
+  font-family: var(--font); font-size: 13px; font-weight: 800; padding: 12px 10px;
+  box-shadow: var(--shadow-card);
+}
+.sent-game-btn.again { background: var(--surface-2, rgba(127,127,140,0.16)); color: var(--text-2); }
+.sent-game-btn.known { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
+.sent-game-btn:active { transform: scale(0.97); }
 .sent-en { font-family: var(--font); font-size: 19px; line-height: 1.5; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
 .sent-spk { font-size: 15px; opacity: 0.65; }
 .sent-reveal { margin-top: 18px; padding-top: 16px; border-top: 0.5px solid var(--separator-thin); }

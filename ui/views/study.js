@@ -349,6 +349,8 @@ export async function renderStudy(root) {
   }
 
   // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
+  // ── Sentences = '카드게임' 반복학습 — 오른쪽 스와이프=Known(마스터·덱에서 제거),
+  // 왼쪽=Again(맨 뒤로 재투입→다시 만남). 덱을 다 비울 때까지 반복. 탭=발음, Show meaning=뜻/한국어. ──
   function startSentences() {
     stopClip();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
@@ -357,32 +359,51 @@ export async function renderStudy(root) {
       if (el) el.innerHTML = '<div class="empty">No expressions with examples yet.</div>';
       return;
     }
-    const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
-    let idx = 0, revealed = false;
-    prefetch(cards.slice(0, 6).map((c) => c.example_sentence));
+    let deck = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    const total = deck.length;
+    let mastered = 0, againCnt = 0;
+    prefetch(deck.slice(0, 6).map((c) => c.example_sentence));
 
     function finishS() {
+      stopClip();
+      const msg = againCnt === 0 ? 'Flawless deck! 🌟' : 'Deck cleared! 🃏';
       root.innerHTML = `
         <div class="quiz-summary">
-          <div class="quiz-sum-msg">Sentences complete! 📖</div>
-          <div class="quiz-sum-score">${cards.length}</div>
-          <div class="quiz-sum-pct">Examples complete</div>
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${total}</div>
+          <div class="quiz-sum-pct">mastered${againCnt ? ` · ${againCnt} repeats` : ''}</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="s-again">Again</button>
+            <button class="study-cta-btn" id="s-again">Play again</button>
             <button class="study-cta-btn secondary" id="s-home">Study Home</button>
           </div>
         </div>`;
       root.querySelector('#s-again').addEventListener('click', startSentences);
       root.querySelector('#s-home').addEventListener('click', () => renderStudy(root));
     }
+
+    // knownIt=true(오른쪽): 마스터 처리 후 덱에서 제거. false(왼쪽): 맨 뒤로 재투입(반복).
+    function advance(knownIt) {
+      const c = deck[0];
+      if (!c) return finishS();
+      if (knownIt) {
+        mastered++;
+        if (!c.known) { c.known = true; markKnown(c.id).catch(() => {}); applyKnown(1); }
+        deck.shift();
+      } else {
+        againCnt++;
+        deck.push(deck.shift());  // 맨 뒤로 → 끝까지 다 알 때까지 다시 만남
+      }
+      paintS();
+    }
+
     function paintS() {
-      stopClip();  // 다음 문장 카드로 넘어가면 이전 맥락 재생 정지
-      if (idx >= cards.length) return finishS();
-      const c = cards[idx];
-      revealed = false;
+      stopClip();
+      if (!deck.length) return finishS();
+      const c = deck[0];
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">💬 Sentences</span></div>
-        <div class="sent-card" id="sent-card">
+        <div class="quiz-bar"><span class="quiz-count">${mastered} / ${total} mastered</span><span class="quiz-score">💬 Sentences</span></div>
+        <div class="sent-card sent-swipe" id="sent-card" data-id="${c.id}">
+          <div class="sent-swipe-badge" id="sent-badge"></div>
           <div class="sent-en">${escapeHtml(c.example_sentence)} <span class="sent-spk">🔊</span></div>
           <div class="sent-reveal" id="sent-reveal" hidden>
             ${c.example_ko ? `<div class="sent-ko">${escapeHtml(c.example_ko)}</div>` : ''}
@@ -391,23 +412,60 @@ export async function renderStudy(root) {
             ${(c.sentence_start_sec != null && c.audio_url) ? `<button class="srs-context-btn" id="sent-ctx" data-url="${escapeHtml(c.audio_url)}" data-s="${c.sentence_start_sec}" data-e="${c.sentence_end_sec ?? ''}">🎧 Hear in context</button>` : ''}
           </div>
         </div>
-        <button class="study-cta-btn" id="sent-action">Show meaning</button>
+        <div class="sent-game-row">
+          <button class="sent-game-btn again" id="sent-again">↺ Again</button>
+          <button class="study-cta-btn" id="sent-action">Show meaning</button>
+          <button class="sent-game-btn known" id="sent-known">✓ Known</button>
+        </div>
+        <div class="study-swipe-tip">Swipe → Known · ← Again (repeats)</div>
         <button class="quiz-exit" id="sent-exit">← Study Home</button>`;
-      root.querySelector('#sent-card').addEventListener('click', () => playExample(c));
+      const card = root.querySelector('#sent-card');
+      card.addEventListener('click', () => { if (!card.dataset.swiped) playExample(c); });
       requestAnimationFrame(() => playExample(c, undefined, true));  // 문장 음성 자동 반복
-      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
+      if (deck[1]) prefetch([deck[1].example_sentence]);
       root.querySelector('#sent-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sent-again').addEventListener('click', () => advance(false));
+      root.querySelector('#sent-known').addEventListener('click', () => advance(true));
       root.querySelector('#sent-action').addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!revealed) {
-          revealed = true;
-          root.querySelector('#sent-reveal').hidden = false;
-          e.target.textContent = 'Next ▸';
-          const cx = root.querySelector('#sent-ctx');
-          if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); playSentenceClip(cx.dataset.url, cx.dataset.s, cx.dataset.e, cx); });
-        } else { idx++; paintS(); }
+        root.querySelector('#sent-reveal').hidden = false;
+        e.target.disabled = true;
+        const cx = root.querySelector('#sent-ctx');
+        if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); playSentenceClip(cx.dataset.url, cx.dataset.s, cx.dataset.e, cx); });
+      });
+      wireSentSwipe(card, advance);
+    }
+
+    // 카드 스와이프: 오른쪽=Known, 왼쪽=Again. 임계 78px. 던지듯 날아간 뒤 advance.
+    function wireSentSwipe(card, adv) {
+      let x0 = null, y0 = null, sw = false;
+      const badge = card.querySelector('#sent-badge');
+      const reset = () => { card.style.transition = 'transform .2s'; card.style.transform = ''; card.classList.remove('swipe-armed', 'swipe-left'); if (badge) badge.textContent = ''; x0 = null; };
+      card.addEventListener('pointerdown', (e) => { x0 = e.clientX; y0 = e.clientY; sw = false; });
+      card.addEventListener('pointermove', (e) => {
+        if (x0 == null) return;
+        const dx = e.clientX - x0, dy = e.clientY - y0;
+        if (!sw && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4) sw = true;
+        if (!sw) return;
+        if (badge) badge.textContent = dx < 0 ? '↺ Again' : '✓ Known';
+        card.style.transition = 'none';
+        card.style.transform = `translateX(${Math.max(-150, Math.min(dx, 150))}px) rotate(${Math.max(-8, Math.min(dx / 18, 8))}deg)`;
+        card.classList.toggle('swipe-armed', Math.abs(dx) > 78);
+        card.classList.toggle('swipe-left', dx < 0);
+      });
+      card.addEventListener('pointerup', (e) => {
+        const dx = x0 != null ? e.clientX - x0 : 0;
+        if (sw) { card.dataset.swiped = '1'; setTimeout(() => { card.dataset.swiped = ''; }, 350); }
+        if (sw && Math.abs(dx) > 78) {
+          const knownIt = dx > 0;
+          card.style.transition = 'transform .25s ease-out';
+          card.style.transform = `translateX(${knownIt ? 460 : -460}px) rotate(${knownIt ? 14 : -14}deg)`;
+          stopClip();
+          setTimeout(() => adv(knownIt), 170);
+        } else reset();
       });
     }
+
     paintS();
   }
 

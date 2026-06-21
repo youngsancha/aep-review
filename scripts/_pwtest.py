@@ -357,15 +357,27 @@ def main() -> int:
                                 and pg.query_selector("#sp-target") and pg.query_selector("#sp-hint"))
                 pg.click("#sp-exit") if pg.query_selector("#sp-exit") else None
                 time.sleep(0.2)
-            # 문장(Sentences) 드릴: 한국어 의미앵커(.sent-ko)가 'Show meaning' 후 뜨는지
+            # 문장(Sentences) = 카드게임: (a) Show meaning 후 한국어앵커(.sent-ko),
+            # (b) Known 버튼→markKnown 호출+다음 카드, (c) Again→재투입(반복, markKnown 호출 안 함)
             sent_ko_ok = None
+            sent_game_ok = None
             if pg.query_selector("#study-quiz-sent"):
                 pg.click("#study-quiz-sent")
                 time.sleep(0.3)
+                has_card = bool(pg.query_selector("#sent-card.sent-swipe")
+                                and pg.query_selector("#sent-known") and pg.query_selector("#sent-again"))
                 if pg.query_selector("#sent-action"):
                     pg.click("#sent-action")  # Show meaning
                     time.sleep(0.2)
                 sent_ko_ok = bool(pg.query_selector(".sent-ko"))
+                kb = pg.evaluate("(window.__known||[]).length")
+                if pg.query_selector("#sent-known"):
+                    pg.click("#sent-known"); time.sleep(0.2)  # 오른쪽=Known
+                ka = pg.evaluate("(window.__known||[]).length")
+                if pg.query_selector("#sent-again"):
+                    pg.click("#sent-again"); time.sleep(0.2)  # 왼쪽=Again(반복, known 증가 X)
+                ka2 = pg.evaluate("(window.__known||[]).length")
+                sent_game_ok = bool(has_card and ka > kb and ka2 == ka and pg.query_selector("#sent-card"))
                 pg.click("#sent-exit") if pg.query_selector("#sent-exit") else None
                 time.sleep(0.2)
             # 드릴 버튼 줄 균일성: 6개 모두 qb-ico+qb-txt, 높이 동일(들쭉날쭉 2줄/1줄 혼재 없음)
@@ -386,14 +398,16 @@ def main() -> int:
                   " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
                   " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked, " tr_btns=", study_tr,
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
-                  " sent_ko=", sent_ko_ok, " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
+                  " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
+                  " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
                   " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True
-                        and sent_ko_ok is True and qb_ico == 6 and qb_txt == 6 and qb_uniform is True
+                        and sent_ko_ok is True and sent_game_ok is True
+                        and qb_ico == 6 and qb_txt == 6 and qb_uniform is True
                         and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
                         and study_tr >= 4)
 
