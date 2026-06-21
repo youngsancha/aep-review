@@ -245,7 +245,10 @@ NowPlaying/About·로딩스켈레톤·뷰전환·a11y(reduced-motion/focus)·per
   **한 번도 커밋 안 됨** → 프로덕션에서 Essentials 모드가 "Failed to load" 로 깨져 있었음.
   → `.gitignore` 에 `!ui/data/` 부정규칙 추가 + 파일 커밋(v131). **로컬은 정상**(하니스/로컬서버는
   디스크 파일 서빙). 프로덕션만 배포되면 해결.
-- **막힌 이유 추정**: Vercel 자동배포가 안 도는 중(야간 다수 푸시 후 큐/한도 의심). 로컬에서
-  **Vercel 토큰·deploy hook 없음 → 강제 배포 불가**.
-- **조치(택1)**: ① Vercel 대시보드에서 최신 커밋 **Redeploy**, 또는 ② 잠시 후 자동배포 복구 대기
-  (복구되면 v131 가 라이브되며 Essentials 정상 동작). 코드 추가 작업 불필요.
+- **막힌 이유(확인됨)**: 배포 **한도 아님**(오늘 Production 배포 19건 / Hobby 100건 한도). GitHub
+  deployments API 상 Vercel 의 마지막 배포는 `a566dd2`(v129, 09:17 UTC)이고 **그 이후 커밋
+  (v130·docs·v131)에 대해 배포 레코드가 0건** → Vercel↔GitHub **웹훅/연동이 일시 중단**된 상태.
+  로컬엔 Vercel 토큰·deploy hook·repo webhook 권한 모두 없어 **강제 트리거 불가**.
+- **조치(가장 빠름)**: Vercel 대시보드 → 프로젝트 → Deployments → 최신 main 커밋 **Redeploy**
+  (또는 Git 연동 Disconnect/Reconnect). 그러면 v131 라이브 → essentials.json 200 → Essentials 정상.
+  보통 연동은 곧 자동 복구되기도 함. **코드는 추가 작업 불필요**(이미 main 에 정상).
