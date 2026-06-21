@@ -1446,14 +1446,21 @@ body.logged-out #app-version { display: none; }
   background: var(--surface-2); color: var(--text);
 }
 .study-search:focus { outline: none; background: var(--tint-soft); }
+.study-swipe-tip {
+  margin: 0 2px 10px; padding: 9px 13px; border-radius: 10px;
+  background: var(--tint-soft); color: var(--text-2); font-size: 12.5px; text-align: center;
+}
+.study-swipe-tip b { color: var(--tint); font-weight: 800; }
 .study-xlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .study-x {
   position: relative; overflow: hidden;
   background: var(--surface); border-radius: 14px; padding: 13px 15px;
   box-shadow: var(--shadow-card); cursor: pointer;
   transition: transform 0.08s;
+  touch-action: pan-y;  /* 세로 스크롤은 허용하되 가로 스와이프(→Known)는 JS 로 전달 */
 }
-.study-x.known { opacity: 0.6; }
+.study-x.known { opacity: 0.62; }
+.study-x.known .study-x-term { text-decoration: line-through; text-decoration-color: var(--separator); }
 /* 오른쪽 스와이프 → Known 안내 (카드가 밀리면 뒤에서 드러남) */
 .study-x-swipe-hint {
   position: absolute; left: 0; top: 0; bottom: 0; width: 132px;
@@ -1470,9 +1477,9 @@ body.logged-out #app-version { display: none; }
 }
 .study-x-known-badge {
   display: none; margin-left: auto; flex-shrink: 0;
-  width: 24px; height: 24px; border-radius: 50%;
-  background: var(--tint); color: #fff; font-size: 14px; font-weight: 700;
-  align-items: center; justify-content: center;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--tint); color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 0.02em;
+  align-items: center; justify-content: center; white-space: nowrap;
 }
 .study-x.known .study-x-known-badge { display: inline-flex; }
 /* KR 번역 버튼 */

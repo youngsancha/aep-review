@@ -136,7 +136,7 @@ export async function renderStudy(root) {
         <div class="study-x-top">
           <span class="study-x-term">${escapeHtml(v.term)}</span>
           ${v.example_sentence ? `<button class="study-x-tr" data-id="${v.id}" aria-label="Show Korean translation">KR</button>` : ''}
-          <span class="study-x-known-badge" aria-hidden="true">✓</span>
+          <span class="study-x-known-badge" aria-hidden="true">✓ Known</span>
         </div>
         ${v.definition ? `<div class="study-x-def">${defHtml(v.definition)}</div>` : ''}
         ${v.example_sentence ? `
@@ -149,11 +149,9 @@ export async function renderStudy(root) {
   }
 
   function listHtml() {
-    const ql = q.toLowerCase();
-    const filtered = !ql ? items
-      : items.filter((v) => (v.term || '').toLowerCase().includes(ql) || (v.definition || '').toLowerCase().includes(ql));
-    if (!filtered.length) return '<div class="empty">No matching expressions.</div>';
-    return `<ul class="study-xlist">${filtered.map(rowHtml).join('')}</ul>`;
+    if (!items.length) return '<div class="empty">No expressions.</div>';
+    return `<div class="study-swipe-tip"><b>Swipe →</b> to mark <b>Known</b> · <b>←</b> to undo · tap card for audio</div>`
+      + `<ul class="study-xlist">${items.map(rowHtml).join('')}</ul>`;
   }
 
   async function markKnownLi(li) {
