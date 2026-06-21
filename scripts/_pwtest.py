@@ -303,24 +303,36 @@ def main() -> int:
             study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
             # 맥락에서 듣기: 별도 버튼 없이 예문(.study-x-ex.tappable) 자체가 재생 트리거
             study_ctx = pg.eval_on_selector_all(".study-x-ex.tappable", "els=>els.length")
-            # Essentials 별도 모드: CTA → 카테고리/리스트/카드게임 진입 + Known 진행 + #ess-back 복귀
+            # Essentials 별도 모드: CTA → 카테고리/리스트/카드게임(인식) + Known 진행 + 생산(KR→EN) 토글 + #ess-back 복귀
             ess_ok = None
+            ess_prod = None
             if pg.query_selector("#study-essentials"):
                 pg.click("#study-essentials")
                 pg.wait_for_selector(".ess-cats", timeout=5000)
                 ess_cats = pg.eval_on_selector_all(".ess-cat", "els=>els.length")
                 ess_list = pg.eval_on_selector_all(".ess-x", "els=>els.length")
                 has_play = bool(pg.query_selector("#ess-play"))
-                pg.click("#ess-play"); time.sleep(0.3)
-                has_card = bool(pg.query_selector("#ess-card") and pg.query_selector("#ess-g-known"))
+                pg.click("#ess-play"); time.sleep(0.3)  # 기본 인식(EN→뜻)
+                has_card = bool(pg.query_selector("#ess-card") and pg.query_selector("#ess-g-known") and pg.query_selector(".ess-card-term"))
                 before = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
                 pg.click("#ess-g-known"); time.sleep(0.25)
                 after = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
-                pg.click("#ess-g-exit") if pg.query_selector("#ess-g-exit") else None
-                time.sleep(0.2)
+                pg.click("#ess-g-exit"); time.sleep(0.2)  # 게임 → essentials 개요
+                # 생산(KR→EN): 한국어 front + 영어 정답은 reveal 후
+                if pg.query_selector('.ess-dir-btn[data-dir="ko"]'):
+                    pg.click('.ess-dir-btn[data-dir="ko"]'); time.sleep(0.2)
+                    pg.click("#ess-play"); time.sleep(0.3)
+                    front_ko = bool(pg.query_selector(".ess-card-ko"))
+                    hidden_before = pg.eval_on_selector("#ess-reveal", "el=>el.hidden") if pg.query_selector("#ess-reveal") else None
+                    if pg.query_selector("#ess-g-show"):
+                        pg.click("#ess-g-show"); time.sleep(0.2)
+                    term_shown = bool(pg.query_selector("#ess-reveal .ess-card-term")) and (pg.eval_on_selector("#ess-reveal", "el=>!el.hidden") if pg.query_selector("#ess-reveal") else False)
+                    ess_prod = bool(front_ko and hidden_before is True and term_shown)
+                    pg.click("#ess-g-exit") if pg.query_selector("#ess-g-exit") else None
+                    time.sleep(0.2)
                 pg.click("#ess-back") if pg.query_selector("#ess-back") else None
                 time.sleep(0.4)
-                ess_ok = bool(ess_cats >= 9 and ess_list > 0 and has_play and has_card and before != after)
+                ess_ok = bool(ess_cats >= 9 and ess_list > 0 and has_play and has_card and before != after and ess_prod is True)
             # 카드 본문 클릭 버그(#19): 더 이상 에피소드로 네비게이트 안 함
             pg.evaluate("location.hash=''")
             if pg.query_selector(".study-x"):
@@ -418,7 +430,7 @@ def main() -> int:
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
                   " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
-                  " ess=", ess_ok, " err=", study_err)
+                  " ess=", ess_ok, " ess_prod=", ess_prod, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and ring_pct is not None and know_marked is True

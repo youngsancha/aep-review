@@ -1777,6 +1777,18 @@ body.logged-out #app-version { display: none; }
 .ess-card-term { font-family: var(--font); font-size: 25px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
 .ess-card-ex { font-size: 16px; color: var(--text); line-height: 1.5; margin-top: 4px; }
 .ess-card-exko { font-size: 14px; color: var(--text-2); line-height: 1.45; margin-top: 4px; }
+.ess-card-ko { font-family: var(--font); font-size: 23px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; line-height: 1.4; }
+.ess-prod-hint { font-size: 13px; font-weight: 700; color: var(--tint); margin-top: 10px; }
+/* 방향 토글: 인식(EN→뜻) vs 생산(한국어→영어 말하기) */
+.ess-dir { display: flex; gap: 6px; margin: 0 0 10px; }
+.ess-dir-btn {
+  flex: 1 1 0; border: 0; border-radius: 12px; cursor: pointer; padding: 9px 6px;
+  font-family: var(--font); font-size: 12.5px; font-weight: 700; line-height: 1.2;
+  background: var(--surface); color: var(--text-2); box-shadow: var(--shadow-card);
+}
+.ess-dir-btn small { display: block; font-size: 10px; font-weight: 600; opacity: 0.7; }
+.ess-dir-btn.on { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
+.ess-dir-btn.on small { opacity: 0.9; }
 .sent-en { font-family: var(--font); font-size: 19px; line-height: 1.5; color: var(--text); font-weight: 600; letter-spacing: -0.01em; }
 .sent-spk { font-size: 15px; opacity: 0.65; }
 .sent-reveal { margin-top: 18px; padding-top: 16px; border-top: 0.5px solid var(--separator-thin); }

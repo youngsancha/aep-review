@@ -43,6 +43,7 @@ export async function renderEssentials(root, goBack) {
   const cats = pack.categories;
   const cards = pack.cards;
   let sel = 'all';   // 선택 카테고리 id
+  let dir = 'en';    // 카드게임 방향: 'en'=EN→뜻(인식), 'ko'=한국어→EN(말로 생산)
 
   function inSel(c) { return sel === 'all' || c.cat === sel; }
   function known() { return knownSet(); }
@@ -68,11 +69,16 @@ export async function renderEssentials(root, goBack) {
           return `<button class="ess-cat${sel === k.id ? ' on' : ''}" data-cat="${k.id}"><span class="ess-cat-emoji">${k.emoji}</span><span class="ess-cat-name">${escapeHtml(k.label)}</span><span class="ess-cat-n">${n}</span></button>`;
         }).join('')}
       </div>
+      <div class="ess-dir" role="group" aria-label="Study direction">
+        <button class="ess-dir-btn${dir === 'en' ? ' on' : ''}" data-dir="en">EN → 뜻 <small>인식</small></button>
+        <button class="ess-dir-btn${dir === 'ko' ? ' on' : ''}" data-dir="ko">🇰🇷 → EN <small>말하기</small></button>
+      </div>
       <button class="ess-play" id="ess-play">🃏 Study as cards (${pool.length})</button>
       <div class="ess-list" id="ess-list"></div>`;
     root.querySelector('#ess-back').addEventListener('click', () => goBack());
     root.querySelectorAll('.ess-cat').forEach((b) => b.addEventListener('click', () => { sel = b.dataset.cat; overview(); }));
-    root.querySelector('#ess-play').addEventListener('click', () => startGame(pool));
+    root.querySelectorAll('.ess-dir-btn').forEach((b) => b.addEventListener('click', () => { dir = b.dataset.dir; overview(); }));
+    root.querySelector('#ess-play').addEventListener('click', () => startGame(pool, dir));
     paintList();
     prefetch(pool.slice(0, 8).map((c) => c.term));
   }
@@ -137,10 +143,12 @@ export async function renderEssentials(root, goBack) {
     });
   }
 
-  // ── 카드게임 반복학습 — 오른쪽=Known(덱에서 제거), 왼쪽=Again(뒤로 재투입). 덱 비울 때까지. ──
-  function startGame(srcCards) {
+  // ── 카드게임 반복학습 — 오른쪽=Known(덱에서 제거), 왼쪽=Again(뒤로 재투입). 덱 비울 때까지.
+  //    dir='en' 인식(영어→뜻) / dir='ko' 생산(한국어 보고 영어로 말하기). ──
+  function startGame(srcCards, dir) {
     stopClip();
     if (!srcCards.length) return;
+    const prod = dir === 'ko';
     let deck = _shuffle(srcCards);
     const total = deck.length;
     let mastered = 0, againCnt = 0;
@@ -158,7 +166,7 @@ export async function renderEssentials(root, goBack) {
             <button class="study-cta-btn secondary" id="ess-done">Essentials Home</button>
           </div>
         </div>`;
-      root.querySelector('#ess-again').addEventListener('click', () => startGame(srcCards));
+      root.querySelector('#ess-again').addEventListener('click', () => startGame(srcCards, dir));
       root.querySelector('#ess-done').addEventListener('click', overview);
     }
 
@@ -174,28 +182,36 @@ export async function renderEssentials(root, goBack) {
       stopClip();
       if (!deck.length) return finish();
       const c = deck[0];
+      // 생산(ko): 한국어 뜻만 보여주고 영어를 '말하게' → 정답(영어)은 reveal 까지 숨김.
+      const front = prod
+        ? `<div class="ess-card-ko">${escapeHtml(c.ko)}</div><div class="ess-prod-hint">🗣️ Say it in English</div>`
+        : `<div class="ess-card-term">${escapeHtml(c.term)} <span class="sent-spk">🔊</span></div>`;
+      const reveal = prod
+        ? `<div class="ess-card-term">${escapeHtml(c.term)} <span class="sent-spk">🔊</span></div>
+           <div class="ess-card-ex">“${escapeHtml(c.example)}”</div>
+           <div class="ess-card-exko">${escapeHtml(c.example_ko)}</div>`
+        : `<div class="sent-ko">${escapeHtml(c.ko)}</div>
+           <div class="ess-card-ex">“${escapeHtml(c.example)}”</div>
+           <div class="ess-card-exko">${escapeHtml(c.example_ko)}</div>
+           <div class="ess-x-reg">${c.register}</div>`;
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${mastered} / ${total} mastered</span><span class="quiz-score">🃏 Essentials</span></div>
+        <div class="quiz-bar"><span class="quiz-count">${mastered} / ${total} mastered</span><span class="quiz-score">${prod ? '🗣️ KR→EN' : '🃏 Essentials'}</span></div>
         <div class="sent-card sent-swipe ess-card" id="ess-card" data-id="${c.id}">
           <div class="sent-swipe-badge" id="ess-badge"></div>
-          <div class="ess-card-term">${escapeHtml(c.term)} <span class="sent-spk">🔊</span></div>
-          <div class="sent-reveal" id="ess-reveal" hidden>
-            <div class="sent-ko">${escapeHtml(c.ko)}</div>
-            <div class="ess-card-ex">“${escapeHtml(c.example)}”</div>
-            <div class="ess-card-exko">${escapeHtml(c.example_ko)}</div>
-            <div class="ess-x-reg">${c.register}</div>
-          </div>
+          ${front}
+          <div class="sent-reveal" id="ess-reveal" hidden>${reveal}</div>
         </div>
         <div class="sent-game-row">
           <button class="sent-game-btn again" id="ess-g-again">↺ Again</button>
-          <button class="study-cta-btn" id="ess-g-show">Show meaning</button>
+          <button class="study-cta-btn" id="ess-g-show">${prod ? 'Show answer' : 'Show meaning'}</button>
           <button class="sent-game-btn known" id="ess-g-known">✓ Known</button>
         </div>
         <div class="study-swipe-tip">Swipe → Known · ← Again (repeats)</div>
         <button class="quiz-exit" id="ess-g-exit">← Essentials Home</button>`;
       const card = root.querySelector('#ess-card');
-      card.addEventListener('click', () => { if (!card.dataset.swiped) speak(c.term); });
-      requestAnimationFrame(() => speak(c.term));   // 카드 진입 시 발음 자동 재생
+      // 인식모드: 탭/진입 시 영어 발음 자동. 생산모드: 정답 노출 방지 위해 침묵(reveal 후에만 발음).
+      card.addEventListener('click', () => { if (!card.dataset.swiped && !prod) speak(c.term); });
+      if (!prod) requestAnimationFrame(() => speak(c.term));
       if (deck[1]) prefetch([deck[1].term]);
       root.querySelector('#ess-g-exit').addEventListener('click', overview);
       root.querySelector('#ess-g-again').addEventListener('click', () => advance(false));
@@ -204,7 +220,7 @@ export async function renderEssentials(root, goBack) {
         e.stopPropagation();
         root.querySelector('#ess-reveal').hidden = false;
         e.target.disabled = true;
-        speak(c.example);   // 뜻 펼치면 예문도 들려줌
+        speak(prod ? c.term : c.example);   // 생산모드: 정답 영어 발음(내 산출과 비교) / 인식모드: 예문
       });
       wireGameSwipe(card, advance);
     }
