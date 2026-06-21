@@ -195,3 +195,44 @@ NowPlaying/About·로딩스켈레톤·뷰전환·a11y(reduced-motion/focus)·per
 유일한 진행작업 = **vocab 백필**(bpr9evhvt, claude+TTS, ~183/267, 약 1h 남음, 자율 진행).
 다음 실질 작업 = **annotate.py**(vocab 없는 표현까지 문장별 난이도 해설) — claude/CPU 경합 때문에
 **백필 완료 후** 착수. 그 전까진 모니터링 위주(60초 마이크로폴리시는 토큰 낭비라 주기 확대).
+
+---
+
+## 🌙 밤샘 세션 2 (2026-06-21, ~22:00→03:00) — 번역·클립수정·Essentials 모드
+
+아침 확인용 요약. (위 로그는 이전 세션 v54 기준 — 이번 세션은 v122→v130.)
+
+### 1) Study 예문 한국어 번역 전수 (요청: "Shana 문장 번역 3333 모두")
+- 3332개 예문(공백뿐 1개 제외) 전부 claude 번역 → Storage `transcripts/examples_ko.json`.
+- **전수 검증 통과**: 커버리지 3332/3332(100%), 빈값·영어passthrough·오류마커 **모두 0**.
+- KR 버튼·한→영 생산 드릴이 즉시 고품질 한국어 사용(온디맨드 MyMemory 폴백은 백업).
+
+### 2) 예문 클립 '말 도중 끊김' 3종 근본 수정 (요청: "모든 문장 확인")
+- **(a) 끝 경계 오매칭**: `_anchor` 가 첫 매칭 대신 '최고점수+끝토큰 가산'. 동일단어 반복
+  예문("want…want")에서 앞쪽에 붙어 잘리던 것 해결. 전회차 remap(26+27 카드).
+- **(b) 시작 경계 오매칭**: 시작 앵커도 '최고점수' + 구어축약 정규화(gonna=going to).
+- **(c) whisper 타임스탬프 압축**(7단어 0.9s): 클라 단어수 기반 최소재생길이(minDur, '늘리기만').
+- 검증: "People want to get fit…" 2.x→4.3s 전체 커버. 268/268 싱크 Δ≈0 유지.
+
+### 3) Sentences → '카드게임' 반복학습 (요청)
+- 오른쪽 스와이프=Known(덱 제거), 왼쪽=Again(뒤로 재투입). 던지는 애니+배지. 끝까지 마스터.
+
+### 4) ✨ Essentials — 별도 큐레이션 모드 (요청 핵심)
+- **140 카드 / 13 카테고리**: Everyday·Flow(연결어)·Reactions·Small talk·Opinions·Polite·
+  Phrasal·Business·Meetings·Email/Slack·Out&about·Plans·Casual. 미국 현지+비즈니스, 양보다 질.
+- 정적 팩 `ui/data/essentials.json`(오프라인 캐시) + localStorage Known(에피소드 SRS와 분리).
+- **네이티브 음성**: 전 카드 edge-tts(Jenny) 사전생성 → speak() 가 동일 sha1 키로 자동 고품질.
+- 학습: 카테고리 탐색 + **카드게임 반복**(모르는 것 우선·18장 라운드) + **방향 토글**
+  (EN→뜻 인식 / 🇰🇷→EN 말하기 생산).
+
+### 빌드 로그 (이번 세션)
+- v122 한→영 생산 드릴이 사전번역 즉시 사용. v123 드릴버튼 균일(아이콘위·라벨아래)+Sentences 한국어앵커.
+- v124 Sentences 카드게임(스와이프 Known/Again 반복). v125 클립 minDur+시작앵커/축약.
+- v126 Essentials 모드. v127 방향토글(인식/생산). v128 +36카드/3카테고리.
+- v129 라운드 '모름 우선·18장'. v130 Flow(연결어) 카테고리 +12.
+- 매 변경 헤드리스 하니스 PASS(window.__err=[]) 후 release. 회귀 0.
+
+### 상태 (03:00)
+**기능 완성·홀드.** 덱이 구조적으로 완비(content+pragmatics+discourse). 추가 확장은 bloat이라
+중단, 10분 간격 모니터링하며 피드백 대기. (말하기 드릴의 음성인식 채점은 마이크 검증 필요 →
+사용자 깨어있을 때 추가 권장 — 야간엔 미검증 mic 기능 미배포.)
