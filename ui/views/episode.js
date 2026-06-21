@@ -144,6 +144,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const TRANS_KEY = 'aep-tx-trans';
   let showTrans = localStorage.getItem(TRANS_KEY) !== '0';
   const _trCache = loadTrCache(ep.id);
+  const _preKo = ep.transcript_ko || {};   // trKey(문장)→ko 문맥 인지 사전번역(있으면 직역 MyMemory 대체)
   let _trSeq = 0;
 
   function refresh() {
@@ -232,8 +233,9 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!text) { hideTransPanel(); return; }
     const ck = trKey(text);                 // '문장 텍스트' 기준 캐시 키(인덱스 X) → 항상 그 문장에 정확히 매칭
     if (_trCache[ck]) { row.textContent = _trCache[ck]; return; }
+    if (_preKo[ck]) { row.textContent = _preKo[ck]; _trCache[ck] = _preKo[ck]; saveTrCache(ep.id, _trCache); return; }  // 사전번역 우선
     const seq = ++_trSeq;
-    const ko = await translateEnKo(text);   // 절대 throw 안 함
+    const ko = await translateEnKo(text);   // 사전번역 없을 때만 온디맨드(절대 throw 안 함)
     if (seq !== _trSeq) return;             // 더 최신 문장으로 넘어갔으면 폐기
     if (ko) {
       row = sel(); if (row) row.textContent = ko;
@@ -246,7 +248,10 @@ export async function renderEpisode(root, idStr, tStr) {
     if (showTrans && nxt < sentRanges.length && !isEasySentence(nxt)) {
       const t2 = getSentText(nxt);
       const ck2 = trKey(t2);
-      if (t2 && _trCache[ck2] == null) translateEnKo(t2).then((k) => { if (k) { _trCache[ck2] = k; saveTrCache(ep.id, _trCache); } });
+      if (t2 && _trCache[ck2] == null) {
+        if (_preKo[ck2]) { _trCache[ck2] = _preKo[ck2]; saveTrCache(ep.id, _trCache); }   // 사전번역이면 호출 불필요
+        else translateEnKo(t2).then((k) => { if (k) { _trCache[ck2] = k; saveTrCache(ep.id, _trCache); } });
+      }
     }
   }
   // 현재 문장이 "easy" 인가 — 어려운 표현(vocab)이 있거나 흔치 않은 단어가 있으면 not-easy.

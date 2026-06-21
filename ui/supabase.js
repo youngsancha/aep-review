@@ -7,6 +7,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     persistSession: true,        // 폰에서 1회 로그인 후 세션 유지
     autoRefreshToken: true,
     storage: window.localStorage,
+    flowType: 'pkce',            // Google OAuth — PKCE(코드 교환). SPA 안전 표준.
+    detectSessionInUrl: true,    // OAuth 리다이렉트(?code=) 복귀 시 자동으로 세션 교환
   },
 });
 

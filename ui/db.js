@@ -57,6 +57,20 @@ export async function examplesKo() {
   }
   return _exKoP;
 }
+// 자막 문장 한국어 사전번역 맵(trKey(문장) → ko). episode.js 가 재생 중 즉시 조회(직역 MyMemory 대체).
+// transcribed_at 으로 버전키 → 재싱크로 자막이 바뀌면 새 번역을 받는다. 회차별 메모리 캐시.
+const _trKoCache = new Map();
+export async function transcriptKo(id, transcribedAt) {
+  if (!transcribedAt) return {};
+  if (_trKoCache.has(id)) return _trKoCache.get(id);
+  const p = fetch(`${STORAGE_URL}/transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`, { cache: 'force-cache' })
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((m) => m || {})
+    .catch(() => ({}));
+  _trKoCache.set(id, p);
+  return p;
+}
+
 // 회차 오디오 소스 결정: 호스팅됐으면 R2(광고 로테이션 무관·완전 일치), 아니면 기존 megaphone clean.
 export async function audioSrcFor(id, audioUrl) {
   const h = await hostedSet();
@@ -83,7 +97,10 @@ export async function getEpisode(id) {
     return an - bn || a.id - b.id;
   });
   ep.audio_url = await audioSrcFor(ep.id, ep.audio_url);  // 호스팅됐으면 R2(자막=오디오), 아니면 megaphone
-  ep.transcript = await fetchTranscript(id, ep.transcribed_at);
+  [ep.transcript, ep.transcript_ko] = await Promise.all([
+    fetchTranscript(id, ep.transcribed_at),
+    transcriptKo(id, ep.transcribed_at),   // 문맥 인지 사전번역(있으면 직역 대체)
+  ]);
   return ep;
 }
 

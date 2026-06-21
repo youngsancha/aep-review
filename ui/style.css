@@ -1403,6 +1403,19 @@ body.logged-out #app-version { display: none; }
 .login-input:focus { outline: 2px solid var(--tint); outline-offset: 0; }
 .login-btn { width: 100%; margin-top: 4px; }
 .login-err { color: #e0245e; font-size: 13px; margin: 6px 0 0; }
+/* Google 로그인 버튼 — 흰 배경/구글 가이드라인 톤(라이트·다크 공통 가독). */
+.login-google {
+  position: relative; z-index: 1; width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 13px 16px; font-size: 15px; font-weight: 600;
+  background: #fff; color: #1f1f1f;
+  border: 0.5px solid var(--separator); border-radius: 12px;
+}
+.login-google:disabled { opacity: 0.6; }
+.login-google svg { flex: 0 0 auto; }
+.login-or { position: relative; z-index: 1; width: 100%; text-align: center; margin: 16px 0 4px; }
+.login-or::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: var(--separator); }
+.login-or span { position: relative; background: var(--bg); padding: 0 12px; color: var(--text-3); font-size: 12px; }
 
 /* ========== Study 탭 ========== */
 .study-greet { padding: 6px 2px 12px; }

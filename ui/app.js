@@ -65,6 +65,9 @@ async function route() {
 let authed = false;
 
 async function boot() {
+  // Google OAuth 리다이렉트(?code=)로 돌아온 경우: supabase-js 가 비동기로 세션을 교환 중 →
+  // 로그인 화면 깜빡임 없이 onAuthStateChange(SIGNED_IN)을 기다린다.
+  const pendingOAuth = location.search.includes('code=') || location.hash.includes('access_token');
   let session = null;
   try {
     ({ data: { session } } = await supabase.auth.getSession());
@@ -75,8 +78,18 @@ async function boot() {
     authed = true;
     document.body.classList.remove('logged-out');
     route();
+  } else if (pendingOAuth) {
+    document.body.classList.add('logged-out');
+    $app.innerHTML = '<div class="login-wrap"><p class="login-sub">Signing in…</p></div>';
   } else {
     showLogin();
+  }
+}
+
+// OAuth 복귀 후 URL 의 ?code=/토큰 흔적을 지워 재교환·뒤로가기 꼬임을 막는다.
+function cleanAuthUrl() {
+  if (location.search.includes('code=') || location.hash.includes('access_token')) {
+    history.replaceState(null, '', location.pathname + '#/');
   }
 }
 
@@ -93,8 +106,16 @@ function showLogin() {
   });
 }
 
-supabase.auth.onAuthStateChange((event) => {
-  if (event === 'SIGNED_OUT' && authed) showLogin();
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT' && authed) { showLogin(); return; }
+  // Google OAuth 리다이렉트 복귀(또는 다른 탭 로그인)로 세션이 생기면 게이트를 연다.
+  if (session && !authed && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED')) {
+    authed = true;
+    document.body.classList.remove('logged-out');
+    cleanAuthUrl();
+    if (!location.hash || location.hash === '#') location.hash = '#/';
+    route();
+  }
 });
 
 window.addEventListener('hashchange', () => { if (authed) route(); });
