@@ -602,22 +602,26 @@ export async function renderEpisode(root, idStr, tStr) {
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
-    // 글자 크기 변경 시 '보던 문장 그대로'. 동기적으로 보정하면 레이아웃/브라우저 앵커링이 덜 정착돼
-    // 과보정(위로 쭉)/이중보정(아래로 쭉)이 났다. 그래서 보정은 rAF(레이아웃 정착 후) 에서 '딱 한 번'.
+    // 글자 크기 변경 시 '보던 문장 그대로'. 핵심: 자동 따라가기(easeScroll rAF 루프)가 변경 전 목표로
+    // scrollTop 을 계속 끌어당겨 내 보정과 싸웠다(그래서 몇 문단씩 밀림). → ease 취소 + 자동추적 잠시
+    // 보류 후, 레이아웃 정착(rAF)되면 앵커를 원래 화면 위치로 '딱 한 번' 되돌린다.
     const sc = document.querySelector('.tx-scroll');
     let anchor = null, desired = 0;
     if (sc) {
-      const top = sc.getBoundingClientRect().top + 20;  // 마스크 여백 고려한 상단 읽기선
+      const cTop = sc.getBoundingClientRect().top;
       anchor = sc.querySelector('.tx-sent.active')
-        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom > top);
-      if (anchor) desired = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom > cTop + 22);
+      if (anchor) desired = anchor.getBoundingClientRect().top - cTop;
     }
+    cancelEase();                          // 진행 중인 자동 스크롤 ease 중단(경쟁 제거)
+    userScrolledUntil = Date.now() + 1200; // 자동추적이 보정을 덮어쓰지 않게 잠시 보류
     if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
     if (sc && anchor) {
-      requestAnimationFrame(() => {   // 레이아웃 완전 정착 후 앵커를 원래 화면 위치로(단일 보정)
+      requestAnimationFrame(() => {
+        cancelEase();                      // rAF 시점에도 혹시 재개됐으면 다시 중단
         const now = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;
-        sc.scrollTop += (now - desired);
+        sc.scrollTop += (now - desired);   // 앵커를 변경 전 화면 위치로(단일 보정)
       });
     }
   }
