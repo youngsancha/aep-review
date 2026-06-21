@@ -10,13 +10,13 @@ export function renderLogin(root, onSuccess) {
       <div class="login-glow" style="background-image:url('${SHOW_COVER}')"></div>
       <img class="login-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
       <h1 class="login-title">American English Podcast</h1>
-      <p class="login-sub">쉐도잉 복습 · 로그인</p>
+      <p class="login-sub">Shadowing Practice · Sign In</p>
       <form id="login-form" class="login-form">
         <input id="login-email" class="login-input" type="email" inputmode="email"
-               autocomplete="username" placeholder="이메일" required />
+               autocomplete="username" placeholder="Email" required />
         <input id="login-pass" class="login-input" type="password"
-               autocomplete="current-password" placeholder="비밀번호" required />
-        <button class="btn primary login-btn" type="submit">로그인</button>
+               autocomplete="current-password" placeholder="Password" required />
+        <button class="btn primary login-btn" type="submit">Sign In</button>
         <p id="login-err" class="login-err" hidden></p>
       </form>
     </div>
@@ -38,10 +38,10 @@ export function renderLogin(root, onSuccess) {
       if (error) throw error;
       onSuccess();
     } catch (err) {
-      $err.textContent = '로그인 실패: ' + escapeHtml(String(err.message || err));
+      $err.textContent = 'Sign-in failed: ' + escapeHtml(String(err.message || err));
       $err.hidden = false;
       $btn.disabled = false;
-      $btn.textContent = '로그인';
+      $btn.textContent = 'Sign In';
     }
   });
 }

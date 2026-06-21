@@ -265,7 +265,7 @@ export async function renderEpisode(root, idStr, tStr) {
       $notes.setAttribute('aria-hidden', 'true');
       return;
     }
-    $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">한</span><span class="tx-trans-ko">…</span></div>`;
+    $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">KR</span><span class="tx-trans-ko">…</span></div>`;
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
     fillTranslation(idx);
@@ -535,8 +535,8 @@ export async function renderEpisode(root, idStr, tStr) {
   });
   // 쉐도잉(off) ↔ 반복(loop) 2단계 토글. 문장멈춤(pause)은 제거(사용자 요청).
   const SHADOW = [
-    { mode: 'off',  label: '🔁 쉐도잉', on: false },
-    { mode: 'loop', label: '🔁 반복',   on: true },
+    { mode: 'off',  label: '🔁 Shadow', on: false },
+    { mode: 'loop', label: '🔁 Repeat', on: true },
   ];
   let shadowIdx = 0;
   const $shadow = document.getElementById('tx-shadow');
@@ -895,10 +895,10 @@ export function detectAdRanges(sentences) {
   return merged;
 }
 function adBarHtml(adStart, resumeStart, isPre) {
-  return `<button class="tx-ad-skip" type="button" data-start="${adStart}" data-end="${resumeStart}" data-skip="${resumeStart}" aria-label="광고 건너뛰고 본편으로">
+  return `<button class="tx-ad-skip" type="button" data-start="${adStart}" data-end="${resumeStart}" data-skip="${resumeStart}" aria-label="Skip ad to episode">
     <span class="tx-ad-ico">📢</span>
-    <span class="tx-ad-text"><b>광고 구간</b><small>음성 광고는 재생마다 달라 자막과 다를 수 있어요</small></span>
-    <span class="tx-ad-go">${isPre ? '본편으로' : '건너뛰기'} ›</span>
+    <span class="tx-ad-text"><b>Ad break</b><small>Audio ads vary each play, so they may differ from the script</small></span>
+    <span class="tx-ad-go">${isPre ? 'To episode' : 'Skip'} ›</span>
   </button>`;
 }
 
@@ -945,11 +945,11 @@ function transcriptSheetHtml(segments, title, sub) {
         </div>
         <div class="tx-card">
           <div class="tx-toolbar">
-            <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="한국어 번역">한 번역</button>
-            <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 쉐도잉</button>
+            <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="Korean translation">KR</button>
+            <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="글자 작게">A−</button>
-            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="글자 크게">A＋</button>
+            <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="Decrease text size">A−</button>
+            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="Increase text size">A＋</button>
           </div>
           <div class="tx-scroll">
             ${body}

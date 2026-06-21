@@ -19,8 +19,8 @@ export async function renderTimeline(root) {
     root.innerHTML = `
       ${heroHtml({total: 0, ready: 0})}
       <div class="empty">
-        에피소드가 아직 없습니다.<br />
-        우측 상단 ↻ 버튼을 눌러 RSS 피드를 동기화하세요.
+        No episodes yet.<br />
+        Tap the ↻ button (top right) to sync the RSS feed.
       </div>
     `;
     return;
@@ -31,7 +31,7 @@ export async function renderTimeline(root) {
   let html = heroHtml({total: items.length, ready});
   html += continueHtml(getLatestProgress(), items);  // 이어듣기 (저장된 재생위치)
   html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
-  html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 에피소드 검색" autocomplete="off" /></div>`;
+  html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 Search episodes" autocomplete="off" /></div>`;
   html += `<div id="ep-groups">${groupsHtml(items)}</div>`;
   root.innerHTML = html;
 
@@ -48,7 +48,7 @@ export async function renderTimeline(root) {
         const filtered = !q ? items : items.filter((e) =>
           (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
         const box = root.querySelector('#ep-groups');
-        box.innerHTML = filtered.length ? groupsHtml(filtered, true) : '<div class="empty">검색 결과가 없어요.</div>';
+        box.innerHTML = filtered.length ? groupsHtml(filtered, true) : '<div class="empty">No results.</div>';
         wirePlay(box, items);
       }, 150);
     });
@@ -126,7 +126,7 @@ function continueHtml(prog, items) {
   const pct = prog.dur ? Math.min(100, Math.round((prog.t / prog.dur) * 100)) : 0;
   const left = prog.dur ? Math.max(1, Math.round((prog.dur - prog.t) / 60)) : 0;
   return `
-    <div class="section-h"><h2>이어듣기</h2></div>
+    <div class="section-h"><h2>Continue</h2></div>
     <div class="cont-card">
       <a class="cont-cover-link" href="#/episode/${prog.id}" aria-label="${escapeHtml(title)}">
         <img class="cont-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
@@ -134,10 +134,10 @@ function continueHtml(prog, items) {
       <div class="cont-body">
         <a class="cont-title" href="#/episode/${prog.id}">${escapeHtml(title)}</a>
         <div class="cont-bar"><span style="width:${pct}%"></span></div>
-        <div class="cont-meta">${pct}% 들음 · ${left}분 남음</div>
+        <div class="cont-meta">${pct}% played · ${left} min left</div>
         <div class="cont-actions">
-          <button class="cont-play" data-id="${prog.id}" data-resume="${prog.t}">▶ 이어재생</button>
-          <a class="cont-script" data-id="${prog.id}" href="#/episode/${prog.id}">스크립트로 보기 ›</a>
+          <button class="cont-play" data-id="${prog.id}" data-resume="${prog.t}">▶ Resume</button>
+          <a class="cont-script" data-id="${prog.id}" href="#/episode/${prog.id}">View Script ›</a>
         </div>
       </div>
     </div>`;
@@ -153,7 +153,7 @@ function heroHtml({total, ready}) {
   return `
     <div class="library-head">
       <h1 class="library-title">Library</h1>
-      <div class="library-sub">${total} episodes${ready < total ? ` · ${total - ready} 준비중` : ' · 모두 준비됨'}</div>
+      <div class="library-sub">${total} episodes${ready < total ? ` · ${total - ready} preparing` : ' · all ready'}</div>
     </div>
   `;
 }
@@ -165,21 +165,21 @@ function featuredHtml(e) {
     .filter(Boolean).join(' · ');
   const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
   return `
-    <div class="section-h"><h2>최신 에피소드</h2></div>
+    <div class="section-h"><h2>Latest Episode</h2></div>
     <div class="feat-card">
       <div class="feat-bg" style="background-image:url('${SHOW_COVER}')"></div>
       <div class="feat-inner">
         <img class="feat-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         <div class="feat-body">
-          <div class="feat-label">▶ 최신화</div>
+          <div class="feat-label">▶ Latest</div>
           <a class="feat-title" href="#/episode/${e.id}">${escapeHtml(title)}</a>
           <div class="feat-meta">${escapeHtml(meta)}</div>
         </div>
       </div>
       ${desc ? `<p class="feat-desc">${escapeHtml(desc)}</p>` : ''}
       <div class="feat-actions">
-        ${e.has_audio ? `<button class="feat-play" data-id="${e.id}">▶ 재생</button>` : ''}
-        <a class="feat-script" data-id="${e.id}" href="#/episode/${e.id}">스크립트로 보기 ›</a>
+        ${e.has_audio ? `<button class="feat-play" data-id="${e.id}">▶ Play</button>` : ''}
+        <a class="feat-script" data-id="${e.id}" href="#/episode/${e.id}">View Script ›</a>
       </div>
     </div>
   `;
@@ -198,7 +198,7 @@ function rowHtml(e) {
   const chips = [];
   const isNew = e.pub_date && (Date.now() - new Date(e.pub_date).getTime()) < 21 * 864e5;
   if (isNew) chips.push('<span class="chip new-ep">NEW</span>');
-  if (done) chips.push('<span class="chip done-ep">✓ 들음</span>');
+  if (done) chips.push('<span class="chip done-ep">✓ Played</span>');
   if (e.vocab_count > 0) chips.push(`<span class="chip vocab">${e.vocab_count} vocab</span>`);
   if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
 
@@ -214,10 +214,10 @@ function rowHtml(e) {
         ${desc ? `<p class="ep-desc">${escapeHtml(desc)}</p>` : ''}
         <div class="ep-foot">
           ${e.has_audio ? `<button class="ep-play" data-id="${e.id}" aria-label="Play">${SVG_PLAY_SM}</button>` : ''}
-          <span class="ep-meta">${pct ? `▶ ${leftMin}분 남음` : (e.duration_sec ? escapeHtml(fmtDuration(e.duration_sec)) : '')}</span>
+          <span class="ep-meta">${pct ? `▶ ${leftMin} min left` : (e.duration_sec ? escapeHtml(fmtDuration(e.duration_sec)) : '')}</span>
           ${chips.length ? `<div class="ep-chips">${chips.join('')}</div>` : ''}
         </div>
-        ${pct ? `<div class="ep-progress" aria-label="${pct}% 들음"><span style="width:${pct}%"></span></div>` : ''}
+        ${pct ? `<div class="ep-progress" aria-label="${pct}% played"><span style="width:${pct}%"></span></div>` : ''}
       </div>
     </a>
   `;

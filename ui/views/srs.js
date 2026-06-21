@@ -41,9 +41,9 @@ export async function renderSrs(root) {
     root.innerHTML = `
       <div class="empty srs-done">
         <div class="srs-done-emoji">🎉</div>
-        <p class="srs-done-title">오늘 복습 완료!</p>
-        <p class="srs-done-sub">예정된 카드가 없어요. Study 탭에서 표현을 더 탐색하거나<br/>퀴즈·문장 학습으로 익혀보세요.</p>
-        <a class="btn primary srs-done-cta" href="#/study">📚 Study 탐색하기</a>
+        <p class="srs-done-title">Review complete!</p>
+        <p class="srs-done-sub">No cards due. Explore more expressions in the Study tab,<br/>or practice with quizzes and sentences.</p>
+        <a class="btn primary srs-done-cta" href="#/study">📚 Explore Study</a>
       </div>`;
     return;
   }
@@ -129,7 +129,7 @@ export async function renderSrs(root) {
                 <div class="srs-example" ${startSec ? `data-start="${startSec}"` : ''}>
                   ${highlightTerm(example, term)}
                 </div>
-                ${(startSec && c.audio_url) ? `<button class="srs-context-btn" data-url="${escapeHtml(c.audio_url)}" data-s="${startSec}" data-e="${c.sentence_end_sec ?? ''}">🎧 맥락에서 듣기</button>` : ''}
+                ${(startSec && c.audio_url) ? `<button class="srs-context-btn" data-url="${escapeHtml(c.audio_url)}" data-s="${startSec}" data-e="${c.sentence_end_sec ?? ''}">🎧 Hear in context</button>` : ''}
               ` : ''}
             ` : ''}
 

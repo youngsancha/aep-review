@@ -46,8 +46,8 @@ async function route() {
       } catch (e) {
         console.error('[route] view render failed:', e);
         $app.innerHTML = `<div class="empty error">
-          <p>잠시 문제가 생겼어요.</p>
-          <button class="btn primary" id="route-retry">다시 시도</button>
+          <p>Something went wrong.</p>
+          <button class="btn primary" id="route-retry">Retry</button>
         </div>`;
         document.getElementById('route-retry')?.addEventListener('click', () => route());
       }
@@ -114,12 +114,12 @@ function refreshData() {
     setTimeout(() => {
       $sync.disabled = false;
       $sync.classList.remove('syncing');
-      toast('최신 상태로 동기화됨');
+      toast('Synced to latest');
     }, 350);
   });
 }
 async function signOut() {
-  if (!confirm('로그아웃할까요?')) return;
+  if (!confirm('Log out?')) return;
   try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
   showLogin();
 }
@@ -152,7 +152,7 @@ $theme?.addEventListener('click', () => {
   const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
   localStorage.setItem('aep-theme', next);
   applyTheme(next);
-  toast(next === 'dark' ? '다크 테마' : '라이트 테마');
+  toast(next === 'dark' ? 'Dark theme' : 'Light theme');
 });
 applyTheme(localStorage.getItem('aep-theme') || 'auto');
 // 자동(미설정) 모드에서 시스템 테마가 바뀌면 아이콘/상태바색 갱신
