@@ -6,6 +6,10 @@ venv/
 .env
 .env.local
 data/
+# 단, 앱에 배포되는 정적 데이터 팩(ui/data/)은 추적해야 함 — data/ 규칙이 ui/data 까지
+# 잡아 essentials.json 이 커밋 누락 → 프로덕션 404(Essentials 깨짐) 났던 것 방지.
+!ui/data/
+!ui/data/**
 logs/
 .DS_Store
 .idea/
