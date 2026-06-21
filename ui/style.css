@@ -959,6 +959,7 @@ body.on-episode {
 .tx-scroll {
   max-height: 70vh;
   overflow-y: auto;
+  overflow-anchor: none;  /* 글자크기 변경 시 브라우저 자동앵커링과 우리 보정이 겹쳐 두 번 밀리던 것 방지 */
   padding: 18px 20px 24px;
   -webkit-overflow-scrolling: touch;
   position: relative;

@@ -602,21 +602,22 @@ export async function renderEpisode(root, idStr, tStr) {
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   function applyTxScale() {
     txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
-    // 글자 크기 변경 시 보던 위치 유지: 화면에 보이는 문장을 앵커로 잡고, 리플로우 후 같은 화면
-    // 위치로 스크롤을 보정한다(예전엔 scrollTop 고정이라 글자가 커지며 내용이 아래로 쭉 밀렸다).
+    // 글자 크기 변경 시 '보던 위치 그대로' 유지. 브라우저 자동 스크롤 앵커링과 우리 보정이 겹쳐 두 번
+    // 밀리던 문제 때문에 .tx-scroll 은 overflow-anchor:none(CSS)으로 끄고, 여기서만 단일 보정한다.
     const sc = document.querySelector('.tx-scroll');
-    let anchor = null, before = 0;
+    let anchor = null, before = 0, contTop = 0;
     if (sc) {
-      const cont = sc.getBoundingClientRect();
+      contTop = sc.getBoundingClientRect().top;
       anchor = sc.querySelector('.tx-sent.active')
-        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom - cont.top > 4);
-      if (anchor) before = anchor.getBoundingClientRect().top - cont.top;
+        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom - contTop > 4);
+      if (anchor) before = anchor.getBoundingClientRect().top - contTop;
     }
     if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
     if (sc && anchor) {
-      const after = anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top;  // 읽기→리플로우 강제
-      sc.scrollTop += (after - before);   // 앵커를 변경 전과 같은 화면 위치로
+      void sc.offsetHeight;  // 리플로우 강제 → 새 레이아웃의 anchor 위치를 정확히 읽는다
+      const after = anchor.getBoundingClientRect().top - contTop;  // 동일 contTop(컨테이너는 안 움직임)
+      sc.scrollTop += (after - before);   // 앵커를 변경 전과 같은 화면 위치로(딱 한 번)
     }
   }
   applyTxScale();
