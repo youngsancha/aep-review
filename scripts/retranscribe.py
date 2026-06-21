@@ -83,27 +83,57 @@ def _build_word_index(transcript: dict[str, Any]):
     return words, spans
 
 
+def _anchor(probe: list[str], words: list[str], lo: int, hi: int) -> int | None:
+    """probe 토큰열이 words[lo:hi] 에서 ≥70% 일치하는 시작 인덱스. 없으면 None."""
+    L = len(probe)
+    if L == 0:
+        return None
+    first = probe[0]
+    hi = min(hi, len(words))
+    for i in range(lo, hi - L + 1):
+        if words[i] != first:
+            continue
+        hit = sum(1 for k in range(L) if words[i + k] == probe[k])
+        if hit >= max(2, int(L * 0.7)):
+            return i
+    return None
+
+
 def _find_span(ex_tokens: list[str], words: list[str], spans):
-    """example 토큰열을 단어스트림에서 찾아 (start, end). 전체→prefix 순으로 점점 짧게 시도."""
+    """example 의 (start, end). 앞 단어로 시작을, 뒤 단어로 끝을 따로 앵커해 예문 '전체'를 커버한다.
+    (예전엔 prefix 만 매칭해 멀티문장 예문의 끝이 일찍 잘렸다 — 'ball of energy' 클립 2.7s 버그)."""
     if not ex_tokens or not words:
         return None
     n = len(words)
+    # 시작: 긴 prefix 부터 시도(가장 구체적 → 정확한 위치). 짧은 앵커만 쓰면 흔한 'that's a…' 에
+    # 오매칭(엉뚱한 시각) 한다 → 반드시 긴 prefix 우선.
+    si = None
     for take in (len(ex_tokens), 8, 6, 4, 3):
-        probe = ex_tokens[:take]
-        if len(probe) < 3 and len(ex_tokens) >= 3:
+        L = min(take, len(ex_tokens))
+        if (L < 3 and len(ex_tokens) >= 3) or L == 0 or L > n:
             continue
-        L = len(probe)
-        if L == 0 or L > n:
-            continue
-        first = probe[0]
+        probe = ex_tokens[:L]
         for i in range(n - L + 1):
-            if words[i] != first:
+            if words[i] != probe[0]:
                 continue
-            # 일치 비율(작은 STT 차이 허용): 70% 이상이면 채택
-            hit = sum(1 for k in range(L) if words[i + k] == probe[k])
-            if hit >= max(2, int(L * 0.7)):
-                return spans[i][0], spans[i + L - 1][1]
-    return None
+            if sum(1 for k in range(L) if words[i + k] == probe[k]) >= max(2, int(L * 0.7)):
+                si = i
+                break
+        if si is not None:
+            break
+    if si is None:
+        return None
+    # 끝: 예문 꼬리 단어들을 si 이후에서 앵커 → 예문 '전체'를 커버. 못 찾으면 예문 단어수만큼.
+    if len(ex_tokens) <= 5:
+        ei = min(si + len(ex_tokens) - 1, n - 1)
+    else:
+        tail = ex_tokens[-5:]
+        ti = _anchor(tail, words, si, min(n, si + len(ex_tokens) + 12))
+        ei = (ti + len(tail) - 1) if ti is not None else (si + len(ex_tokens) - 1)
+        ei = min(ei, n - 1)
+    if ei < si:
+        ei = min(si + len(ex_tokens) - 1, n - 1)
+    return spans[si][0], spans[ei][1]
 
 
 def remap_vocab(ep_id: int, transcript: dict[str, Any]) -> int:
@@ -199,7 +229,27 @@ def main() -> None:
                    help="megaphone 대신 R2(서빙 오디오)를 받아 재STT → 자막=서빙오디오 완벽 일치(재업로드 X)")
     p.add_argument("--by-vocab", action="store_true",
                    help="recency 대신 vocab 많은(자주 학습) 회차 먼저 — 예문 정확도를 학습지점에 빨리 도달")
+    p.add_argument("--remap-only", action="store_true",
+                   help="STT 없이 기존 transcript 로 vocab 타임스탬프만 재매핑(예문 클립 잘림 일괄수정, GPU 불필요)")
     args = p.parse_args()
+
+    if args.remap_only:
+        rows = store.episodes_by_recency()
+        tot = 0
+        for r in rows:
+            eid = r["id"]
+            try:
+                tr = store.download_transcript(eid)
+                if not tr:
+                    continue
+                u = remap_vocab(eid, tr)
+                tot += u
+                if u:
+                    log.info("remap ep=%s: vocab %d 갱신", eid, u)
+            except Exception:
+                log.exception("remap 실패 ep=%s", eid)
+        log.info("remap-only 완료: 총 %d vocab 갱신", tot)
+        return
 
     if not (args.ids or args.recent or args.all):
         p.error("--ids / --recent N / --all 중 하나 필요")
