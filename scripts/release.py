@@ -71,6 +71,24 @@ def check_ui_tracked() -> None:
             + "\n  ".join(sorted(missing))
             + "\n→ .gitignore 확인(예: !ui/data/) 후 git add 하고 재시도."
         )
+    # 2차 가드: .vercelignore 의 '앵커 없는' 디렉터리 패턴이 ui/ 하위를 잡으면 배포에서 제외된다
+    # (git 엔 있지만 Vercel 이 안 올림 → 404). 'data/' 가 ui/data 까지 잡았던 사고의 두 번째 층.
+    vi = ROOT / ".vercelignore"
+    if vi.exists():
+        snared = []
+        for raw in vi.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or line.startswith("!") or line.startswith("/"):
+                continue
+            name = line.rstrip("/")
+            if "/" not in name and (ui / name).is_dir():   # 앵커 없는 디렉터리명이 ui/ 하위에 존재
+                snared.append(f"'{line}' → ui/{name}/ 가 배포 제외됨")
+        if snared:
+            raise SystemExit(
+                "release 중단 — .vercelignore 앵커없는 패턴이 ui/ 자산을 배포에서 제외(프로덕션 404):\n  "
+                + "\n  ".join(snared)
+                + "\n→ 해당 패턴을 '/data/' 처럼 루트 앵커로 고치고 재시도."
+            )
 
 
 def main() -> None:

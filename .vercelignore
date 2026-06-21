@@ -1,9 +1,11 @@
 # Vercel 은 ui/ 정적 파일만 서빙한다. 파이썬/데이터/로그는 업로드 불필요.
+# 주의: 'data/'·'logs/' 는 반드시 '/' 앵커 — 안 그러면 ui/data(앱 정적 데이터팩)까지 잡혀
+# essentials.json 이 배포 누락 → 프로덕션 404 난다(2026-06-21 사고).
 ingest/
 scripts/
 supabase/
-data/
-logs/
+/data/
+/logs/
 *.db
 *.egg-info/
 __pycache__/
