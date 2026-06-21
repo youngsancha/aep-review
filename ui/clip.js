@@ -17,14 +17,18 @@ export function stopClip() {
 
 // url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택). rate: 재생속도. loop: 끝에서
 // 처음으로 되감아 무한 반복(드릴 자동반복용). 다음 카드/정지 시 stopClip 으로 종료.
-export function playSentenceClip(url, start, end, btn, rate, loop) {
+export function playSentenceClip(url, start, end, btn, rate, loop, minDur) {
   if (!url) return;
   const toggleOff = (_btn === btn && _clip && btn);  // 같은 버튼 재탭 → 정지(버튼 없으면 토글 안 함)
   stopClip();
   if (toggleOff) return;
   try { player.pause(); } catch (e) {}        // 전역 에피소드 재생은 멈추고 '문장만'
   const s = Math.max(0, Number(start) || 0);
-  const e = (Number.isFinite(+end) && +end > s) ? +end : s + 14;  // end 없으면 14s 캡
+  let e = (Number.isFinite(+end) && +end > s) ? +end : s + 14;  // end 없으면 14s 캡
+  // 최소 재생길이 바닥(minDur): whisper 가 단어 타임스탬프를 짧게 욱여넣어(예: 7단어 0.9s) 매핑은
+  // 옳아도 클립이 말 도중 끊기는 경우 — 단어수 기준 보수적 발화속도(~0.33s/단어)로 끝을 늘린다.
+  // '늘리기만' 하므로 정상 매핑(이미 충분히 긴) 클립은 불변. 과확장 방지 위해 +6s 한도.
+  if (minDur && minDur > 0 && (e - s) < minDur) e = s + Math.min(minDur, (e - s) + 6);
   const a = new Audio(url);
   a.preload = 'auto';
   if (rate && rate > 0) a.playbackRate = rate;  // currentTime 은 미디어시각이라 종료판정엔 영향 없음

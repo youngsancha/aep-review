@@ -60,9 +60,21 @@ def save_done(done: set[int]) -> None:
 # ─────────────────────── vocab 타임스탬프 재매핑 ───────────────────────
 _WORD = re.compile(r"[a-z0-9']+")
 
+# 구어 축약(native reductions) 정규화 — 예문(claude 정제)과 ASR transcript 가 서로 다른 형태를 써도
+# ('going to' vs 'gonna') 같은 위치로 정렬되게 양쪽 모두 펼친 표준형으로. 대칭 적용이라 기존 정상매칭은
+# 불변(축약이 없으면 그대로) → 매칭 견고성만 +. 'cause' 등 다의어는 위험해 제외(고빈도 안전형만).
+_EXPAND = {
+    "gonna": ("going", "to"), "wanna": ("want", "to"), "gotta": ("got", "to"),
+    "gimme": ("give", "me"), "lemme": ("let", "me"), "kinda": ("kind", "of"),
+    "sorta": ("sort", "of"), "outta": ("out", "of"), "tryna": ("trying", "to"),
+}
+
 
 def _norm_tokens(text: str) -> list[str]:
-    return _WORD.findall((text or "").lower())
+    out: list[str] = []
+    for t in _WORD.findall((text or "").lower()):
+        out.extend(_EXPAND.get(t, (t,)))
+    return out
 
 
 def _build_word_index(transcript: dict[str, Any]):
@@ -111,20 +123,27 @@ def _find_span(ex_tokens: list[str], words: list[str], spans):
         return None
     n = len(words)
     # 시작: 긴 prefix 부터 시도(가장 구체적 → 정확한 위치). 짧은 앵커만 쓰면 흔한 'that's a…' 에
-    # 오매칭(엉뚱한 시각) 한다 → 반드시 긴 prefix 우선.
+    # 오매칭한다 → 반드시 긴 prefix 우선. 또한 '첫 70% 매칭'이 아니라 '그 길이에서 최고 점수' 위치를
+    # 골라야 한다 — 흔한 단어가 반복되는 예문("i'm going to…")에서 앞쪽 코인시던스 위치에 붙어
+    # 시작이 어긋나고 결국 클립이 짧게 잡히던 버그 방지(완전일치 발견 즉시 확정).
     si = None
     for take in (len(ex_tokens), 8, 6, 4, 3):
         L = min(take, len(ex_tokens))
         if (L < 3 and len(ex_tokens) >= 3) or L == 0 or L > n:
             continue
         probe = ex_tokens[:L]
+        thr = max(2, int(L * 0.7))
+        best_i, best_sc = None, 0
         for i in range(n - L + 1):
             if words[i] != probe[0]:
                 continue
-            if sum(1 for k in range(L) if words[i + k] == probe[k]) >= max(2, int(L * 0.7)):
-                si = i
-                break
-        if si is not None:
+            sc = sum(1 for k in range(L) if words[i + k] == probe[k])
+            if sc > best_sc:          # 최고 점수(동점이면 더 이른 위치 유지)
+                best_sc, best_i = sc, i
+                if sc == L:           # 완전일치면 더 볼 것 없음
+                    break
+        if best_i is not None and best_sc >= thr:
+            si = best_i
             break
     if si is None:
         return None

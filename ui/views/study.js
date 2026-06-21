@@ -33,10 +33,14 @@ function getStreak() {
 // 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
 function playExample(c, rate, loop) {
   if (!c) return;
-  if (c.audio_url && c.sentence_start_sec != null)
-    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate, loop);
-  else
+  if (c.audio_url && c.sentence_start_sec != null) {
+    // 단어수 기반 최소 재생길이 — whisper 타임스탬프 압축으로 클립이 말 도중 끊기는 것 방지(늘리기만).
+    const wc = (c.example_sentence || '').trim().split(/\s+/).filter(Boolean).length;
+    const minDur = wc >= 4 ? Math.min(wc * 0.33, 12) : 0;
+    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate, loop, minDur);
+  } else {
     speak(c.example_sentence, rate ? { playbackRate: rate } : undefined);  // TTS 폴백은 단발
+  }
 }
 
 export async function renderStudy(root) {
