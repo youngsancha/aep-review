@@ -112,3 +112,50 @@
 ### 결론
 - 정상 경로(네트워크 안정 + 단일 러너 + ingest 미동시)에서 **멱등·원자·재개 안전**. 위 B/A/E 는 드문
   비정상 경로의 일시적 후퇴(영구 데이터 손실 아님). 진행 중 잡은 그대로 두는 것이 맞다.
+
+---
+
+## 4. [견고성] 런타임 폴백 — ✅ 감사 완료(이미 견고, 코드 변경 없음 + 소수 제안)
+
+### 검증 방법
+- 코드 정독(translate.js / tts.js / clip.js / app.js / srs.js / study.js / essentials.js / timeline.js) +
+  **헤드리스 스모크 PASS**(`scripts/_pwtest_async.py`: episode 10문장·study 5표현·timeline 3행, `window.__err`
+  전부 [], 콘솔 error/warning 0).
+
+### 이미 견고한 점(✅) — 변경 불필요
+- **번역(MyMemory)**: `translateEnKo` 는 절대 throw 안 함. 429/403/QUOTA/WARNING 감지 시 `_trQuotaHit`
+  세팅 → 세션 내 추가 호출 중단(실패 누적 방지). 네트워크 오류 → `''`(호출부가 조용히 패널 숨김).
+- **음성**: `speak` = Storage mp3 재생 실패(404 등) → `browserFallback`(speechSynthesis). 미지원 브라우저면
+  조용히 무음(크래시 X). `prefetch` 는 개별 `.catch(()=>{})`. `clip.js` 는 `play().catch(()=>{})` +
+  `onerror=stopClip` 로 미처리 reject 없음.
+- **오프라인 3티어 SW**: `networkFirst` 가 오프라인+미캐시일 때 rethrow → db.js 가 throw → **app.js 라우터
+  try/catch 가 'Something went wrong'+Retry 로 강등**(무한 스피너/블랭크 없음). 전역
+  `error`/`unhandledrejection` 안전망도 존재(콘솔 스팸 차단).
+- **쓰기 실패 내성**: `srsReview().catch`, `markKnown().catch` 등 모든 변이 호출이 옵티미스틱+캐치.
+
+### 소수 제안 (frozen 체인이라 NOTES 제안만 — 코드 미변경)
+- **[음성 체인] 실제클립→TTS 캐스케이드 누락(런타임 오류 시)**: `playSentenceClip` 의 실제 클립이 로드/재생
+  실패(`onerror`)하면 그냥 정지할 뿐 TTS 로 안 내려간다. 현재는 호출부(study `playExample`)가 audio_url
+  유무로 *사전* 선택만 함. 개선: `playSentenceClip(...)` 에 옵셔널 `onError` 콜백 추가(기본=현행)→ 호출부가
+  실패 시 `speak(text)` 로 폴백. **폴백 순서(클립→TTS) 유지**·하위호환. (체인 변경이라 사람 리뷰로 적용.)
+- **[음성] 미지원 브라우저 무음 시 1회 토스트**("이 기기는 음성 미지원") — UX 힌트. 역시 음성 체인 손대므로 제안만.
+- **[부팅] `boot()` 의 `getSession()` 무타임아웃**: getSession 은 로컬 우선이라 보통 즉시 반환(저위험). 만약을
+  대비해 짧은 타임아웃 후 로그인/스피너로 강등하는 가드 고려 가능.
+
+---
+
+## 5. [UX] async 뷰 빈/에러/로딩 상태 — ✅ 감사 완료(이미 전 뷰 커버, 변경 없음)
+
+라우터(app.js)가 **모든 뷰 핸들러를 try/catch 로 감싸고** 진입 시 스피너를 깐다. 그 위에 각 뷰가 로컬
+빈/에러 상태까지 갖춰 이중 안전:
+
+| 뷰 | 로딩 | 빈 데이터 | 에러 |
+|---|---|---|---|
+| Timeline | 라우터 스피너 | `No episodes yet.` / 검색 `No results.` | 라우터 바운더리 |
+| Episode | 라우터 스피너 | `transcript pending` / `audio not downloaded yet` | 라우터 + transcript 시트 try/catch |
+| Study | 라우터+섹션 스피너 | `No expressions.` / `Not enough…(4+)` / `No examples yet` | 로컬 `Failed to load: {msg}` |
+| Essentials | 자체 스피너 | 카드/카테고리 0 가드 | 로컬 `Failed to load Essentials.`+뒤로 |
+| SRS | 라우터 스피너 | `Review complete!`(CTA→Study) | 라우터 바운더리 |
+
+- 헤드리스 스모크로 세 뷰 클린 렌더(에러 0) 확인. **추가할 빈/에러 상태 없음** — 이미 모범적.
+- (참고) 시각 리디자인 금지 가드 준수: 어차피 변경할 것이 없었음.
