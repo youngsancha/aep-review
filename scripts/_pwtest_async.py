@@ -55,8 +55,16 @@ async def run() -> bool:
         ep_err = await pg.evaluate("window.__err||[]")
         ad_mid_ok = (isinstance(ad_ranges, list) and len(ad_ranges) == 1
                      and ad_ranges[0].get("s") == 2 and ad_ranges[0].get("e") == 5)
-        ep_ok = (n_sent > 0 and not ep_err and ad_detect == 2 and ad_mid_ok)
-        print(f"EPISODE: sentences={n_sent} ad_detect={ad_detect} ad_mid_ok={ad_mid_ok} err={ep_err}")
+        # 시간→문장 매핑(findActiveSentIdx, 클로저라 통합으로 검증): FIX_SENTS starts=[0,10,22,35,48,60,...]
+        # seek(50) → txTime=49.8(HL_LAG 0.2) → start<=49.8 인 마지막 문장 = start 48.
+        await pg.evaluate("window.__player.seek(50)")
+        await asyncio.sleep(0.2)
+        act = await pg.query_selector(".tx-sent.active")
+        active_start = float(await act.get_attribute("data-start")) if act else None
+        time_map_ok = active_start is not None and abs(active_start - 48) < 0.5
+        ep_ok = (n_sent > 0 and not ep_err and ad_detect == 2 and ad_mid_ok and time_map_ok)
+        print(f"EPISODE: sentences={n_sent} ad_detect={ad_detect} ad_mid_ok={ad_mid_ok} "
+              f"time_map(active@50s={active_start})={time_map_ok} err={ep_err}")
 
         # ── study ──
         await pg.goto("http://localhost:8123/_harness_study.html")
