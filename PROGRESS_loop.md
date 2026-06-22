@@ -13,6 +13,10 @@
 비고: 이번 세션 변경은 전부 **additive(테스트·진단·문서·제안 SQL)** — ui/ 런타임 코드 0 변경.
 → main 병합·Vercel 배포해도 PWA 동작 동일(정적 자산 불변). 게이트 매 커밋 green.
 
+- 반복8 | BACKLOG3 보강: translate.js 폴백 계약 테스트(7케이스, additive) | done | <이번> | main push (Vercel auto)
+
 ## BACKLOG 1–7 소진 → 유휴(monitor) 모드
 새 작업 발명 금지. 이후 깨어남: (a) 4샤드 번역 잡이 사람에 의해 재개됐는지 로그 read-only 확인 →
 재개 시 `diag_preko` 로 커버리지 리포트(읽기전용), (b) 게이트 green 유지 확인. 그 외 빈 커밋/무의미 변경 X.
+※ 반복8 은 BACKLOG3(런타임폴백)의 '보강'을 audit→regression test 로 마무리(런타임 코드 0 변경). 이후 추가 테스트도
+  소진으로 보고, 잡 재개/새 BACKLOG 없으면 유휴 유지.

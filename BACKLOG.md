@@ -7,7 +7,7 @@
 |---|---|---|---|
 | 1 | RLS 멀티유저 행 격리 점검 | **done** | `supabase/proposed_multiuser_rls.sql`(제안·prod 미적용) + NOTES §1 |
 | 2 | resegment SSOT 검증 + _preKo 적중률 진단 | **done** | `tests/test_resegment_parity.py`·`scripts/resegment_parity.mjs`·`ingest/diag_preko.py` (전수 0불일치, 적중 99.9%) |
-| 3 | 런타임 폴백 견고성 | **done(감사)** | NOTES §4 — 이미 견고(번역/음성/오프라인+라우터 바운더리). 코드변경 불요, 소수 제안만 |
+| 3 | 런타임 폴백 견고성 | **done(감사+테스트)** | NOTES §4 — 이미 견고. + `tests/translate_fallback.test.mjs`(7): 번역 폴백 계약(never-throw·429/403/쿼터 래치·캐시) 회귀 고정 |
 | 4 | async 뷰 빈/에러/로딩 보강 | **done(감사)** | NOTES §5 — 전 뷰 이미 구비(헤드리스 PASS). 변경 불요 |
 | 5 | 핵심 로직 단위 테스트 | **done** | `tests/srs_streak.test.mjs`(SM-2·스트릭 12케이스) + `_pwtest_async.py` 시간→문장 통합 |
 | 6 | 번역 잡 체크포인트 멱등성 분석(읽기전용) | **done** | NOTES §3 — 멱등·원자 확인 + load_existing 404가드 등 제안 |
