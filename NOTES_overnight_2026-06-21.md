@@ -35,3 +35,41 @@
 
 ### 리뷰 필요
 - 멀티유저를 실제로 쓸 의향이 있는가? 없으면 현행 단일유저로 안전(조치 불요). 있으면 옵션 A 적용 + db.js 수정.
+
+---
+
+## 2. [정합성] resegment SSOT 이탈 검증 — ✅ 완료(불일치 0, 회귀가드 추가)
+
+### 검증 결과 (전수)
+- **전체 264 회차 / 106,272 문장에서 JS(episode.js) ↔ Python(translate_transcripts.py) 분절·trKey
+  불일치 0건.** 두 구현은 실제 코퍼스 전체에서 바이트 단위로 동일 → _preKo 키 정합 완전.
+- 코드 정독으로 발견한 *이론적* 엣지 분기 3종은 실데이터에서 미발현(아래). faster-whisper 가 항상
+  수치 start/end + ASCII 영문을 내기 때문.
+  1. `w.start ?? seg.start`(JS nullish) vs `w.get("start", seg.get("start"))`(Python: 키 부재일 때만
+     default) — 키가 명시적 null 일 때만 갈림. whisper 는 항상 키+수치라 미발생.
+  2. `raw[:1].isupper()`(Python 유니코드) vs `/^[A-Z]/`(JS ASCII) — STARTER 가 ASCII 단어목록이라
+     2차 조건에서 마스킹됨(무해).
+  3. dur 계산 시 start 가 null 이면 JS=coerce0 / Python=0분기 — 추출단계 seg.start 폴백으로 start 가
+     항상 수치라 미발생.
+
+### _preKo 적중률(완료 회차 표본, 읽기 전용 측정)
+- ep 268/255/240/225 = 100%, ep 230 = 99.7%(1문장 누락) → **합계 99.9%**.
+  누락 1문장은 claude 가 그 줄 번역을 안 돌려준 케이스 → 런타임 MyMemory 폴백으로 무중단 처리(설계대로).
+
+### 산출물
+- `scripts/resegment_parity.mjs` — episode.js 의 '실제' resegment/trKey 소스를 추출해 실행(복사 드리프트
+  없음). `data/transcripts/*.json` 픽스처로 JS 분절 출력.
+- `tests/test_resegment_parity.py` — Python 포팅과 대조(문장경계 + trKey). node 없으면 skip. 표본 9회차
+  (앞/중/뒤). **이제 둘 중 하나만 고쳐도 테스트가 깨져 SSOT 이탈을 CI 에서 즉시 잡는다.**
+- `ingest/diag_preko.py` — _preKo 적중률 진단(읽기 전용, Storage download 만). 분절/키 로직은
+  translate_transcripts 재사용(중복 0).
+- `conftest.py` — 루트를 sys.path 에 넣어 테스트가 scripts/ingest 네임스페이스패키지 import 가능.
+
+### 단일 공유 모듈 추출(제안만 — 이번 밤 미통합)
+- 현재는 분절 로직이 JS·Python 2벌. 파리티 테스트가 가드를 제공하므로 당장 위험은 낮음. 다만 영구
+  SSOT 화를 원하면: episode.js 의 `resegment`/`trKey` 를 `ui/resegment.js`(순수 ESM, DOM무의존)로 추출해
+  episode.js 가 import. Python 은 언어가 달라 포팅 유지가 불가피하나, 파리티 테스트로 강제 동기화.
+  회귀 위험(episode.js 의 큰 함수 이동)이 있어 사람 리뷰가 붙는 낮에 별도 PR 권장.
+
+### cnpod-review 이식
+- 동일 사전번역 구조면 같은 파리티 테스트(언어축만 교체)를 두는 것을 권장 — 분절 드리프트 무인 탐지.
