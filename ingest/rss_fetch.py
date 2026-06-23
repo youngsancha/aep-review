@@ -17,6 +17,7 @@ from typing import Any
 import feedparser
 
 from ingest import store
+from ingest.shows import DEFAULT_SHOW
 
 log = logging.getLogger(__name__)
 
@@ -51,9 +52,9 @@ def _audio_url(entry) -> str | None:
     return None
 
 
-def fetch_feed(limit: int | None = None) -> list[dict[str, Any]]:
-    """RSS 파싱 → 정규화된 dict 리스트. 최신순."""
-    parsed = feedparser.parse(RSS_URL)
+def fetch_feed(limit: int | None = None, rss_url: str = RSS_URL) -> list[dict[str, Any]]:
+    """RSS 파싱 → 정규화된 dict 리스트. 최신순. rss_url 로 쇼별 피드 선택(멀티-쇼)."""
+    parsed = feedparser.parse(rss_url)
     if parsed.bozo and not parsed.entries:
         raise RuntimeError(f"RSS parse failed: {parsed.bozo_exception}")
 
@@ -98,22 +99,24 @@ def _duration_sec(s: str | None) -> int | None:
     return None
 
 
-def upsert_episodes(items: list[dict[str, Any]]) -> tuple[int, int]:
-    """신규만 Supabase 에 적재. 반환: (added, skipped)."""
-    return store.upsert_episodes(items)
+def upsert_episodes(items: list[dict[str, Any]], show: str = DEFAULT_SHOW) -> tuple[int, int]:
+    """신규만 Supabase 에 적재. 반환: (added, skipped). show = 팟캐스트 slug."""
+    return store.upsert_episodes(items, show)
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None, help="처음 N 개만 (최신순)")
     p.add_argument("--all", action="store_true", help="피드 전체")
+    p.add_argument("--show", default=DEFAULT_SHOW, help="팟캐스트 slug (ingest/shows.py): aep / allears")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+    from ingest.shows import rss_for
     limit = None if args.all else (args.limit or 5)
-    items = fetch_feed(limit=limit)
-    added, skipped = upsert_episodes(items)
-    log.info("fetched=%d added=%d skipped=%d", len(items), added, skipped)
+    items = fetch_feed(limit=limit, rss_url=rss_for(args.show))
+    added, skipped = upsert_episodes(items, args.show)
+    log.info("show=%s fetched=%d added=%d skipped=%d", args.show, len(items), added, skipped)
 
 
 if __name__ == "__main__":

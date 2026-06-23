@@ -16,25 +16,26 @@ import logging
 from typing import Any
 
 from ingest.rss_fetch import fetch_feed, upsert_episodes
+from ingest.shows import DEFAULT_SHOW, rss_for
 from ingest.transcribe import transcribe_pending
 
 log = logging.getLogger(__name__)
 
 
 def run(rss_limit: int | None = 30, work_limit: int | None = None,
-        do_vocab: bool = True) -> dict[str, Any]:
-    items = fetch_feed(limit=rss_limit)
-    added, skipped = upsert_episodes(items)
-    log.info("rss: fetched=%d added=%d skipped=%d", len(items), added, skipped)
+        do_vocab: bool = True, show: str = DEFAULT_SHOW) -> dict[str, Any]:
+    items = fetch_feed(limit=rss_limit, rss_url=rss_for(show))
+    added, skipped = upsert_episodes(items, show)
+    log.info("rss[%s]: fetched=%d added=%d skipped=%d", show, len(items), added, skipped)
 
-    transcribed = transcribe_pending(limit=work_limit)
+    transcribed = transcribe_pending(limit=work_limit, show=show)
     log.info("stt: transcribed=%d", transcribed)
 
     extracted = 0
     if do_vocab:
         try:
             from ingest.extract_vocab import extract_pending
-            extracted = extract_pending(limit=work_limit)
+            extracted = extract_pending(limit=work_limit, show=show)
             log.info("vocab: extracted=%d episodes", extracted)
         except Exception:
             log.exception("vocab extraction skipped")
@@ -53,10 +54,13 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=None,
                    help="이번 사이클에서 작업(STT/vocab)할 max 개수")
     p.add_argument("--no-vocab", action="store_true")
+    p.add_argument("--show", default=DEFAULT_SHOW,
+                   help="팟캐스트 slug (ingest/shows.py): aep / allears")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    result = run(rss_limit=args.rss_limit, work_limit=args.limit, do_vocab=not args.no_vocab)
-    log.info("done: %s", result)
+    result = run(rss_limit=args.rss_limit, work_limit=args.limit,
+                 do_vocab=not args.no_vocab, show=args.show)
+    log.info("done[%s]: %s", args.show, result)
 
 
 if __name__ == "__main__":

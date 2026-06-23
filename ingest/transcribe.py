@@ -140,14 +140,14 @@ def transcribe_one(audio_path: Path) -> dict[str, Any]:
     return data
 
 
-def transcribe_pending(limit: int | None = None) -> int:
-    """transcribed_at NULL 이고 audio_url 있는 episode 처리.
+def transcribe_pending(limit: int | None = None, show: str | None = None) -> int:
+    """transcribed_at NULL 이고 audio_url 있는 episode 처리. show 지정 시 그 쇼만(None=전체).
 
     원본 CDN 에서 mp3 임시 다운 → STT → transcript JSON 을 Storage 업로드 →
-    episodes.transcribed_at 마킹 → 임시 mp3 삭제. 반환: 처리 건수.
+    episodes.transcribed_at 마킹 → 임시 mp3 삭제. 반환: 처리 건수. (transcript 는 id 로 저장 — 쇼 무관)
     """
     count = 0
-    rows = store.episodes_needing_transcription()
+    rows = store.episodes_needing_transcription(show)
 
     with tempfile.TemporaryDirectory(prefix="aep_stt_") as tmpdir:
         for row in rows:

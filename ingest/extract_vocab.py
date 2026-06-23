@@ -184,8 +184,9 @@ def _parse_vocab_json(text: str) -> dict[str, Any]:
     return json.loads(s)
 
 
-def extract_for_episode(episode_id: int, title: str | None = None) -> int:
-    """episode 1건 처리: transcript(Storage) → claude → vocab+srs+TTS write. 반환: vocab 수."""
+def extract_for_episode(episode_id: int, title: str | None = None, show: str = "aep") -> int:
+    """episode 1건 처리: transcript(Storage) → claude → vocab+srs+TTS write. 반환: vocab 수.
+    show = episode.show (vocab/srs 비정규화 라벨)."""
     transcript = store.download_transcript(episode_id)
     if not transcript:
         raise ValueError(f"episode {episode_id} transcript 없음")
@@ -200,22 +201,22 @@ def extract_for_episode(episode_id: int, title: str | None = None) -> int:
     if not isinstance(vocab_list, list):
         raise ValueError(f"unexpected vocab shape: {type(vocab_list)}")
 
-    added, tts_texts = store.insert_vocab_and_srs(episode_id, vocab_list)
+    added, tts_texts = store.insert_vocab_and_srs(episode_id, vocab_list, show)
     if tts_texts:
         asyncio.run(store.pregen_tts(tts_texts))  # 새 term/example 발음 미리 생성
     store.mark_vocab_extracted(episode_id)
     return added
 
 
-def extract_pending(limit: int | None = None) -> int:
-    """transcript 있고 vocab 미추출인 episode 처리. 반환: 처리 episode 수."""
+def extract_pending(limit: int | None = None, show: str | None = None) -> int:
+    """transcript 있고 vocab 미추출인 episode 처리. show 지정 시 그 쇼만(None=전체). 반환: 처리 수."""
     count = 0
-    rows = store.episodes_needing_vocab()
+    rows = store.episodes_needing_vocab(show)
     for row in rows:
         if limit and count >= limit:
             break
         try:
-            n = extract_for_episode(row["id"], row.get("title"))
+            n = extract_for_episode(row["id"], row.get("title"), row.get("show") or "aep")
         except Exception:
             log.exception("extract_vocab failed ep=%s", row["id"])
             continue
