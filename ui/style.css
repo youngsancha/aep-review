@@ -2078,3 +2078,46 @@ a { color: var(--tint); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tx-sheet-bg { opacity: 0.5; } }
 /* 테마 토글 버튼 */
 #theme-btn { font-size: 18px; }
+
+/* === Car Mode (A3) — 운전 중 큰 탭타깃·고대비. 학습 인터랙션 없이 오디오 컨트롤만. === */
+.library-drive {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  padding: 9px 16px; border-radius: 999px; font-size: 14px; font-weight: 800;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; text-decoration: none;
+  box-shadow: 0 4px 14px rgba(204, 108, 255, 0.32);
+}
+.library-drive:active { transform: scale(0.96); }
+.drive {
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  padding: 28px 16px calc(28px + env(safe-area-inset-bottom)); min-height: 72vh; text-align: center;
+}
+.drive-art {
+  width: 200px; height: 200px; border-radius: 26px; background-size: cover; background-position: center;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.38);
+}
+.drive-title { font-size: 25px; font-weight: 800; line-height: 1.25; max-width: 92%; }
+.drive-hint { font-size: 16px; color: var(--text-2); max-width: 80%; line-height: 1.5; }
+.drive-time {
+  display: flex; align-items: center; gap: 12px; width: 100%; max-width: 540px;
+  font-size: 18px; font-variant-numeric: tabular-nums; color: var(--text-2);
+}
+.drive-bar { flex: 1; height: 12px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.drive-bar > #dr-fill { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--grad-1), var(--grad-3)); }
+.drive-controls { display: flex; align-items: center; justify-content: center; gap: 22px; width: 100%; max-width: 540px; }
+.drive-skip {
+  flex: 0 0 auto; min-width: 100px; height: 100px; border-radius: 50%;
+  font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
+  border: 2px solid var(--text-4); background: var(--surface); color: var(--text);
+}
+.drive-play {
+  width: 132px; height: 132px; border-radius: 50%; border: none; padding: 0;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 12px 32px rgba(204, 108, 255, 0.46);
+}
+.drive-play svg { width: 58px; height: 58px; }
+.drive-exit {
+  margin-top: 6px; padding: 15px 30px; font-size: 18px; font-weight: 700;
+  border-radius: 16px; border: none; background: var(--surface-2); color: var(--text); text-decoration: none;
+}
+.drive-skip:active, .drive-play:active, .drive-exit:active { transform: scale(0.95); }

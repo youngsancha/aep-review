@@ -154,6 +154,7 @@ function heroHtml({total, ready}) {
     <div class="library-head">
       <h1 class="library-title">Library</h1>
       <div class="library-sub">${total} episodes${ready < total ? ` · ${total - ready} preparing` : ' · all ready'}</div>
+      <a class="library-drive" href="#/drive" aria-label="Car Mode — large driving controls">🚗 Car mode</a>
     </div>
   `;
 }
