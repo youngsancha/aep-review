@@ -4,7 +4,11 @@
 // 재생 자체는 전역 player(player.js) 를 그대로 사용 → 다른 화면과 상태 일관.
 import { player, getLatestProgress } from '/player.js';
 import { listEpisodes, audioSrcFor } from '/db.js';
-import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
+import { showCover, currentShow } from '/config.js';
+
+// 현재 쇼 커버(렌더 시 평가) — 멀티-쇼 대응. 정적 SHOW_COVER 대체.
+const COVER = () => showCover(currentShow()) + '&w=720&h=720';
+const COVER_SM = () => showCover(currentShow()) + '&w=160&h=160';
 
 const SVG_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -34,7 +38,7 @@ export async function renderDrive(root) {
 
   if (tgt.mode === 'none') {
     root.innerHTML = `<div class="drive drive-empty">
-      <div class="drive-art" style="background-image:url('${SHOW_COVER}')"></div>
+      <div class="drive-art" style="background-image:url('${COVER()}')"></div>
       <p class="drive-title">No recent episode</p>
       <p class="drive-hint">라이브러리에서 에피소드를 한 번 재생하면 여기서 이어들을 수 있어요.</p>
       <a class="drive-exit" href="#/">← Library</a>
@@ -49,7 +53,7 @@ export async function renderDrive(root) {
       const ep = items.find((e) => e.id === tgt.id);
       if (ep && ep.audio_url) {
         const src = await audioSrcFor(ep.id, ep.audio_url);
-        player.load({ id: ep.id, title: ep.title, show: 'American English Podcast', cover: SHOW_COVER_SM, src });
+        player.load({ id: ep.id, title: ep.title, show: 'American English Podcast', cover: COVER_SM(), src });
         const seekResume = () => { if (tgt.resume > 0) player.seek(tgt.resume); };
         if (player.duration) seekResume();
         else { const offMeta = player.on((ev) => { if (ev === 'meta') { seekResume(); offMeta(); } }); }
@@ -59,7 +63,7 @@ export async function renderDrive(root) {
 
   root.innerHTML = `
     <div class="drive">
-      <div class="drive-art" style="background-image:url('${SHOW_COVER}')"></div>
+      <div class="drive-art" style="background-image:url('${COVER()}')"></div>
       <p class="drive-title" id="dr-title">${cleanTitle(tgt.title) || 'American English Podcast'}</p>
       <div class="drive-time">
         <span id="dr-cur">0:00</span>

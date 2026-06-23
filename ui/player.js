@@ -1,7 +1,7 @@
 // Global audio player + mini-player UI.
 // Single <audio> element survives across route changes.
 // Now Playing view binds to it, mini-player reflects state always.
-import { SHOW_COVER_SM } from '/config.js';
+import { showCover, currentShow } from '/config.js';
 import { bindMediaSession } from '/media-session.js';
 
 const SVG_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
@@ -141,7 +141,7 @@ function refreshMini() {
   }
   $mp.classList.remove('hidden');
   $mp.setAttribute('aria-hidden', 'false');
-  $cover.src = player.current.cover || SHOW_COVER_SM;
+  $cover.src = player.current.cover || (showCover(currentShow()) + '&w=160&h=160');
   $title.textContent = player.current.title || '—';
   const dur = player.duration;
   $sub.textContent = dur

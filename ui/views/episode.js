@@ -3,8 +3,13 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
+import { showCover, currentShow } from '/config.js';
 import { translateEnKo } from '/translate.js';
+
+// 현재 쇼 커버(렌더 시 평가) — 멀티-쇼에서 에피소드가 속한 쇼의 아트워크를 보여준다.
+// (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
+const COVER = () => showCover(currentShow()) + '&w=720&h=720';
+const COVER_SM = () => showCover(currentShow()) + '&w=160&h=160';
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -33,8 +38,8 @@ export async function renderEpisode(root, idStr, tStr) {
   root.innerHTML = `
     <div class="np-wrap">
       <div class="np-cover-wrap">
-        <div class="np-glow" style="background-image:url('${SHOW_COVER}')"></div>
-        <img class="np-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
+        <div class="np-glow" style="background-image:url('${COVER()}')"></div>
+        <img class="np-cover" src="${COVER()}" alt="" onerror="this.src='/icons/icon-512.png'" />
       </div>
       <div class="np-meta">
         <div class="np-show">${escapeHtml(showLabel)}</div>
@@ -114,7 +119,7 @@ export async function renderEpisode(root, idStr, tStr) {
     id: ep.id,
     title: (ep.title || '').replace(/^\d+\s*[-:.]\s*/, ''),
     show: 'American English Podcast',
-    cover: SHOW_COVER_SM,
+    cover: COVER_SM(),
     src: ep.audio_url,
   };
   player.load(track);
@@ -961,7 +966,7 @@ function transcriptSheetHtml(segments, title, sub) {
     <div class="tx-sheet" aria-hidden="true">
       <div class="tx-sheet-backdrop"></div>
       <div class="tx-sheet-card">
-        <div class="tx-sheet-bg" style="background-image:url('${SHOW_COVER}')"></div>
+        <div class="tx-sheet-bg" style="background-image:url('${COVER()}')"></div>
         <div class="tx-sheet-header">
           <div class="tx-sheet-handle"></div>
           <h3 class="tx-sheet-title">${escapeHtml(title || 'Transcript')}</h3>
