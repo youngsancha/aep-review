@@ -2,6 +2,7 @@
 // Single <audio> element survives across route changes.
 // Now Playing view binds to it, mini-player reflects state always.
 import { SHOW_COVER_SM } from '/config.js';
+import { bindMediaSession } from '/media-session.js';
 
 const SVG_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -74,6 +75,9 @@ class Player {
 
 export const player = new Player();
 window.__player = player;  // debug
+
+// 차량/핸들/잠금화면/블루투스 미디어 컨트롤 연동(미지원 환경이면 자동 no-op).
+bindMediaSession(player);
 
 // === 재생 위치 저장(이어듣기) — 에피소드별 audio 시각을 localStorage 에 (transcript 딥링크와 별개) ===
 const PROG_KEY = 'aep-progress';
