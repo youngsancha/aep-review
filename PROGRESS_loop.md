@@ -27,6 +27,15 @@
 비고: A2 done(감사)·B2 done(검증+사전합성 목록)·B3 partial(기존모드 자동편입 done, 전용모드/SRS 제안).
 게이트 매 커밋 green(node 42·pytest 16·jscheck 23·스모크 PASS). 진행 중 4샤드 잡 무방해(읽기만).
 
+## 2026-06-23 멀티-쇼(두 영어 팟캐스트) — branch feat/multishow (휴면·미머지)
+- 반복1 | MS1 설정/레지스트리/마이그레이션         | done | e8ab570 | (휴면, 미배포)
+- 반복2 | MS2 쇼 선택기 UI + db.js 필터(플래그게이트) | done | a75c762 | (휴면)
+- 반복3 | MS3 ingest --show 스레딩(AEE 적재 가능)    | done | 7280c29 | (미머지)
+- 반복4 | MS4 커버 쇼-인지(episode/drive/player)     | done | 495a351 | (휴면)
+- 반복5 | MS5 활성화 런북 MULTISHOW.md + 문서        | done | <이번> | (문서)
+비고: MULTISHOW=false 휴면. 활성화=[사람] 4단계(MULTISHOW.md). 게이트 매 커밋 green
+(node 53·pytest 23·jscheck 23·스모크 PASS). 라이브 단일쇼 앱 무영향.
+
 ## BACKLOG 1–7 소진 → 유휴(monitor) 모드
 새 작업 발명 금지. 이후 깨어남: (a) 4샤드 번역 잡이 사람에 의해 재개됐는지 로그 read-only 확인 →
 재개 시 `diag_preko` 로 커버리지 리포트(읽기전용), (b) 게이트 green 유지 확인. 그 외 빈 커밋/무의미 변경 X.

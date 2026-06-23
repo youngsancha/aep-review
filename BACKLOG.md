@@ -30,6 +30,20 @@
 
 배포: v134(merge→main, Vercel auto). 게이트: node --test 46 · pytest 16 · jscheck 23 · 스모크 PASS.
 
+## 2026-06-23 멀티-쇼 — 두 영어 팟캐스트 (branch `feat/multishow`, 휴면·미머지) — 런북: `MULTISHOW.md`
+
+| # | 항목 | 상태 | 산출물 |
+|---|---|---|---|
+| MS1 | 설정/레지스트리/마이그레이션 | **done** | config.js SHOWS·MULTISHOW / shows.py / migration_multishow.sql·schema.sql · e8ab570 |
+| MS2 | 쇼 선택기 UI + db.js show 필터 | **done** | timeline 세그먼트(커버+이름+레벨) / withShow 게이트 · a75c762 |
+| MS3 | ingest --show 스레딩 | **done** | cron/rss/store/transcribe/extract + 테스트 4 · 7280c29 |
+| MS4 | 커버 쇼-인지 | **done** | episode/drive/player 동적 커버 · 495a351 |
+| MS5 | 활성화 런북·문서 | **done** | MULTISHOW.md + README 포인터 · <이번> |
+
+테스트: `shows_config`(7)·`test_shows_parity`(3)·`test_ingest_show`(4). 게이트 전부 green.
+**미머지 유지**: ingest 가 show 컬럼 필요 → [사람]이 ① migration → ② merge → ③ AEE 적재 → ④ MULTISHOW=true 순.
+AEE 전체(~2747화) 백필은 거대 ingest = [사람]/장기.
+
 ## BACKLOG 소진 — 새 작업 발명 금지. 아래는 '추가 제안'(구현 X, 사람 리뷰용)
 
 - **[음성 체인]** `playSentenceClip` 옵셔널 `onError`→호출부 `speak()` 폴백(실제클립 런타임 실패 시 TTS 캐스케이드). 폴백 순서 유지·하위호환. (frozen 체인이라 제안만)

@@ -3,6 +3,10 @@
 American English Podcast (Shana Thompson) 복습 PWA.
 **Supabase + Vercel + PWA** 서버리스 스택 — PC 없이 폰만으로 항상 사용.
 
+> **멀티-쇼(준비 완료, 휴면):** 한 앱에서 두 영어 팟캐스트(American English Podcast +
+> All Ears English)를 골라 듣는 기능이 `feat/multishow` 에 완성돼 있다(`MULTISHOW=false` 라 현재는
+> 단일쇼). 활성화 절차는 **[MULTISHOW.md](MULTISHOW.md)** 참고(마이그레이션→머지→AEE 적재→플래그 ON).
+
 ## 아키텍처
 
 ```
