@@ -164,12 +164,32 @@ def _out_path(ep_id: int) -> str:
     return f"{ep_id}_ko.json"
 
 
-def load_existing(ep_id: int) -> dict:
+def _is_not_found(exc: Exception) -> bool:
+    """다운로드 예외가 '객체 없음(정상 신규)'인지 판별 — 일시 네트워크 오류와 구분.
+    Supabase/R2(S3) 가 내는 다양한 표현(status 404 / not_found / NoSuchKey)을 보수적으로 매칭."""
+    s = f"{getattr(exc, 'status', '')} {getattr(exc, 'message', '')} {exc}".lower()
+    return ("not_found" in s or "not found" in s or "404" in s
+            or "no such key" in s or "nosuchkey" in s or "object_not_found" in s)
+
+
+def load_existing(ep_id: int):
+    """기존 _ko.json 로드. 반환:
+      dict  — 정상(또는 파일 없음=신규 빈 dict / 손상=자가치유 빈 dict)
+      None  — 일시 다운로드 오류(404 아님) → 호출부가 '이번 실행 스킵'해 기존본 보존(축소 방지).
+    (AUDIT P4/I1: 과거엔 모든 예외를 {} 로 삼켜, 일시 오류 시 전량 재번역→부분실패로 _ko.json 이
+     축소될 수 있었다. 404 와 그 외 오류를 분리해 비정상 경로의 데이터 후퇴를 막는다.)"""
     try:
         raw = store.client().storage.from_("transcripts").download(_out_path(ep_id))
+    except Exception as e:
+        if _is_not_found(e):
+            return {}            # 정상 신규(파일 없음)
+        log.warning("ep %s _ko.json 다운로드 오류(비-404) → 이번 실행 스킵(축소 방지): %s", ep_id, e)
+        return None              # 일시 오류 → 덮어쓰지 않도록 신호
+    try:
         return json.loads(raw)
     except Exception:
-        return {}
+        log.warning("ep %s _ko.json 손상 → 전량 재번역(자가치유)", ep_id)
+        return {}               # 손상 → 온전한 맵으로 덮어씀(기존 자가치유 동작 유지)
 
 
 def save_existing(ep_id: int, m: dict) -> None:
@@ -216,6 +236,10 @@ def translate_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int]:
         return (0, 0)
     sentences = [s for s in resegment(tr.get("segments", [])) if s.strip()]
     done = {} if dry else load_existing(ep_id)
+    if done is None:
+        # 일시 다운로드 오류 — 기존 _ko.json 을 덮어쓰지 않도록 이번 실행에선 건너뛴다.
+        log.warning("ep %s 기존 번역 로드 실패(일시 오류) → 스킵(기존 _ko.json 보존)", ep_id)
+        return (len(sentences), 0)
     # 번역 필요한(키 미보유) 문장 인덱스
     keys = [trkey(s) for s in sentences]
     pending = [k for k in range(len(sentences)) if keys[k] not in done]
