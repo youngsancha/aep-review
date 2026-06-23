@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SHOWS, SHOW_BY_SLUG, DEFAULT_SHOW, MULTISHOW,
-  currentShow, setCurrentShow, showMeta, showCover, SHOW_COVER, SHOW_COVER_SM,
+  currentShow, setCurrentShow, showMeta, showCover, showOptions, SHOW_COVER, SHOW_COVER_SM,
 } from '../ui/config.js';
 
 const REQUIRED = ['slug', 'name', 'host', 'level', 'rss', 'cover'];
@@ -43,6 +43,18 @@ test('showMeta/showCover: 기본=aep, 미지 slug 는 첫 쇼로 폴백', () => 
   assert.equal(showMeta('allears').slug, 'allears');
   assert.equal(showMeta('nope').slug, 'aep');   // 폴백
   assert.ok(showCover('allears').includes('All_Ears_English'));
+});
+
+test('showOptions: 선택기 렌더 데이터 — 기본 쇼(aep)만 active', () => {
+  const opts = showOptions();
+  assert.equal(opts.length, 2);
+  const aep = opts.find((o) => o.slug === 'aep');
+  const aee = opts.find((o) => o.slug === 'allears');
+  assert.equal(aep.active, true);          // flag off → 기본 쇼 active
+  assert.equal(aee.active, false);
+  for (const o of opts) {
+    for (const f of ['slug', 'name', 'level', 'cover']) assert.ok(o[f], `${o.slug}.${f} 없음`);
+  }
 });
 
 test('하위호환: SHOW_COVER/SM 은 aep 커버 사이즈 변형(기존 픽셀 보존)', () => {

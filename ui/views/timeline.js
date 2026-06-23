@@ -2,14 +2,22 @@
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
 import { listEpisodes, cleanAudioUrl, audioSrcFor } from '/db.js';
 import { player, getLatestProgress, getProgressMap, getCompleted } from '/player.js';
-import { SHOW_COVER, SHOW_COVER_SM } from '/config.js';
+import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions } from '/config.js';
 
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 
 let _prog = {};        // 에피소드별 재생 진도 맵 (행에 들은 정도 표시)
 let _done = new Set(); // 완료(끝까지 들음) 집합
+// 현재 쇼 커버(사이즈 변형) — 정적 import 대신 렌더마다 갱신해 쇼 전환 시 즉시 반영(멀티-쇼).
+let _coverLg = '', _coverSm = '';
+function refreshCovers() {
+  const c = showCover(currentShow());
+  _coverLg = c + '&w=720&h=720';
+  _coverSm = c + '&w=160&h=160';
+}
 
 export async function renderTimeline(root) {
+  refreshCovers();
   root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
   const items = await listEpisodes();
   _prog = getProgressMap();
@@ -17,24 +25,28 @@ export async function renderTimeline(root) {
 
   if (!items.length) {
     root.innerHTML = `
+      ${showSwitchHtml()}
       ${heroHtml({total: 0, ready: 0})}
       <div class="empty">
         No episodes yet.<br />
         Tap the ↻ button (top right) to sync the RSS feed.
       </div>
     `;
+    wireShowSwitch(root);
     return;
   }
 
   const ready = items.filter((e) => e.vocab_count > 0).length;
 
-  let html = heroHtml({total: items.length, ready});
+  let html = showSwitchHtml();
+  html += heroHtml({total: items.length, ready});
   html += continueHtml(getLatestProgress(), items);  // 이어듣기 (저장된 재생위치)
   html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
   html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 Search episodes" autocomplete="off" /></div>`;
   html += `<div id="ep-groups">${groupsHtml(items)}</div>`;
   root.innerHTML = html;
 
+  wireShowSwitch(root);
   wirePlay(root, items);
 
   // 에피소드 검색 — 제목/설명 클라이언트 필터
@@ -69,7 +81,7 @@ function wirePlay(scope, items) {
         id: ep.id,
         title: ep.title,
         show: 'American English Podcast',
-        cover: SHOW_COVER_SM,
+        cover: _coverSm,
         src,
       });
       // 이어재생: 저장 위치로 seek 후 재생. (metadata 준비 전이면 meta 이벤트에서)
@@ -84,6 +96,38 @@ function wirePlay(scope, items) {
   scope.querySelectorAll('.feat-script, .cont-script').forEach((a) => {
     a.addEventListener('click', () => {
       try { sessionStorage.setItem('aep-open-script', a.dataset.id || ''); } catch (e) {}
+    });
+  });
+}
+
+// === 멀티-쇼 선택기 — 두 팟캐스트 전환(MULTISHOW 활성 시만 노출). 단일쇼면 '' 반환 → 기존 동일. ===
+// aep 라이브러리 톤(커버 + 이름 + 레벨, 활성=그라데이션)에 맞춘 세그먼트 카드.
+function showSwitchHtml() {
+  if (!MULTISHOW) return '';
+  const opts = showOptions();
+  if (opts.length < 2) return '';
+  const segs = opts.map((s) => `
+    <button class="show-seg${s.active ? ' active' : ''}" data-show="${s.slug}" role="tab" aria-selected="${s.active}">
+      <img class="show-seg-cover" src="${s.cover}&w=120&h=120" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+      <span class="show-seg-txt">
+        <span class="show-seg-name">${escapeHtml(s.short || s.name)}</span>
+        <span class="show-seg-level">${escapeHtml(s.level)}</span>
+      </span>
+      <span class="show-seg-check" aria-hidden="true">✓</span>
+    </button>`).join('');
+  return `<div class="show-switch" role="tablist" aria-label="팟캐스트 선택">${segs}</div>`;
+}
+
+function wireShowSwitch(scope) {
+  scope.querySelectorAll('.show-seg').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const slug = btn.dataset.show;
+      if (!slug || slug === currentShow()) return;
+      setCurrentShow(slug);
+      if (navigator.vibrate) navigator.vibrate(8);
+      // 새 쇼 기준으로 라이브러리 전체 재렌더(에피소드 목록·커버·이어듣기 모두 새 쇼).
+      const root = btn.closest('#app') || document.getElementById('app') || scope;
+      renderTimeline(root);
     });
   });
 }
@@ -129,7 +173,7 @@ function continueHtml(prog, items) {
     <div class="section-h"><h2>Continue</h2></div>
     <div class="cont-card">
       <a class="cont-cover-link" href="#/episode/${prog.id}" aria-label="${escapeHtml(title)}">
-        <img class="cont-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img class="cont-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
       </a>
       <div class="cont-body">
         <a class="cont-title" href="#/episode/${prog.id}">${escapeHtml(title)}</a>
@@ -168,9 +212,9 @@ function featuredHtml(e) {
   return `
     <div class="section-h"><h2>Latest Episode</h2></div>
     <div class="feat-card">
-      <div class="feat-bg" style="background-image:url('${SHOW_COVER}')"></div>
+      <div class="feat-bg" style="background-image:url('${_coverLg}')"></div>
       <div class="feat-inner">
-        <img class="feat-cover" src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img class="feat-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         <div class="feat-body">
           <div class="feat-label">▶ Latest</div>
           <a class="feat-title" href="#/episode/${e.id}">${escapeHtml(title)}</a>
@@ -206,7 +250,7 @@ function rowHtml(e) {
   return `
     <a class="ep-row${pct ? ' resumable' : ''}${done ? ' played' : ''}" href="#/episode/${e.id}">
       <div class="ep-thumb">
-        <img src="${SHOW_COVER_SM}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         ${num ? `<span class="ep-num">${escapeHtml(num)}</span>` : ''}
       </div>
       <div class="ep-body">

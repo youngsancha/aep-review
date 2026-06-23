@@ -68,6 +68,12 @@ export function setCurrentShow(slug) {
 export function showMeta(slug) { return SHOW_BY_SLUG[slug || currentShow()] || SHOWS[0]; }
 export function showCover(slug) { return showMeta(slug).cover; }
 
+// 쇼 선택기 렌더용(순수 — 테스트 가능): 각 쇼 + 현재 선택여부. UI 가 이걸로 세그먼트를 그린다.
+export function showOptions() {
+  const cur = currentShow();
+  return SHOWS.map((s) => ({ slug: s.slug, name: s.name, short: s.short, host: s.host, level: s.level, cover: s.cover, active: s.slug === cur }));
+}
+
 // 기존 뷰 호환(다수 뷰가 import) — 현재 쇼 커버의 사이즈 변형. 단일쇼(flag off)면 aep 커버 그대로라
 // 기존 픽셀과 100% 동일. 쇼 전환 시 앱이 재라우팅/리로드되어 모듈 재평가 → 새 커버 반영.
 export const SHOW_COVER = showCover() + '&w=720&h=720';

@@ -2121,3 +2121,30 @@ a { color: var(--tint); }
   border-radius: 16px; border: none; background: var(--surface-2); color: var(--text); text-decoration: none;
 }
 .drive-skip:active, .drive-play:active, .drive-exit:active { transform: scale(0.95); }
+
+/* === 멀티-쇼 선택기 (Library 상단) — aep 톤 세그먼트 카드. MULTISHOW 활성 시만 노출 === */
+.show-switch { display: flex; gap: 10px; margin: 2px 0 16px; }
+.show-seg {
+  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 16px; cursor: pointer; text-align: left;
+  border: 1.5px solid var(--border, rgba(127, 127, 127, 0.22)); background: var(--surface);
+  color: var(--text); position: relative; transition: transform .12s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.show-seg:active { transform: scale(0.98); }
+.show-seg-cover {
+  width: 44px; height: 44px; border-radius: 10px; object-fit: cover; flex: 0 0 auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.show-seg-txt { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.show-seg-name { font-size: 14px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.show-seg-level { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.show-seg-check { display: none; }
+.show-seg.active {
+  border-color: transparent; color: #fff;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
+  box-shadow: 0 6px 18px rgba(204, 108, 255, 0.34);
+}
+.show-seg.active .show-seg-level { color: rgba(255, 255, 255, 0.84); }
+.show-seg.active .show-seg-check {
+  display: block; position: absolute; top: 6px; right: 8px; font-size: 12px; font-weight: 900;
+}

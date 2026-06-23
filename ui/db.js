@@ -1,10 +1,15 @@
 // 데이터 접근 shim — 기존 /api/* 응답 모양을 Supabase 직접 호출로 재현.
 // 뷰(timeline/episode/srs)는 받는 데이터 모양만 같으면 거의 그대로 동작한다.
 import { supabase, STORAGE_URL } from '/supabase.js';
-import { hostedAudioUrl } from '/config.js';
+import { hostedAudioUrl, currentShow, MULTISHOW } from '/config.js';
 
 const NEW_LIMIT = 5;
 const REVIEW_LIMIT = 50;
+
+// 멀티-쇼: 활성화(MULTISHOW)면 현재 쇼로 필터(episodes_list/vocab_cards/srs_cards 모두 show 보유).
+// 비활성(기본)이면 무필터 → 기존 단일쇼 동작·스키마와 완전히 동일(컬럼 없어도 안전). id 로 직접
+// 찾는 getEpisode/markKnown/srsReview 는 id 가 전역 유일이라 쇼 필터 불필요.
+const withShow = (q) => (MULTISHOW ? q.eq('show', currentShow()) : q);
 
 // 로컬(폰) 기준 오늘 날짜 YYYY-MM-DD — srs due_date 비교용
 function todayStr(d = new Date()) {
@@ -14,9 +19,8 @@ function todayStr(d = new Date()) {
 // ─────────────────────────── episodes ───────────────────────────
 // GET /api/episodes 대체
 export async function listEpisodes() {
-  const { data, error } = await supabase
-    .from('episodes_list')
-    .select('*')
+  const { data, error } = await withShow(
+    supabase.from('episodes_list').select('*'))
     .order('pub_date', { ascending: false, nullsFirst: false });
   if (error) throw new Error(error.message);
   return data || [];
@@ -120,7 +124,7 @@ async function fetchTranscript(id, transcribedAt) {
 
 // ─────────────────────────── Study (표현 탐색 허브) ───────────────────────────
 async function _count(table, build) {
-  let q = supabase.from(table).select('*', { count: 'exact', head: true });
+  let q = withShow(supabase.from(table).select('*', { count: 'exact', head: true }));
   if (build) q = build(q);
   const { count, error } = await q;
   if (error) throw new Error(error.message);
@@ -168,10 +172,11 @@ export async function markUnknown(vocabId) {
 
 // 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
 export async function expressionsByKind(kind, limit = 800) {
-  const { data, error } = await supabase
-    .from('vocab_cards')
-    .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)')
-    .eq('kind', kind)
+  const { data, error } = await withShow(
+    supabase
+      .from('vocab_cards')
+      .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)')
+      .eq('kind', kind))
     .order('term', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
@@ -221,16 +226,16 @@ function flattenCard(r, hosted) {
 // GET /api/srs/queue 대체
 export async function srsQueue() {
   const today = todayStr();
-  const review = await supabase
-    .from('srs_cards').select(QUEUE_SELECT)
-    .lte('due_date', today).gt('reps', 0)
+  const review = await withShow(
+    supabase.from('srs_cards').select(QUEUE_SELECT)
+      .lte('due_date', today).gt('reps', 0))
     .order('due_date', { ascending: true }).order('id', { ascending: true })
     .limit(REVIEW_LIMIT);
   if (review.error) throw new Error(review.error.message);
 
-  const fresh = await supabase
-    .from('srs_cards').select(QUEUE_SELECT)
-    .lte('due_date', today).eq('reps', 0)
+  const fresh = await withShow(
+    supabase.from('srs_cards').select(QUEUE_SELECT)
+      .lte('due_date', today).eq('reps', 0))
     .order('id', { ascending: true })
     .limit(NEW_LIMIT);
   if (fresh.error) throw new Error(fresh.error.message);
@@ -262,7 +267,7 @@ export async function srsReview(cardId, grade) {
 // GET /api/srs/stats 대체
 export async function srsStats() {
   const today = todayStr();
-  const base = () => supabase.from('srs_cards').select('*', { count: 'exact', head: true });
+  const base = () => withShow(supabase.from('srs_cards').select('*', { count: 'exact', head: true }));
   const run = async (q) => {
     const { count, error } = await q;
     if (error) throw new Error(error.message);
