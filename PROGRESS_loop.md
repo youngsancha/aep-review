@@ -15,6 +15,18 @@
 
 - 반복8 | BACKLOG3 보강: translate.js 폴백 계약 테스트(7케이스, additive) | done | <이번> | main push (Vercel auto)
 
+## 2026-06-22 주입(차량 연동 + Study 확장) — branch loop/2026-06-22
+- 반복9  | B1 스키마 게이트(확장 전 가드)        | done | 108ffd7 | (test)
+- 반복10 | B1 Essentials 140→256(+116)           | done | 2a6612a | v134(merge)
+- 반복11 | A1 Media Session(차량/핸들/잠금화면)  | done | fd3e48c | v134
+- 반복12 | A3 Car Mode(#/drive 큰 버튼·이어듣기)  | done | aeb0287 | v134
+- 반복13 | C2 boot getSession 타임아웃 가드       | done | 47916bd | v134
+- 반복14 | C1 load_existing 404/일시오류 가드     | done | 6ab52d3 | (script, 잡무방해)
+- 반복15 | C3 빌드리스 JS 게이트 + eslint config  | done | 278e121 | (test)
+- 반복16 | NOTES/BACKLOG/PROGRESS + v134 release  | done | <release> | main push(Vercel auto)
+비고: A2 done(감사)·B2 done(검증+사전합성 목록)·B3 partial(기존모드 자동편입 done, 전용모드/SRS 제안).
+게이트 매 커밋 green(node 42·pytest 16·jscheck 23·스모크 PASS). 진행 중 4샤드 잡 무방해(읽기만).
+
 ## BACKLOG 1–7 소진 → 유휴(monitor) 모드
 새 작업 발명 금지. 이후 깨어남: (a) 4샤드 번역 잡이 사람에 의해 재개됐는지 로그 read-only 확인 →
 재개 시 `diag_preko` 로 커버리지 리포트(읽기전용), (b) 게이트 green 유지 확인. 그 외 빈 커밋/무의미 변경 X.

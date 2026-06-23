@@ -13,6 +13,23 @@
 | 6 | 번역 잡 체크포인트 멱등성 분석(읽기전용) | **done** | NOTES §3 — 멱등·원자 확인 + load_existing 404가드 등 제안 |
 | 7 | cnpod-review 이식 발견사항 | **done** | `NOTES_loop_2026-06-21.md` §cnpod |
 
+## 2026-06-22 주입 — 차량(테슬라) 연동 + Study 표현 확장 (상세: `NOTES_overnight_2026-06-22.md`)
+
+| # | 항목 | 상태 | 산출물 |
+|---|---|---|---|
+| A1 | Media Session(차량/핸들/잠금화면 컨트롤) | **done** | `ui/media-session.js` + `tests/media_session.test.mjs`(11) · 커밋 fd3e48c |
+| A2 | 백그라운드/잠금화면 재생 견고성 | **done(감사)** | 단일 audio 유지 + A1 으로 견고. 브라우저 정책 한계 NOTES §A2 |
+| A3 | Car Mode(운전용 큰 버튼·이어듣기) | **done** | `ui/views/drive.js` + `#/drive` + Library pill + `tests/drive.test.mjs`(4) · aeb0287 |
+| A4 | 실차 체크리스트 + 자동실행 불가 한계 | **done** | NOTES §A4 (갤럭시S23+테슬라 수동 확인) |
+| B1 | Essentials 비즈니스 표현 확장 | **done** | 140→256(+116) + 스키마 게이트 8 · 108ffd7·2a6612a |
+| B2 | 발음 보강 | **done(검증+목록)** | TTS 폴백 검증 + 사전합성 ≈232 목록(인제스트=[사람]) NOTES §B2 |
+| B3 | 학습 모드 강화 | **partial** | 신규표현 기존모드 자동편입 done · 전용 cloze/매칭/SRS편입 제안(NOTES §B3) |
+| C1 | load_existing 404/일시오류 가드 | **done** | `translate_transcripts.py` + `tests/test_load_existing_guard.py`(14) · 6ab52d3 |
+| C2 | boot getSession 타임아웃 가드 | **done** | `withTimeout` + `tests/with_timeout.test.mjs`(4) · 47916bd |
+| C3 | 빌드리스 JS 게이트 | **done** | `scripts/jscheck.mjs`(23파일) + `eslint.config.js` · 278e121 |
+
+배포: v134(merge→main, Vercel auto). 게이트: node --test 42 · pytest 16 · jscheck 23 · 스모크 PASS.
+
 ## BACKLOG 소진 — 새 작업 발명 금지. 아래는 '추가 제안'(구현 X, 사람 리뷰용)
 
 - **[음성 체인]** `playSentenceClip` 옵셔널 `onError`→호출부 `speak()` 폴백(실제클립 런타임 실패 시 TTS 캐스케이드). 폴백 순서 유지·하위호환. (frozen 체인이라 제안만)
