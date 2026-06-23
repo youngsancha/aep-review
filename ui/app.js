@@ -66,13 +66,26 @@ async function route() {
 // === Auth gate (Supabase 단일 사용자) ===
 let authed = false;
 
+// getSession 은 보통 로컬 우선이라 즉시 반환되지만, 만약 네트워크 새로고침이 매달리면 부팅이
+// 무한 스피너로 멈춘다(C2/AUDIT P5). ms 안에 안 오면 fallback 으로 강등 → 로그인/스피너 표시,
+// 뒤늦게 세션이 오면 onAuthStateChange 가 게이트를 연다(무손실 복구).
+export function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => fallback),
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+const SESSION_TIMEOUT_MS = 3500;
+
 async function boot() {
   // Google OAuth 리다이렉트(?code=)로 돌아온 경우: supabase-js 가 비동기로 세션을 교환 중 →
   // 로그인 화면 깜빡임 없이 onAuthStateChange(SIGNED_IN)을 기다린다.
   const pendingOAuth = location.search.includes('code=') || location.hash.includes('access_token');
   let session = null;
   try {
-    ({ data: { session } } = await supabase.auth.getSession());
+    const res = await withTimeout(
+      supabase.auth.getSession(), SESSION_TIMEOUT_MS, { data: { session: null } });
+    session = (res && res.data && res.data.session) || null;
   } catch (e) {
     console.error('auth getSession failed', e);
   }
