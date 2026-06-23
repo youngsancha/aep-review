@@ -74,6 +74,11 @@ def test_existing_guids_filters_by_show(fake):
     assert store.existing_guids("allears") == {"g-ae-1"}
 
 
+def test_existing_guids_legacy_none_returns_all(fake):
+    # show=None(레거시): 전체 guid(마이그레이션 전 show 컬럼 참조 안 함)
+    assert store.existing_guids() == {"g-aep-1", "g-aep-2", "g-ae-1"}
+
+
 def test_upsert_writes_show_and_dedupes_per_show(fake):
     items = [
         {"guid": "g-ae-1", "season": None, "episode_no": None, "title": "dup", "pub_date": "",
@@ -89,14 +94,15 @@ def test_upsert_writes_show_and_dedupes_per_show(fake):
     assert inserted[0]["guid"] == "g-ae-2"
 
 
-def test_upsert_default_show_is_aep(fake):
+def test_upsert_legacy_omits_show(fake):
+    # show 미지정(None) → show 키 미기록 → 마이그레이션 전에도 insert 안전(DB default 'aep' 가 채움).
     items = [{"guid": "g-new", "season": None, "episode_no": None, "title": "t", "pub_date": "",
               "duration_sec": None, "description": "", "audio_url": "u"}]
-    store.upsert_episodes(items)   # show 인자 없음 → 기본 aep (하위호환)
-    assert fake.inserts["episodes"][0]["show"] == "aep"
+    store.upsert_episodes(items)
+    assert "show" not in fake.inserts["episodes"][0]
 
 
-def test_insert_vocab_and_srs_labels_show(fake):
+def test_insert_vocab_and_srs_labels_show_when_given(fake):
     vocab = [{"term": "ballpark figure", "kind": "idiom", "definition": "대략", "example_sentence": "Give me a ballpark figure."}]
     added, tts = store.insert_vocab_and_srs(42, vocab, "allears")
     assert added == 1
@@ -104,3 +110,10 @@ def test_insert_vocab_and_srs_labels_show(fake):
     assert fake.inserts["srs_cards"][0]["show"] == "allears"
     assert fake.inserts["vocab_cards"][0]["episode_id"] == 42
     assert "ballpark figure" in tts
+
+
+def test_insert_vocab_and_srs_legacy_omits_show(fake):
+    vocab = [{"term": "x", "kind": "word", "definition": "d", "example_sentence": "e"}]
+    store.insert_vocab_and_srs(42, vocab)   # show 미지정 → 레거시(컬럼 미기록)
+    assert "show" not in fake.inserts["vocab_cards"][0]
+    assert "show" not in fake.inserts["srs_cards"][0]

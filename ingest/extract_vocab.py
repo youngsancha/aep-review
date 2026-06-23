@@ -184,9 +184,9 @@ def _parse_vocab_json(text: str) -> dict[str, Any]:
     return json.loads(s)
 
 
-def extract_for_episode(episode_id: int, title: str | None = None, show: str = "aep") -> int:
+def extract_for_episode(episode_id: int, title: str | None = None, show: str | None = None) -> int:
     """episode 1건 처리: transcript(Storage) → claude → vocab+srs+TTS write. 반환: vocab 수.
-    show = episode.show (vocab/srs 비정규화 라벨)."""
+    show=None(레거시): show 컬럼 미기록. 지정 시 vocab/srs 비정규화 라벨."""
     transcript = store.download_transcript(episode_id)
     if not transcript:
         raise ValueError(f"episode {episode_id} transcript 없음")
@@ -216,7 +216,7 @@ def extract_pending(limit: int | None = None, show: str | None = None) -> int:
         if limit and count >= limit:
             break
         try:
-            n = extract_for_episode(row["id"], row.get("title"), row.get("show") or "aep")
+            n = extract_for_episode(row["id"], row.get("title"), show)   # rows 는 이미 이 show 로 필터됨
         except Exception:
             log.exception("extract_vocab failed ep=%s", row["id"])
             continue

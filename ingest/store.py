@@ -23,8 +23,6 @@ import edge_tts
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest.shows import DEFAULT_SHOW
-
 log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -111,23 +109,36 @@ def mark_hosted(ep_id: int) -> None:
 
 
 # ─────────────────────────── episodes ───────────────────────────
-def existing_guids(show: str = DEFAULT_SHOW) -> set[str]:
-    # 멀티-쇼 dedupe 는 (show, guid) — 쇼별로 독립 판정.
-    res = client().table("episodes").select("guid").eq("show", show).execute()
-    return {r["guid"] for r in (res.data or [])}
+def existing_guids(show: str | None = None) -> set[str]:
+    # show=None(레거시): 전체 guid. show 지정(멀티-쇼): (show, guid) 쇼별 독립 dedupe.
+    q = client().table("episodes").select("guid")
+    if show:
+        q = q.eq("show", show)
+    return {r["guid"] for r in (q.execute().data or [])}
 
 
-def upsert_episodes(items: list[dict[str, Any]], show: str = DEFAULT_SHOW) -> tuple[int, int]:
-    """RSS 신규만 insert. 반환: (added, skipped). show = 팟캐스트 slug(episodes.show)."""
+def upsert_episodes(items: list[dict[str, Any]], show: str | None = None) -> tuple[int, int]:
+    """RSS 신규만 insert. 반환: (added, skipped).
+
+    show=None(기본·레거시): show 컬럼을 건드리지 않는다 → 마이그레이션 전에도 안전(DB default 'aep'
+    가 채움). show 지정 시 그 슬러그로 기록 + 쇼별 dedupe(멀티-쇼). 이 분기 덕에 일일 cron(show 미지정)
+    은 컬럼 유무와 무관하게 동작하고, AEE 적재(--show allears)만 show 컬럼을 쓴다.
+    """
     have = existing_guids(show)
     now = _now()
-    new_rows = [{
-        "show": show,
-        "guid": it["guid"], "season": it["season"], "episode_no": it["episode_no"],
-        "title": it["title"], "pub_date": it["pub_date"] or None,
-        "duration_sec": it["duration_sec"], "description": it["description"],
-        "audio_url": it["audio_url"], "created_at": now,
-    } for it in items if it["guid"] not in have]
+    new_rows: list[dict[str, Any]] = []
+    for it in items:
+        if it["guid"] in have:
+            continue
+        row = {
+            "guid": it["guid"], "season": it["season"], "episode_no": it["episode_no"],
+            "title": it["title"], "pub_date": it["pub_date"] or None,
+            "duration_sec": it["duration_sec"], "description": it["description"],
+            "audio_url": it["audio_url"], "created_at": now,
+        }
+        if show:
+            row["show"] = show
+        new_rows.append(row)
     if new_rows:
         client().table("episodes").insert(new_rows).execute()
     return len(new_rows), len(items) - len(new_rows)
@@ -143,8 +154,9 @@ def episodes_needing_transcription(show: str | None = None) -> list[dict[str, An
 
 
 def episodes_needing_vocab(show: str | None = None) -> list[dict[str, Any]]:
+    # show 미포함 select → 마이그레이션 전에도 안전. 쇼 라벨은 extract_pending 이 show 인자로 전달.
     q = (client().table("episodes")
-         .select("id, title, show")     # show 포함 → vocab/srs 를 각 에피소드의 실제 쇼로 라벨
+         .select("id, title")
          .not_.is_("transcribed_at", "null").is_("vocab_extracted_at", "null"))
     if show:
         q = q.eq("show", show)
@@ -214,8 +226,9 @@ def download_transcript(ep_id: int) -> dict[str, Any] | None:
 
 # ─────────────────────────── vocab + srs ───────────────────────────
 def insert_vocab_and_srs(ep_id: int, vocab_list: list[dict[str, Any]],
-                         show: str = DEFAULT_SHOW) -> tuple[int, list[str]]:
-    """vocab_cards + srs_cards 시드. 반환: (added, tts_texts). show = episode.show 비정규화."""
+                         show: str | None = None) -> tuple[int, list[str]]:
+    """vocab_cards + srs_cards 시드. 반환: (added, tts_texts).
+    show=None(레거시): show 컬럼 미기록(마이그레이션 전 안전). 지정 시 episode.show 로 비정규화."""
     now = _now()
     today = date.today().isoformat()
     added = 0
@@ -225,22 +238,28 @@ def insert_vocab_and_srs(ep_id: int, vocab_list: list[dict[str, Any]],
         term = (v.get("term") or "").strip()
         if not term:
             continue
-        vres = c.table("vocab_cards").insert({
-            "episode_id": ep_id, "show": show, "term": term, "kind": v.get("kind"),
+        vrow = {
+            "episode_id": ep_id, "term": term, "kind": v.get("kind"),
             "definition": v.get("definition"), "example_sentence": v.get("example_sentence"),
             "sentence_start_sec": v.get("sentence_start_sec"),
             "sentence_end_sec": v.get("sentence_end_sec"), "created_at": now,
-        }).execute()
+        }
+        if show:
+            vrow["show"] = show
+        vres = c.table("vocab_cards").insert(vrow).execute()
         vocab_id = vres.data[0]["id"]
 
         back = v.get("definition") or ""
         ex = v.get("example_sentence")
         if ex:
             back = f"{back}\n\n— {ex}" if back else f"— {ex}"
-        c.table("srs_cards").insert({
-            "episode_id": ep_id, "vocab_id": vocab_id, "show": show, "front": term, "back": back,
+        srow = {
+            "episode_id": ep_id, "vocab_id": vocab_id, "front": term, "back": back,
             "category": v.get("kind"), "due_date": today, "created_at": now,
-        }).execute()
+        }
+        if show:
+            srow["show"] = show
+        c.table("srs_cards").insert(srow).execute()
         added += 1
         tts_texts.append(term)
         if ex and ex.strip():

@@ -23,10 +23,12 @@ log = logging.getLogger(__name__)
 
 
 def run(rss_limit: int | None = 30, work_limit: int | None = None,
-        do_vocab: bool = True, show: str = DEFAULT_SHOW) -> dict[str, Any]:
-    items = fetch_feed(limit=rss_limit, rss_url=rss_for(show))
+        do_vocab: bool = True, show: str | None = None) -> dict[str, Any]:
+    # show=None(기본): 레거시 단일쇼(aep 피드, show 컬럼 미기록 → 마이그레이션 전에도 안전).
+    # show='allears' 등: 멀티-쇼 적재(컬럼 기록·쇼별 필터). 일일 cron 은 --show 없이 안전하게 돈다.
+    items = fetch_feed(limit=rss_limit, rss_url=rss_for(show or DEFAULT_SHOW))
     added, skipped = upsert_episodes(items, show)
-    log.info("rss[%s]: fetched=%d added=%d skipped=%d", show, len(items), added, skipped)
+    log.info("rss[%s]: fetched=%d added=%d skipped=%d", show or DEFAULT_SHOW, len(items), added, skipped)
 
     transcribed = transcribe_pending(limit=work_limit, show=show)
     log.info("stt: transcribed=%d", transcribed)
@@ -54,13 +56,13 @@ def main() -> None:
     p.add_argument("--limit", type=int, default=None,
                    help="이번 사이클에서 작업(STT/vocab)할 max 개수")
     p.add_argument("--no-vocab", action="store_true")
-    p.add_argument("--show", default=DEFAULT_SHOW,
-                   help="팟캐스트 slug (ingest/shows.py): aep / allears")
+    p.add_argument("--show", default=None,
+                   help="팟캐스트 slug (ingest/shows.py): 미지정=레거시 aep(안전) / allears=멀티-쇼 적재")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     result = run(rss_limit=args.rss_limit, work_limit=args.limit,
                  do_vocab=not args.no_vocab, show=args.show)
-    log.info("done[%s]: %s", args.show, result)
+    log.info("done[%s]: %s", args.show or DEFAULT_SHOW, result)
 
 
 if __name__ == "__main__":

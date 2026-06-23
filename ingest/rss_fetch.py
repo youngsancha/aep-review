@@ -108,15 +108,16 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None, help="처음 N 개만 (최신순)")
     p.add_argument("--all", action="store_true", help="피드 전체")
-    p.add_argument("--show", default=DEFAULT_SHOW, help="팟캐스트 slug (ingest/shows.py): aep / allears")
+    p.add_argument("--show", default=None,
+                   help="팟캐스트 slug: 미지정=레거시 aep(안전) / allears=멀티-쇼 적재")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     from ingest.shows import rss_for
     limit = None if args.all else (args.limit or 5)
-    items = fetch_feed(limit=limit, rss_url=rss_for(args.show))
+    items = fetch_feed(limit=limit, rss_url=rss_for(args.show or DEFAULT_SHOW))
     added, skipped = upsert_episodes(items, args.show)
-    log.info("show=%s fetched=%d added=%d skipped=%d", args.show, len(items), added, skipped)
+    log.info("show=%s fetched=%d added=%d skipped=%d", args.show or DEFAULT_SHOW, len(items), added, skipped)
 
 
 if __name__ == "__main__":
