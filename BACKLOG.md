@@ -41,8 +41,8 @@
 | MS5 | 활성화 런북·문서 | **done** | MULTISHOW.md + README 포인터 · <이번> |
 
 테스트: `shows_config`(7)·`test_shows_parity`(3)·`test_ingest_show`(4). 게이트 전부 green.
-**미머지 유지**: ingest 가 show 컬럼 필요 → [사람]이 ① migration → ② merge → ③ AEE 적재 → ④ MULTISHOW=true 순.
-AEE 전체(~2747화) 백필은 거대 ingest = [사람]/장기.
+**main 배포(휴면)**: ingest 레거시-안전(iter6) 이라 마이그레이션 전 배포해도 cron 안전.
+[사람] 활성화: ① migration → ② AEE 적재(`--show allears`) → ③ MULTISHOW=true. AEE 전체(~2747화) = 거대 [사람] ingest.
 
 ## BACKLOG 소진 — 새 작업 발명 금지. 아래는 '추가 제안'(구현 X, 사람 리뷰용)
 
