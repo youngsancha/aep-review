@@ -28,7 +28,7 @@
 | C2 | boot getSession 타임아웃 가드 | **done** | `withTimeout` + `tests/with_timeout.test.mjs`(4) · 47916bd |
 | C3 | 빌드리스 JS 게이트 | **done** | `scripts/jscheck.mjs`(23파일) + `eslint.config.js` · 278e121 |
 
-배포: v134(merge→main, Vercel auto). 게이트: node --test 42 · pytest 16 · jscheck 23 · 스모크 PASS.
+배포: v134(merge→main, Vercel auto). 게이트: node --test 46 · pytest 16 · jscheck 23 · 스모크 PASS.
 
 ## BACKLOG 소진 — 새 작업 발명 금지. 아래는 '추가 제안'(구현 X, 사람 리뷰용)
 

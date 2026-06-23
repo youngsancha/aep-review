@@ -4,7 +4,7 @@
 INVARIANTS 준수: 무빌드 바닐라 ESM·폴백 3종 체인 구조 불변·시크릿 경계 불변·RLS 구조 불변·additive 위주.
 각 항목: plan → 구현 → 게이트(node --test·pytest·jscheck·웹 스모크) → 작은 커밋.
 
-게이트 최종: **node --test 42 PASS · pytest 16 PASS · jscheck 23파일 0실패 · 헤드리스 스모크 PASS**.
+게이트 최종: **node --test 46 PASS · pytest 16 PASS · jscheck 23파일 0실패 · 헤드리스 스모크 PASS**.
 
 ---
 
