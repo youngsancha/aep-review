@@ -28,13 +28,18 @@ create index if not exists idx_vocab_show on vocab_cards(show, kind);
 create index if not exists idx_srs_show_due on srs_cards(show, due_date);
 
 -- ── 3) episodes_list 뷰에 show 노출(프론트 .eq('show', …) 필터용) ──
-create or replace view episodes_list with (security_invoker = true) as
+-- ⚠️ CREATE OR REPLACE VIEW 는 컬럼 "끝에 추가"만 허용(순서 변경·중간 삽입 금지) → 기존 뷰의
+--    2번째 컬럼 guid 자리에 show 를 넣으면 "rename column" 으로 거부된다(ERROR 42P16).
+--    그래서 DROP 후 CREATE 한다. 단, DROP 하면 grant 도 사라지므로 끝에서 다시 부여한다.
+drop view if exists episodes_list;
+create view episodes_list with (security_invoker = true) as
 select
   e.id, e.show, e.guid, e.season, e.episode_no, e.title, e.pub_date, e.duration_sec, e.description,
   (e.audio_url is not null) as has_audio,
   e.transcribed_at, e.vocab_extracted_at, e.audio_url,
   (select count(*) from vocab_cards v where v.episode_id = e.id) as vocab_count
 from episodes e;
+grant select on episodes_list to authenticated;
 
 -- 검증(실행 후 확인용):
 --   select show, count(*) from episodes group by show;          -- aep=264, (allears 인제스트 후 증가)

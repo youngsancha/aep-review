@@ -28,14 +28,37 @@ Supabase 대시보드 → SQL Editor → `supabase/migration_multishow.sql` 전�
 - 검증: `select show, count(*) from episodes group by show;` → `aep | 264`.
 
 ### ② All Ears English 적재 (로컬, claude CLI + .env 있는 곳)
+
+> **범위 = 최근 ~250화 캡(옵션1)**. AEE 전체 2747화는 무료티어 초과(R2 10GB·Supabase Storage 1GB)
+> — 자세한 용량 계산은 메모리 `aep-aee-capacity-cap`. **반드시 `--show allears`** 로 — `local_backfill.py`/
+> `supervise_backfill.py` 는 쇼-인지가 아니라 AEP 를 적재한다. 싱크 스크립트(retranscribe/host_audio/
+> verify_done)는 쇼-무관·id 기반이라 새 AEE 만 처리하고 done 인 AEP 는 자동 스킵.
+
+**A. 파일럿 2화(경로 검증, vocab 없이):**
 ```pwsh
-# RSS→STT→vocab→TTS 를 allears 쇼로. AEE 는 ~2747화라 점진 적재(최근 N부터).
-python -m ingest.cron_fetch --show allears --rss-limit 50 --limit 10
-#   --no-vocab 로 STT 만 먼저 돌리고, vocab+TTS 는 claude CLI 있는 로컬에서 마저.
+python -m ingest.cron_fetch --show allears --rss-limit 50 --limit 2 --no-vocab
+#   검증: select id,show,title from episodes where show='allears' order by id desc limit 5;  → id 메모
 ```
-- 오디오 싱크(자막=오디오): 기존 R2 호스팅 흐름 그대로 — `scripts/host_audio.py` / `scripts/retranscribe.py`
-  가 `{id}.mp3`(전역 유일 id) 로 동작. `audio_hosted.json` 매니페스트는 두 쇼 공유(문제없음).
-- 검증: `select show, count(*) from episodes group by show;` → allears 증가 확인.
+**B. 그 2화 싱크(자막=오디오):**
+```pwsh
+python -m scripts.retranscribe --ids <위 id들> --from-r2   # 안되면 host_audio 먼저→재실행
+python -m scripts.host_audio --limit 50
+python -m scripts.verify_done                              # Δ≈0 / r2_audio=true 확인
+```
+**C. 그 2화 vocab+TTS(claude CLI):**
+```pwsh
+python -m ingest.cron_fetch --show allears --limit 2
+```
+**D. 만족하면 250까지 점진 확장(메타 상한 250 고정):**
+```pwsh
+python -m ingest.cron_fetch --show allears --rss-limit 250 --limit 30 --no-vocab
+python -m scripts.retranscribe --recent 60 --from-r2
+python -m scripts.host_audio --limit 300
+python -m scripts.verify_done
+python -m ingest.cron_fetch --show allears --rss-limit 250 --limit 30           # vocab+TTS
+#   ↑ 5줄을 아래 가드가 ~250 될 때까지 반복:
+#   select count(*) from episodes where show='allears' and transcribed_at is not null;  -- ≤ ~250
+```
 
 ### ③ 플래그 ON (선택기 노출)
 `ui/config.js` 의 `export const MULTISHOW = false;` → `true` 로 바꾸고 버전 bump 배포:

@@ -27,7 +27,9 @@ export const TRANSLATE_EMAIL = 'yscha.roy@gmail.com';
 //   ② All Ears English 인제스트(python -m ingest.cron_fetch --show allears …) — [사람]/장기 잡
 //   ③ 이 MULTISHOW 를 true 로 커밋·배포 → 쇼 선택기 노출 + 쿼리에 show 필터 적용
 // MULTISHOW=false 동안은 기존 단일쇼(aep)와 **완전히 동일**하게 동작(컬럼 없어도 안전).
-export const MULTISHOW = false;
+// 활성화됨(v137, 중간 상태): ①마이그레이션 적용 ②AEE 적재 진행 중(65+/250) → 선택기 노출.
+// 기본 쇼는 aep 라 켜도 AEP 경험은 그대로; AEE 는 상단 선택기 탭 시 노출(부분 적재분).
+export const MULTISHOW = true;
 
 // 쇼 커버(megaphone imgix — w/h 리사이즈·webp 자동). RSS itunes:image 에서 가져온 공식 아트워크.
 const _AEP_COVER = 'https://megaphone.imgix.net/podcasts/15526600-fb41-11ee-92ae-93bb88e95bb6/image/17f5482ab2cc597b1acfc1f8b7dc45e8.jpg?auto=format,compress&fit=crop';
