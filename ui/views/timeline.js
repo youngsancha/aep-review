@@ -1,8 +1,8 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
 import { listEpisodes, cleanAudioUrl, audioSrcFor } from '/db.js';
-import { player, getLatestProgress, getProgressMap, getCompleted } from '/player.js';
-import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions } from '/config.js';
+import { player, getProgressMap, getCompleted } from '/player.js';
+import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions, showMeta } from '/config.js';
 
 const SVG_PLAY_SM = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 
@@ -40,7 +40,7 @@ export async function renderTimeline(root) {
 
   let html = showSwitchHtml();
   html += heroHtml({total: items.length, ready});
-  html += continueHtml(getLatestProgress(), items);  // 이어듣기 (저장된 재생위치)
+  html += continueHtml(items);  // 이어듣기 (현재 쇼에서 마지막으로 듣던 회차)
   html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
   html += `<div class="ep-search-wrap"><input id="ep-search" class="ep-search" type="search" placeholder="🔍 Search episodes" autocomplete="off" /></div>`;
   html += `<div id="ep-groups">${groupsHtml(items)}</div>`;
@@ -80,7 +80,7 @@ function wirePlay(scope, items) {
       player.load({
         id: ep.id,
         title: ep.title,
-        show: 'American English Podcast',
+        show: showMeta(currentShow()).name,
         cover: _coverSm,
         src,
       });
@@ -161,27 +161,35 @@ function groupsHtml(list, openAll = false) {
   return html;
 }
 
-// 이어듣기 카드 — 마지막으로 듣던 에피소드로 재개 (#/episode/:id → 저장위치에서 resume)
-function continueHtml(prog, items) {
-  if (!prog || !prog.id || !prog.t) return '';
-  const ep = items.find((e) => e.id === prog.id);
-  const title = (((ep && ep.title) || prog.title) || '').replace(/^\d+\s*[-:.]\s*/, '');
+// 이어듣기 카드 — '현재 쇼'에서 마지막으로 듣던 회차로 재개(쇼별 독립).
+// 멀티쇼 버그 수정: 예전엔 getLatestProgress()(전역 마지막 재생)를 현재쇼 items 위에 그렸다 →
+// 다른 쇼 회차면 items.find 가 못 찾아 커버는 현재쇼(AEE)인데 제목/오디오는 stale(AEP) + Resume 死.
+// 이제 현재 쇼 items 에 속한 진행만 본다 → 커버·제목·resume 이 항상 같은 쇼로 일치.
+function continueHtml(items) {
+  const map = getProgressMap();
+  let prog = null, ep = null;
+  for (const e of items) {
+    const p = map[e.id];
+    if (p && p.t && (!prog || p.at > prog.at)) { prog = p; ep = e; }
+  }
+  if (!prog || !ep) return '';
+  const title = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   if (!title) return '';
   const pct = prog.dur ? Math.min(100, Math.round((prog.t / prog.dur) * 100)) : 0;
   const left = prog.dur ? Math.max(1, Math.round((prog.dur - prog.t) / 60)) : 0;
   return `
     <div class="section-h"><h2>Continue</h2></div>
     <div class="cont-card">
-      <a class="cont-cover-link" href="#/episode/${prog.id}" aria-label="${escapeHtml(title)}">
+      <a class="cont-cover-link" href="#/episode/${ep.id}" aria-label="${escapeHtml(title)}">
         <img class="cont-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
       </a>
       <div class="cont-body">
-        <a class="cont-title" href="#/episode/${prog.id}">${escapeHtml(title)}</a>
+        <a class="cont-title" href="#/episode/${ep.id}">${escapeHtml(title)}</a>
         <div class="cont-bar"><span style="width:${pct}%"></span></div>
         <div class="cont-meta">${pct}% played · ${left} min left</div>
         <div class="cont-actions">
-          <button class="cont-play" data-id="${prog.id}" data-resume="${prog.t}">▶ Resume</button>
-          <a class="cont-script" data-id="${prog.id}" href="#/episode/${prog.id}">View Script ›</a>
+          <button class="cont-play" data-id="${ep.id}" data-resume="${prog.t}">▶ Resume</button>
+          <a class="cont-script" data-id="${ep.id}" href="#/episode/${ep.id}">View Script ›</a>
         </div>
       </div>
     </div>`;

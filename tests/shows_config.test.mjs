@@ -31,10 +31,10 @@ test('SHOW_BY_SLUG / DEFAULT_SHOW', () => {
   assert.equal(DEFAULT_SHOW, 'aep');
 });
 
-test('flag-off 안전: MULTISHOW=false 면 currentShow()=기본쇼(aep) — localStorage 무관', () => {
-  assert.equal(MULTISHOW, false);            // 활성화는 [사람]: 마이그레이션+인제스트 후 true
-  assert.equal(currentShow(), 'aep');
-  setCurrentShow('allears');                  // flag off 면 무시(여전히 aep)
+test('MULTISHOW 활성(v137): 선택기 노출 + currentShow 는 저장값 없으면 기본쇼(aep)', () => {
+  assert.equal(MULTISHOW, true);             // v137 활성화: AEP+AEE 선택기 노출(롤백 시 false)
+  assert.equal(currentShow(), 'aep');        // node 엔 localStorage 없음 → 항상 기본쇼
+  setCurrentShow('allears');                  // localStorage 미지원(node) → no-op, 여전히 aep
   assert.equal(currentShow(), 'aep');
 });
 
@@ -50,7 +50,7 @@ test('showOptions: 선택기 렌더 데이터 — 기본 쇼(aep)만 active', ()
   assert.equal(opts.length, 2);
   const aep = opts.find((o) => o.slug === 'aep');
   const aee = opts.find((o) => o.slug === 'allears');
-  assert.equal(aep.active, true);          // flag off → 기본 쇼 active
+  assert.equal(aep.active, true);          // node: localStorage 없음 → currentShow=aep 가 active
   assert.equal(aee.active, false);
   for (const o of opts) {
     for (const f of ['slug', 'name', 'level', 'cover']) assert.ok(o[f], `${o.slug}.${f} 없음`);

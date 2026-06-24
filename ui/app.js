@@ -23,7 +23,7 @@ window.addEventListener('error', (e) => { console.error('[uncaught]', e.error ||
 window.addEventListener('unhandledrejection', (e) => { console.error('[unhandledrejection]', e.reason); });
 
 const ROUTES = [
-  { re: /^#?\/$/,                    handler: renderTimeline, title: 'Library', tab: 'timeline', back: false },
+  { re: /^#?\/$/,                    handler: renderTimeline, title: 'ENG Podcast', tab: 'timeline', back: false },
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
   { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },

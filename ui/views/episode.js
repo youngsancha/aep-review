@@ -3,7 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
 import { getEpisode } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { showCover, currentShow } from '/config.js';
+import { showCover, currentShow, showMeta } from '/config.js';
 import { translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
 
@@ -119,7 +119,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const track = {
     id: ep.id,
     title: (ep.title || '').replace(/^\d+\s*[-:.]\s*/, ''),
-    show: 'American English Podcast',
+    show: showMeta(currentShow()).name,
     cover: COVER_SM(),
     src: ep.audio_url,
   };
