@@ -5,6 +5,7 @@ import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
 import { showCover, currentShow } from '/config.js';
 import { translateEnKo } from '/translate.js';
+import { bindScrub } from '/scrub.js';
 
 // 현재 쇼 커버(렌더 시 평가) — 멀티-쇼에서 에피소드가 속한 쇼의 아트워크를 보여준다.
 // (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
@@ -131,6 +132,13 @@ export async function renderEpisode(root, idStr, tStr) {
   const $cur   = document.getElementById('np-cur');
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
+  // 트랜스크립트 시트 시크 바(스와이프) 요소 — 시트가 닫혀 있어도 DOM 엔 존재한다.
+  const $txSeekTrack  = document.getElementById('tx-seek-track');
+  const $txSeekFill   = document.getElementById('tx-seek-fill');
+  const $txSeekHandle = document.getElementById('tx-seek-handle');
+  const $txSeekCur    = document.getElementById('tx-seek-cur');
+  const $txSeekRem    = document.getElementById('tx-seek-rem');
+  let txScrub = null;
   let speedIdx = 0;
   let shadowMode = 'off';  // off | loop(문장 반복)
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 모드: 되풀이할 '문단'과 그 시작/끝(자막시각)
@@ -158,6 +166,14 @@ export async function renderEpisode(root, idStr, tStr) {
       $scrub.value = (player.time / dur * 100).toFixed(2);
       $cur.textContent = fmtTime(player.time);
       $rem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
+      // 트랜스크립트 시트 시크 바도 동기화 — 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
+      if (txScrub && !txScrub.isDragging()) {
+        const pct = (player.time / dur * 100).toFixed(2);
+        if ($txSeekFill)   $txSeekFill.style.width = pct + '%';
+        if ($txSeekHandle) $txSeekHandle.style.left = pct + '%';
+        if ($txSeekCur)    $txSeekCur.textContent = fmtTime(player.time);
+        if ($txSeekRem)    $txSeekRem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
+      }
     }
     const playIcon = player.paused ? SVG_PLAY : SVG_PAUSE;
     $play.innerHTML = playIcon;
@@ -543,6 +559,24 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     player.skip(30);
   });
+  // 시트 시크 바 스와이프(Apple Podcasts 식) — 드래그/탭으로 재생 위치 이동 후 이어 재생.
+  if ($txSeekTrack) {
+    txScrub = bindScrub($txSeekTrack, {
+      onPreview(frac) {
+        const dur = player.duration; if (!dur) return;
+        const pct = (frac * 100).toFixed(2);
+        if ($txSeekFill)   $txSeekFill.style.width = pct + '%';
+        if ($txSeekHandle) $txSeekHandle.style.left = pct + '%';
+        if ($txSeekCur)    $txSeekCur.textContent = fmtTime(dur * frac);
+        if ($txSeekRem)    $txSeekRem.textContent = '-' + fmtTime(Math.max(0, dur - dur * frac));
+        showControls();   // 스크럽 중 컨트롤이 자동으로 사라지지 않게
+      },
+      onSeek(frac) {
+        const dur = player.duration;
+        if (dur) { player.seek(dur * frac); player.play(); }
+      },
+    });
+  }
   // 쉐도잉(off) ↔ 반복(loop) 2단계 토글. 문장멈춤(pause)은 제거(사용자 요청).
   const SHADOW = [
     { mode: 'off',  label: '🔁 Shadow', on: false },
@@ -745,6 +779,7 @@ export async function renderEpisode(root, idStr, tStr) {
     clearTimeout(ctrlHideTimer);
     cancelEase();
     stopRaf();
+    txScrub?.destroy();
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
     document.body.classList.remove('on-episode');
@@ -988,23 +1023,32 @@ function transcriptSheetHtml(segments, title, sub) {
         <button class="tx-live-badge" type="button" aria-label="Resume auto-follow">↓ Now playing</button>
         <div class="tx-notes" aria-hidden="true"></div>
         <div class="tx-sheet-controls">
-          <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
-          </button>
-          <button class="tx-mini-btn" id="tx-mini-back" aria-label="Back 15s">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-            <span class="skip-num">15</span>
-          </button>
-          <button class="tx-mini-play" id="tx-mini-play" aria-label="Play/Pause">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
-          </button>
-          <button class="tx-mini-btn" id="tx-mini-fwd" aria-label="Forward 30s">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-            <span class="skip-num">30</span>
-          </button>
-          <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next sentence">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>
-          </button>
+          <div class="tx-seek" id="tx-seek">
+            <div class="tx-seek-track" id="tx-seek-track">
+              <span class="tx-seek-fill" id="tx-seek-fill"></span>
+              <span class="tx-seek-handle" id="tx-seek-handle"></span>
+            </div>
+            <div class="tx-seek-times"><span id="tx-seek-cur">0:00</span><span id="tx-seek-rem">-0:00</span></div>
+          </div>
+          <div class="tx-ctrl-row">
+            <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
+            </button>
+            <button class="tx-mini-btn" id="tx-mini-back" aria-label="Back 15s">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              <span class="skip-num">15</span>
+            </button>
+            <button class="tx-mini-play" id="tx-mini-play" aria-label="Play/Pause">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
+            </button>
+            <button class="tx-mini-btn" id="tx-mini-fwd" aria-label="Forward 30s">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              <span class="skip-num">30</span>
+            </button>
+            <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next sentence">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

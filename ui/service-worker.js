@@ -12,10 +12,10 @@ const Q = '?v=' + VERSION;
 const SHELL = [
   '/', '/index.html', '/manifest.json',
   '/style.css' + Q,
-  '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/media-session.js' + Q,
+  '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/media-session.js' + Q, '/scrub.js' + Q,
   '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q, '/clip.js' + Q, '/translate.js' + Q,
   '/views/timeline.js' + Q, '/views/episode.js' + Q, '/views/srs.js' + Q, '/views/study.js' + Q, '/views/login.js' + Q,
-  '/views/essentials.js' + Q, '/views/drive.js' + Q, '/data/essentials.json',
+  '/views/essentials.js' + Q, '/data/essentials.json',
   '/icons/icon-64.png', '/icons/icon-192.png', '/icons/icon-512.png',
 ];
 

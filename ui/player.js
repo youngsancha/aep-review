@@ -3,6 +3,7 @@
 // Now Playing view binds to it, mini-player reflects state always.
 import { showCover, currentShow } from '/config.js';
 import { bindMediaSession } from '/media-session.js';
+import { bindScrub } from '/scrub.js';
 
 const SVG_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -124,7 +125,9 @@ const $title  = document.getElementById('mp-title');
 const $sub    = document.getElementById('mp-sub');
 const $play   = document.getElementById('mp-play');
 const $fwd    = document.getElementById('mp-fwd');
+const $prog   = document.getElementById('mp-progress');
 const $fill   = document.getElementById('mp-progress-fill');
+const $handle = document.getElementById('mp-progress-handle');
 
 function fmt(sec) {
   if (!Number.isFinite(sec)) return '0:00';
@@ -148,10 +151,35 @@ function refreshMini() {
     ? `${fmt(player.time)} / ${fmt(dur)}`
     : (player.current.show || '');
   $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
-  if (dur) $fill.style.width = (player.time / dur * 100).toFixed(2) + '%';
+  // 스크럽(드래그) 중엔 fill/핸들을 player.time 으로 덮어쓰지 않는다 — 미리보기 위치를 유지.
+  if (dur && !(mpScrub && mpScrub.isDragging())) {
+    const pct = (player.time / dur * 100).toFixed(2);
+    $fill.style.width = pct + '%';
+    if ($handle) $handle.style.left = pct + '%';
+  }
 }
 
 player.on(refreshMini);
+
+// === 미니플레이어 진행바 스와이프 시크 (Apple Podcasts 식) ===
+// 진행바를 탭/드래그하면 그 지점으로 재생 위치를 옮긴다. 드래그 중엔 fill·핸들·시간만 미리 갱신하고
+// (오디오는 안 끊김), 손을 뗄 때 한 번 seek + 재생. mpScrub 은 refreshMini 의 게이트로도 쓰인다.
+let mpScrub = null;
+if ($prog) {
+  mpScrub = bindScrub($prog, {
+    onPreview(frac) {
+      const pct = (frac * 100).toFixed(2);
+      $fill.style.width = pct + '%';
+      if ($handle) $handle.style.left = pct + '%';
+      const dur = player.duration;
+      if (dur) $sub.textContent = `${fmt(dur * frac)} / ${fmt(dur)}`;
+    },
+    onSeek(frac) {
+      const dur = player.duration;
+      if (dur) { player.seek(dur * frac); player.play(); }
+    },
+  });
+}
 
 $play.addEventListener('click', (e) => {
   e.stopPropagation();

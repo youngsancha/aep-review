@@ -3,7 +3,6 @@ import { renderTimeline } from '/views/timeline.js';
 import { renderEpisode } from '/views/episode.js';
 import { renderSrs } from '/views/srs.js';
 import { renderStudy } from '/views/study.js';
-import { renderDrive } from '/views/drive.js';
 import { renderLogin } from '/views/login.js';
 import { supabase } from '/supabase.js';
 
@@ -28,7 +27,6 @@ const ROUTES = [
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
   { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
-  { re: /^#?\/drive$/,               handler: renderDrive,    title: 'Car Mode', tab: 'timeline', back: true },
 ];
 
 async function route() {
