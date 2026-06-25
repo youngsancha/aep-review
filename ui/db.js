@@ -42,10 +42,24 @@ let _hosted = null, _hostedP = null;
 export async function hostedSet() {
   if (_hosted) return _hosted;
   if (!_hostedP) {
-    _hostedP = fetch(`${STORAGE_URL}/transcripts/audio_hosted.json`, { cache: 'no-cache' })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((a) => { _hosted = new Set((a || []).map(Number)); return _hosted; })
-      .catch(() => { _hosted = new Set(); return _hosted; });
+    _hostedP = (async () => {
+      // 최대 3회 재시도. 성공해야만 영구 캐시(_hosted). 끝까지 실패하면 이 세션을 megaphone(DAI)로
+      // '오염'시키지 않도록 빈 집합을 굳히지 않고(_hostedP 리셋) 다음 호출이 다시 받게 한다.
+      // (과거 버그: 일시적 fetch 실패 → 빈 집합 캐시 → 그 세션 전체가 megaphone 폴백 → 자막 desync.)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await fetch(`${STORAGE_URL}/transcripts/audio_hosted.json`, { cache: 'no-cache' });
+          if (r.ok) {
+            const a = await r.json();
+            _hosted = new Set((a || []).map(Number));
+            return _hosted;
+          }
+        } catch (e) { /* 재시도 */ }
+        await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
+      }
+      _hostedP = null;            // 실패는 캐시하지 않음 → 다음 호출 재시도
+      return new Set();
+    })();
   }
   return _hostedP;
 }

@@ -198,11 +198,11 @@ def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = Tr
         nbytes = download_to(url, apath)
         data = transcribe_one(apath)   # 구두점 품질 게이트는 transcribe_one 내부에 있어 자동 자가복구
         if host_r2 and not from_r2:  # 자막과 '같은 바이트'를 R2 에 올림(신규 호스팅용). from_r2 면 이미 R2 에 있음
-            try:
-                store.upload_audio_r2(ep_id, apath)
-                hosted = True
-            except Exception:
-                log.exception("R2 업로드 실패 ep=%s (자막은 계속 저장)", ep_id)
+            # R2 업로드 실패를 삼키지 않는다 — 삼키면 transcript 는 저장되는데 R2 엔 없어 앱이
+            # megaphone(DAI)로 폴백→영구 desync('transcribed-but-not-hosted', 예: ep312). 실패 시 raise →
+            # 호출부가 done 마킹 안 함 → 다음 실행에 통째로 재시도(transcript≡R2 보장 회복).
+            store.upload_audio_r2(ep_id, apath)
+            hosted = True
     data["aligned"] = True  # clean URL 정렬 → 클라이언트 offset 0
     if host_r2 or from_r2:
         data["r2_audio"] = True

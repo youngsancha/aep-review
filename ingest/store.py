@@ -87,16 +87,33 @@ def upload_audio_r2(ep_id: int, path: Any) -> int:
 HOSTED_MANIFEST = "audio_hosted.json"
 
 
-def load_hosted() -> set[int]:
+def _is_not_found(e: Exception) -> bool:
+    """Storage 다운로드 예외가 '객체 없음(404)' 인지 — 일시적 네트워크 오류와 구분."""
+    s = f"{type(e).__name__}: {e}".lower()
+    return any(k in s for k in ("not_found", "not found", "404", "no such", "object not found"))
+
+
+def load_hosted(strict: bool = False) -> set[int]:
+    """호스팅 매니페스트 로드. 객체가 없으면(최초) 빈 집합.
+
+    strict=True: 일시적 오류(네트워크)면 빈 집합 대신 예외를 올린다 — 호출부(mark_hosted)가
+    매니페스트를 '빈 상태에서 덮어쓰기'(축소)하지 않게 한다. (2026-06-24 사고: load 실패→빈집합
+    →AEP 268개 전부 유실→앱이 AEP 를 megaphone DAI 로 재생→자막 desync. 이 가드로 재발 차단.)
+    """
     try:
         raw = client().storage.from_("transcripts").download(HOSTED_MANIFEST)
         return set(json.loads(raw))
-    except Exception:
+    except Exception as e:
+        if _is_not_found(e):
+            return set()             # 매니페스트 자체가 없음(최초 호스팅) → 빈 집합이 맞음
+        if strict:
+            raise                    # 일시적 오류 → 절대 빈 집합 반환 X (호출부 축소 방지)
+        log.warning("load_hosted 매니페스트 다운로드 실패(%s) — 빈 집합 반환(비-strict 읽기)", e)
         return set()
 
 
 def mark_hosted(ep_id: int) -> None:
-    ids = load_hosted()
+    ids = load_hosted(strict=True)   # 일시적 오류면 raise → 이 회차 마킹만 다음에 재시도(매니페스트 보존)
     if int(ep_id) in ids:
         return
     ids.add(int(ep_id))
