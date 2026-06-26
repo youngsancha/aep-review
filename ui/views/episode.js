@@ -30,7 +30,10 @@ export async function renderEpisode(root, idStr, tStr) {
   const ep = await getEpisode(id);
   document.body.classList.add('on-episode');
   // Safeguard: even if we early-return below, ensure the class is removed on nav away.
-  window.addEventListener('hashchange', () => document.body.classList.remove('on-episode'), { once: true });
+  // 단, 다른 '회차'로 이동 중이면 on-episode 를 유지(미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지).
+  window.addEventListener('hashchange', () => {
+    if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
+  }, { once: true });
 
   const segments = ep.transcript?.segments || [];
   const sentences = resegment(segments);  // Whisper segment → 구두점 기준 진짜 문장
@@ -830,7 +833,8 @@ export async function renderEpisode(root, idStr, tStr) {
     txScrub?.destroy();
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
-    document.body.classList.remove('on-episode');
+    // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
+    if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
     $sheet?.remove();
   }, { once: true });
 

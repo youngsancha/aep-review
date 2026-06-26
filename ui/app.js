@@ -29,6 +29,7 @@ const ROUTES = [
   { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
 ];
 
+let _prevHandler = null;  // 직전 라우트 핸들러 — 같은 뷰(에피소드↔에피소드) 전환 감지용
 async function route() {
   const hash = location.hash || '#/';
   for (const r of ROUTES) {
@@ -40,7 +41,12 @@ async function route() {
         if (a.dataset.tab === r.tab) a.setAttribute('aria-current', 'page');
         else a.removeAttribute('aria-current');
       });
-      $app.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+      // 에피소드 → 에피소드(앞/뒤 회차) 전환은 화면 전체 깜빡임을 피한다:
+      //   · 스피너로 비우지 않고 옛 화면을 유지한 채 데이터를 받아온 뒤 한 번에 교체
+      //   · 뷰 페이드인도 재생하지 않음
+      //  → 커버(같은 캐시 URL)는 그대로, 메타·스크러버만 조용히 바뀐다. (on-episode 유지는 episode.js)
+      const inPlace = r.handler === renderEpisode && _prevHandler === renderEpisode;
+      if (!inPlace) $app.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
       try {
         await r.handler($app, ...m.slice(1));
       } catch (e) {
@@ -51,10 +57,13 @@ async function route() {
         </div>`;
         document.getElementById('route-retry')?.addEventListener('click', () => route());
       }
-      // 뷰 전환 페이드인 (reflow 트릭으로 매 라우트마다 재시작; reduced-motion 에선 무시됨)
-      $app.classList.remove('view-enter');
-      void $app.offsetWidth;
-      $app.classList.add('view-enter');
+      _prevHandler = r.handler;
+      if (!inPlace) {
+        // 뷰 전환 페이드인 (reflow 트릭으로 재시작; reduced-motion 에선 무시됨)
+        $app.classList.remove('view-enter');
+        void $app.offsetWidth;
+        $app.classList.add('view-enter');
+      }
       return;
     }
   }
