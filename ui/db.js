@@ -26,6 +26,24 @@ export async function listEpisodes() {
   return data || [];
 }
 
+// 이전/다음 '에피소드'(곡) id — ⏮/⏭ 트랙 이동용. 라이브러리와 같은 쇼 안에서 시간순(pub_date asc)
+// 으로 줄세워, 더 나중에 나온 화가 '다음'(다음 회차), 더 예전 화가 '이전'(이전 곡)이 된다.
+// id+pub_date 만 가볍게 받아 메모리에서 인접 회차를 찾는다(수백 행이라 단일 쿼리로 충분).
+export async function episodeNav(id) {
+  const { data, error } = await withShow(
+    supabase.from('episodes_list').select('id, pub_date'))
+    .order('pub_date', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true });
+  if (error) throw new Error(error.message);
+  const ids = (data || []).map((e) => e.id);
+  const i = ids.indexOf(Number(id));
+  if (i < 0) return { prevId: null, nextId: null };
+  return {
+    prevId: i > 0 ? ids[i - 1] : null,
+    nextId: i < ids.length - 1 ? ids[i + 1] : null,
+  };
+}
+
 // 광고 리다이렉트 체인(podtrac/pscrb/swap.fm…)을 벗겨 megaphone CDN 직접 URL 로.
 // RSS audio_url 은 6단계 302 광고 추적 래퍼라 모바일에서 재생 시작이 느리고/불안정하며,
 // 요청마다 동적 광고가 끼어 길이가 달라져 트랜스크립트 타임스탬프와 어긋난다.

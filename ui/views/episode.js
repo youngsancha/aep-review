@@ -1,6 +1,6 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
 import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
-import { getEpisode } from '/db.js';
+import { getEpisode, episodeNav } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
 import { showCover, currentShow, showMeta } from '/config.js';
@@ -140,8 +140,16 @@ export async function renderEpisode(root, idStr, tStr) {
   const $txSeekRem    = document.getElementById('tx-seek-rem');
   let txScrub = null;
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | loop(문장 반복)
-  let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 모드: 되풀이할 '문단'과 그 시작/끝(자막시각)
+  let shadowMode = 'off';  // off | loop(무한반복) | auto5(5회반복 후 다음문단 자동이동)
+  let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
+  let loopCount = 0;       // auto5: 현재 문단을 몇 번 반복했는지(0~REPEAT_N)
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→auto5 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  const REPEAT_N = 5;      // 5× Auto: 한 문단을 다섯 번 반복 후 다음 문단으로
+  let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
+  let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
+
+  // 이전/다음 '에피소드' id 미리 조회 — ⏮/⏭ 버튼이 즉시 쓰도록(비동기, 실패해도 재생엔 영향 없음).
+  episodeNav(ep.id).then((n) => { navPrevId = n.prevId; navNextId = n.nextId; }).catch(() => {});
 
   // === 싱크 (자동) ===
   // 모든 회차는 '서빙되는 R2 오디오 그 자체'로 STT(scripts/retranscribe.py --from-r2)되어
@@ -181,11 +189,27 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
     highlightActiveSegment();
 
-    // 쉐도잉 반복(loop): 누를 때 확정한 '문단' 전체를 끝(마지막 문장)에서 처음(첫 문장)으로 되돌려
-    // 무한 반복. 문단 안에선 문장이 정상 진행·하이라이트되고, 문단 끝에서만 처음으로 되감는다.
-    if (shadowMode === 'loop' && loopPara >= 0 && !player.paused) {
+    // 쉐도잉 반복: 누를 때 확정한 '문단'을 끝(마지막 문장)에서 처음(첫 문장)으로 되돌린다.
+    //  loop  = 무한 반복.
+    //  auto5 = 5회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고 구간은 시크로 건너뜀).
+    //          마지막 문단까지 끝나면 쉐도잉을 끄고 그대로 계속 재생.
+    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0 && !player.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
-        player.seek(toAudio(loopStart) + 0.01);
+        if (shadowMode === 'loop') {
+          player.seek(toAudio(loopStart) + 0.01);
+        } else {
+          loopCount++;
+          if (loopCount < REPEAT_N) {
+            player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
+          } else {
+            loopCount = 0;
+            if (setLoopPara(loopPara + 1)) {
+              player.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
+            } else {
+              endShadow();                              // 마지막 문단 → 쉐도잉 종료
+            }
+          }
+        }
       }
     }
   }
@@ -425,10 +449,10 @@ export async function renderEpisode(root, idStr, tStr) {
       let target = null;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
-        target = pTop - Math.max(8, h * 0.16);
+        target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
       } else if (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04) {
-        // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(20%)로 올려 카드와 안 겹치게.
-        target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.20 : 0.30));
+        // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(≈13%)로 올려 카드와 안 겹치고 위쪽에 자리잡게.
+        target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.13 : 0.22));
       }
       if (target != null) {
         const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
@@ -492,15 +516,10 @@ export async function renderEpisode(root, idStr, tStr) {
       else if (sent) txSec = parseFloat(sent.dataset.start);
       else if (para) txSec = parseFloat(para.dataset.start);
       if (txSec == null) return;
-      // 반복 중에 다른 문장을 탭하면, 그 문장이 속한 문단으로 반복 대상을 옮긴다(그 문장이 반복됨).
-      if (shadowMode === 'loop') {
+      // 반복 중에 다른 문장을 탭하면, 그 문장이 속한 문단으로 반복 대상을 옮긴다(auto5 카운트도 리셋).
+      if (shadowMode === 'loop' || shadowMode === 'auto5') {
         const pEl = para || (sent && sent.closest('.tx-para'));
-        const ps = pEl ? sentRanges.filter((s) => s.paraEl === pEl) : [];
-        if (ps.length) {
-          loopPara = paraEls.indexOf(pEl);
-          loopStart = ps[0].start;
-          loopEnd = ps[ps.length - 1].end;
-        }
+        if (pEl) { setLoopPara(paraEls.indexOf(pEl)); loopCount = 0; }
       }
       player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
       player.play();
@@ -577,37 +596,52 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉(off) ↔ 반복(loop) 2단계 토글. 문장멈춤(pause)은 제거(사용자 요청).
+  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → auto5(5× Auto: 5회 후 다음문단) → off … 순환.
   const SHADOW = [
-    { mode: 'off',  label: '🔁 Shadow', on: false },
-    { mode: 'loop', label: '🔁 Repeat', on: true },
+    { mode: 'off',   label: '🔁 Shadow', on: false },
+    { mode: 'loop',  label: '🔁 Repeat', on: true },
+    { mode: 'auto5', label: '5× Auto',   on: true },
   ];
-  let shadowIdx = 0;
   const $shadow = document.getElementById('tx-shadow');
+  // 한 '문단'을 반복 대상으로 확정 — pIdx 의 문단 시작/끝(자막시각)을 loopStart/End 로.
+  function setLoopPara(pIdx) {
+    const pEl = paraEls[pIdx];
+    if (!pEl) return false;
+    const ps = sentRanges.filter((s) => s.paraEl === pEl);
+    if (!ps.length) return false;
+    loopPara = pIdx; loopStart = ps[0].start; loopEnd = ps[ps.length - 1].end;
+    return true;
+  }
+  // 현재 재생 위치가 속한 문단을 반복 대상으로(loop/auto5 진입 시 공용). 즉시 되감지 않고
+  // 지금 문단을 끝까지 자연스럽게 읽은 뒤, 끝에서 반복/다음이동(사용자 요청).
+  function confirmLoopBoundary() {
+    const si = findActiveSentIdx(player.time - syncOffset);
+    if (si >= 0 && sentRanges[si]) {
+      setLoopPara(paraEls.indexOf(sentRanges[si].paraEl));
+      userScrolledUntil = 0;   // 자동추적 재개
+    }
+  }
+  // auto5 가 마지막 문단까지 끝났을 때 — 쉐도잉을 끄고 버튼/상태 초기화(그대로 계속 재생).
+  function endShadow() {
+    shadowMode = 'off'; shadowIdx = 0; loopPara = -1; loopCount = 0;
+    if ($shadow) {
+      $shadow.textContent = SHADOW[0].label;
+      $shadow.classList.remove('on');
+      $shadow.setAttribute('aria-pressed', 'false');
+    }
+  }
   $shadow?.addEventListener('click', (e) => {
     e.stopPropagation();
     shadowIdx = (shadowIdx + 1) % SHADOW.length;
     const s = SHADOW[shadowIdx];
     shadowMode = s.mode;
+    loopCount = 0;
     $shadow.textContent = s.label;
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
-    if (shadowMode === 'loop') {
-      // 누르는 즉시 처음으로 점프하지 않는다 — 지금 위치에서 그 '문단' 끝까지 자연스럽게 읽은 뒤,
-      // 문단 끝에서 처음으로 되감아 반복(사용자 요청). 현재 문장이 속한 문단으로 경계만 확정.
-      const si = findActiveSentIdx(player.time - syncOffset);
-      if (si >= 0 && sentRanges[si]) {
-        const paraEl = sentRanges[si].paraEl;
-        const ps = sentRanges.filter((s) => s.paraEl === paraEl);
-        loopPara = paraEls.indexOf(paraEl);
-        loopStart = ps[0].start;
-        loopEnd = ps[ps.length - 1].end;
-        userScrolledUntil = 0;   // 자동추적 재개
-      }
-    } else {
-      loopPara = -1;
-    }
-    if (player.paused) player.play();  // 모드 전환 즉시 이어 재생 (반복→쉐도잉도 버튼 없이 바로 재생)
+    if (shadowMode === 'loop' || shadowMode === 'auto5') confirmLoopBoundary();
+    else loopPara = -1;
+    if (player.paused) player.play();  // 모드 전환 즉시 이어 재생
   });
 
   // 쉐도잉용 속도 조절 (시트 안에서 느리게 따라 말하기)
@@ -673,28 +707,32 @@ export async function renderEpisode(root, idStr, tStr) {
   document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
   document.getElementById('tx-fs-dn')?.addEventListener('click', (e) => { e.stopPropagation(); txScale -= 0.1; applyTxScale(); });
 
-  // 문장 단위 이전/다음 점프 (쉐도잉)
-  function jumpSent(dir) {
-    if (!sentRanges.length) return;
-    let idx = lastActiveSent >= 0 ? lastActiveSent : findActiveSentIdx(txTime());
-    if (idx < 0) idx = 0;
-    let target;
-    if (dir < 0) {
-      const cur = sentRanges[idx];
-      // 현재 문장을 1초 이상 진행했으면 그 문장 처음으로, 아니면 이전 문장으로
-      target = (cur && txTime() > cur.start + 1.0) ? idx : idx - 1;
-    } else {
-      target = idx + 1;
-    }
-    target = Math.max(0, Math.min(sentRanges.length - 1, target));
-    const sel = sentRanges[target];
-    if (!sel) return;
-    player.seek(toAudio(sel.start) + 0.01);
-    player.play();
-    scrollSentToCenter(sel.el);
+  // ⏮/⏭ = '에피소드(곡)' 단위 이동 (미디어 플레이어 표준):
+  //   ⏭ 다음 → 바로 다음 에피소드(자동재생 + 스크립트 유지하며 끊김 없이 이어보기).
+  //   ⏮ 이전 → 1번 누르면 현재 회차 '맨 처음'으로, 1.5초 내 연속 두 번이면 '이전 에피소드'.
+  function gotoEpisode(targetId) {
+    if (targetId == null) return;
+    // 다음/이전 회차도 자동재생 + 트랜스크립트 시트 자동 오픈으로 이어보기(라우터가 이 플래그를 읽음).
+    try { sessionStorage.setItem('aep-open-script', String(targetId)); } catch (e) {}
+    location.hash = `#/episode/${targetId}`;
   }
-  document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(-1); });
-  document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); jumpSent(1); });
+  document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - lastPrevTap < 1500) {            // 연속 두 번 → 이전 에피소드
+      lastPrevTap = 0;
+      if (navPrevId != null) gotoEpisode(navPrevId);
+      else { player.seek(0); player.play(); }  // 첫 회차면 맨 앞 유지
+    } else {                                    // 첫 번째 → 현재 회차 맨 처음으로
+      lastPrevTap = now;
+      player.seek(0);
+      player.play();
+    }
+  });
+  document.getElementById('tx-next-sent')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (navNextId != null) gotoEpisode(navNextId);
+  });
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
   const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
@@ -703,7 +741,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!$sheetCard) return;
     $sheetCard.classList.remove('controls-hidden');
     clearTimeout(ctrlHideTimer);
-    ctrlHideTimer = setTimeout(() => $sheetCard.classList.add('controls-hidden'), 3200);
+    ctrlHideTimer = setTimeout(() => $sheetCard.classList.add('controls-hidden'), 6000);
   }
   // 시트 어디든 탭(포인터 누름) → 컨트롤 다시 표시 + 숨김 타이머 리셋
   $sheetCard?.addEventListener('pointerdown', showControls, { passive: true });
@@ -1031,7 +1069,7 @@ function transcriptSheetHtml(segments, title, sub) {
             <div class="tx-seek-times"><span id="tx-seek-cur">0:00</span><span id="tx-seek-rem">-0:00</span></div>
           </div>
           <div class="tx-ctrl-row">
-            <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Previous sentence">
+            <button class="tx-mini-btn tx-sent-btn" id="tx-prev-sent" aria-label="Restart / previous episode">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>
             </button>
             <button class="tx-mini-btn" id="tx-mini-back" aria-label="Back 15s">
@@ -1045,7 +1083,7 @@ function transcriptSheetHtml(segments, title, sub) {
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               <span class="skip-num">30</span>
             </button>
-            <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next sentence">
+            <button class="tx-mini-btn tx-sent-btn" id="tx-next-sent" aria-label="Next episode">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>
             </button>
           </div>
