@@ -18,6 +18,9 @@ const SVG_MINI_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="cu
 const SVG_MINI_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 const SVG_BACK15 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
 const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
+// ⏮/⏭ 트랙(에피소드) 이동 아이콘 — 트랜스크립트 시트의 ⏮/⏭ 과 동일 글리프(메인 화면용 28px).
+const SVG_PREV_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>';
+const SVG_NEXT_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>';
 
 // 1× 에서 탭마다 1.25 → 1.5 → 0.5 → 0.75 → 1.0 → 1.25 … 순환 (사용자 지정 순서)
 const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
@@ -56,9 +59,11 @@ export async function renderEpisode(root, idStr, tStr) {
           </div>
         </div>
         <div class="np-controls">
+          <button class="np-ctrl-btn" id="np-prev" aria-label="Restart / previous episode">${SVG_PREV_TRACK}</button>
           <button class="np-ctrl-btn" id="np-back" aria-label="Back 15s">${SVG_BACK15}<span class="skip-num">15</span></button>
           <button class="np-play-btn" id="np-play" aria-label="Play/Pause">${SVG_PLAY}</button>
           <button class="np-ctrl-btn" id="np-fwd" aria-label="Forward 30s">${SVG_FWD30}<span class="skip-num">30</span></button>
+          <button class="np-ctrl-btn" id="np-next" aria-label="Next episode">${SVG_NEXT_TRACK}</button>
         </div>
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
@@ -711,32 +716,33 @@ export async function renderEpisode(root, idStr, tStr) {
   document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
   document.getElementById('tx-fs-dn')?.addEventListener('click', (e) => { e.stopPropagation(); txScale -= 0.1; applyTxScale(); });
 
-  // ⏮/⏭ = '에피소드(곡)' 단위 이동 (미디어 플레이어 표준):
-  //   ⏭ 다음 → 바로 다음 에피소드(자동재생 + 스크립트 유지하며 끊김 없이 이어보기).
+  // ⏮/⏭ = '에피소드(곡)' 단위 이동 (미디어 플레이어 표준) — 트랜스크립트 시트와 메인 화면이 공유.
+  //   ⏭ 다음 → 바로 다음 에피소드.
   //   ⏮ 이전 → 1번 누르면 현재 회차 '맨 처음'으로, 1.5초 내 연속 두 번이면 '이전 에피소드'.
-  function gotoEpisode(targetId) {
+  // openScript: 트랜스크립트에서 이동 시 true → 다음 화도 스크립트 시트 자동 오픈+재생.
+  //             메인 화면에서 이동 시 false → 다음 화의 '메인 재생화면'에 머물되 자동재생만.
+  function gotoEpisode(targetId, openScript) {
     if (targetId == null) return;
-    // 다음/이전 회차도 자동재생 + 트랜스크립트 시트 자동 오픈으로 이어보기(라우터가 이 플래그를 읽음).
-    try { sessionStorage.setItem('aep-open-script', String(targetId)); } catch (e) {}
+    try { sessionStorage.setItem(openScript ? 'aep-open-script' : 'aep-autoplay', String(targetId)); } catch (e) {}
     location.hash = `#/episode/${targetId}`;
   }
-  document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => {
-    e.stopPropagation();
+  function prevPress(openScript) {
     const now = Date.now();
     if (now - lastPrevTap < 1500) {            // 연속 두 번 → 이전 에피소드
       lastPrevTap = 0;
-      if (navPrevId != null) gotoEpisode(navPrevId);
+      if (navPrevId != null) gotoEpisode(navPrevId, openScript);
       else { player.seek(0); player.play(); }  // 첫 회차면 맨 앞 유지
     } else {                                    // 첫 번째 → 현재 회차 맨 처음으로
       lastPrevTap = now;
       player.seek(0);
       player.play();
     }
-  });
-  document.getElementById('tx-next-sent')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (navNextId != null) gotoEpisode(navNextId);
-  });
+  }
+  function nextPress(openScript) {
+    if (navNextId != null) gotoEpisode(navNextId, openScript);
+  }
+  document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => { e.stopPropagation(); prevPress(true); });
+  document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); nextPress(true); });
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
   const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
@@ -831,6 +837,9 @@ export async function renderEpisode(root, idStr, tStr) {
   $play.addEventListener('click', () => player.toggle());
   $back.addEventListener('click', () => player.skip(-15));
   $fwd.addEventListener('click',  () => player.skip(30));
+  // 메인 Now-Playing 화면의 ⏮/⏭ — 트랜스크립트와 동일 동작(시트는 안 열고 자동재생만, openScript=false).
+  document.getElementById('np-prev')?.addEventListener('click', () => prevPress(false));
+  document.getElementById('np-next')?.addEventListener('click', () => nextPress(false));
   $scrub.addEventListener('input', () => {
     const dur = player.duration;
     if (dur) player.seek(dur * parseFloat($scrub.value) / 100);
@@ -868,11 +877,15 @@ export async function renderEpisode(root, idStr, tStr) {
   });
   prefetch(vocabs.map((v) => v.term).filter(Boolean));
 
-  // "스크립트로 보기" 진입 플래그(라이브러리에서 설정): 자동재생 + 트랜스크립트 시트 자동 열기 (논스톱)
+  // "스크립트로 보기" 진입 플래그(라이브러리/트랜스크립트 ⏮⏭ 에서 설정): 자동재생 + 시트 자동 열기.
+  // aep-autoplay: 메인 화면 ⏮/⏭ 로 회차 이동 시 — 시트는 안 열고 자동재생만(메인 화면 유지).
   let wantScript = false;
+  let wantAutoplay = false;
   try {
     const si = sessionStorage.getItem('aep-open-script');
     if (si && parseInt(si, 10) === ep.id) { wantScript = true; sessionStorage.removeItem('aep-open-script'); }
+    const sa = sessionStorage.getItem('aep-autoplay');
+    if (sa && parseInt(sa, 10) === ep.id) { wantAutoplay = true; sessionStorage.removeItem('aep-autoplay'); }
   } catch (e) {}
 
   // 시작 위치: 딥링크(:t) > 저장된 이어듣기 위치. 자동재생: 딥링크이거나 "스크립트로 보기"일 때.
@@ -881,7 +894,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let startAt = null;
   if (Number.isFinite(seekTo) && seekTo > 0) startAt = seekTo;
   else if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) startAt = prog.t;
-  const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript;
+  const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript || wantAutoplay;
   if (startAt != null || autoPlay) {
     const go = () => { if (startAt != null) player.seek(startAt); if (autoPlay) player.play(); };
     if (player.duration) go();

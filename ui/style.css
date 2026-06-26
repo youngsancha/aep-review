@@ -573,7 +573,7 @@ body.on-episode {
 /* Transport controls */
 .np-controls {
   display: flex; align-items: center; justify-content: center;
-  gap: 28px; margin: 18px 0 8px;
+  gap: 18px; margin: 18px 0 8px;  /* ⏮ 15 ▶ 30 ⏭ 5개가 좁은 폰에서도 들어가게(28→18) */
   padding: 0 12px;
 }
 .np-ctrl-btn {
