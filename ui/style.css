@@ -1950,7 +1950,9 @@ a { color: var(--tint); }
 
 /* ========== 쉐도잉: 문장 반복(loop) 토글 ========== */
 /* 쉐도잉 문장 반복 토글 (헤더 칩) */
-.tx-loop-toggle { white-space: nowrap; }
+/* 라벨이 Shadow→Repeat→5× Auto 로 바뀌어도 버튼 너비가 변하지 않게 고정(가장 넓은 라벨 기준).
+   speed-toggle 와 동일한 방식 — 폭 고정 + 가운데 정렬. */
+.tx-loop-toggle { white-space: nowrap; min-width: 96px; text-align: center; }
 .tx-speed-toggle { min-width: 58px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .tx-speed-toggle.on { background: var(--tint); color: #fff; }
 .tx-speed-toggle.on:hover { background: var(--tint-hover); color: #fff; }

@@ -389,7 +389,7 @@ export async function renderEpisode(root, idStr, tStr) {
     let t = txTime();
     // 반복 모드: 문단 끝에서 처음으로 되감은 직후 txTime 이 HL_LAG(0.2s)만큼 뒤로 가 직전 문단이
     // 잠깐 잡히는 것 방지 — 활성 판정 시각을 반복 문단 시작 아래로 안 내려가게 클램프.
-    if (shadowMode === 'loop' && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0) t = Math.max(t, loopStart);
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
     // 광고 경계는 '정확한 컷'이라 HL_LAG 미적용한 실제 오디오 위치로 판정 → 스킵 직후 즉시 본편 인식.
@@ -447,10 +447,14 @@ export async function renderEpisode(root, idStr, tStr) {
       const sRect = sentRanges[idx].el.getBoundingClientRect();
       const sRelTop = sRect.top - cont.top, sRelBot = sRect.bottom - cont.top;
       let target = null;
+      // 반복(loop/auto5) 중 같은 문단 안에서는 문장이 진행돼도 화면을 움직이지 않는다(사용자 요청):
+      // 문단 진입 시(paraChanged) 한 번만 위치를 잡고, 끝→처음 되감기 때 '아래로 흔들렸다 되돌아오던'
+      // 스크롤을 없앤다. (auto5 가 '다음 문단'으로 넘어갈 때는 paraChanged 라 정상 재배치된다.)
+      const inLoopPara = (shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0 && newPara === loopPara;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
-      } else if (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04) {
+      } else if (!inLoopPara && (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04)) {
         // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(≈13%)로 올려 카드와 안 겹치고 위쪽에 자리잡게.
         target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.13 : 0.22));
       }
@@ -781,7 +785,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
     let t = txTime();
     // 반복 모드: 되감기 직후 HL_LAG 로 t 가 직전 문장 단어로 내려가 카라오케가 깜빡이던 것 방지.
-    if (shadowMode === 'loop' && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0) t = Math.max(t, loopStart);
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
