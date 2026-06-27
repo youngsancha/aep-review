@@ -1,15 +1,24 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml, highlightTerm } from '/app.js';
-import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown } from '/db.js';
+import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
 import { renderEssentials } from '/views/essentials.js';
-import { recordMeasure } from '/proficiency.js';
+import { recordMeasure, readProficiency, recordSnapshot } from '/proficiency.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
+
+// Proficiency 5축 표기(키·라벨·이모지) — proficiency.js 의 scores 키와 1:1.
+const PROF_AXES = [
+  ['breadth', '어휘폭', '📚'],
+  ['retention', '보존력', '🧠'],
+  ['listening', '청해', '👂'],
+  ['production', '산출', '🗣️'],
+  ['automaticity', '자동화', '⚡'],
+];
 
 // 데일리 학습 스트릭 — 매일 꾸준함이 유창성의 핵심. Study 를 연 날을 기록해 연속일을 센다(추가형).
 const _dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -91,6 +100,12 @@ export async function renderStudy(root) {
     return;
   }
 
+  // 5축 수치화 — 보존력은 Supabase 분포(실패해도 0 으로 graceful), 나머지는 localStorage 측정 로그.
+  let ret = { retentionFrac: 0 };
+  try { ret = await retentionStats(); } catch (e) { /* graceful: retention 0 */ }
+  const prof = readProficiency({ known: ov.known, corpusTotal: ov.total, retentionFrac: ret.retentionFrac });
+  recordSnapshot(prof.index, prof.scores);   // 주간 1건(추세) — Phase 2 에서 시각화
+
   const kinds = ov.byKind.filter((k) => k.total > 0);
   let selected = kinds.length ? kinds[0].kind : null;
   let items = [];
@@ -99,6 +114,34 @@ export async function renderStudy(root) {
   const RING_C = 2 * Math.PI * 34;          // 진도 링 둘레 (r=34)
 
   function ringDash(pct) { return `${((pct / 100) * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`; }
+
+  // Proficiency 패널 — Fluency Index(목표 밴드 대비 0~100) + 5축 막대 + CEFR ≈밴드 + 정직성 주석.
+  // 미측정 축(드릴 기록 없음)은 '—'·회색으로 표시해 "아직 모름"을 솔직히 드러낸다.
+  function profCardHtml() {
+    const cefr = prof.cefr;
+    const cefrSub = cefr.nextLabel
+      ? `다음 ${cefr.nextLabel}·${cefr.toNext.toLocaleString()} 표현`
+      : '최상위 밴드';
+    const axes = PROF_AXES.map(([k, label, emoji]) => {
+      const v = prof.scores[k];
+      const has = v != null;
+      return `
+        <div class="prof-axis${has ? '' : ' un'}">
+          <span class="prof-axis-l">${emoji} ${label}</span>
+          <span class="prof-axis-bar"><i style="width:${has ? v : 0}%"></i></span>
+          <span class="prof-axis-v">${has ? v : '—'}</span>
+        </div>`;
+    }).join('');
+    return `
+      <div class="prof-card">
+        <div class="prof-head">
+          <div class="prof-index"><b>${prof.index}</b><span>/100</span><i class="prof-goal">→ ${prof.band} 목표</i></div>
+          <div class="prof-cefr">≈ <b>${cefr.band}</b><span>${cefrSub}</span></div>
+        </div>
+        <div class="prof-axes">${axes}</div>
+        <div class="prof-note">이 앱이 보여준 표현·드릴 기록 기준 · unseen(레벨체크) 우선 · ASR은 ‘알아들힘’(발음 정확도 아님)</div>
+      </div>`;
+  }
 
   function heroHtml() {
     const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
@@ -125,6 +168,7 @@ export async function renderStudy(root) {
           <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
       </div>
+      ${profCardHtml()}
       <div class="study-week">
         ${weekActivity().map((d) => `<span class="study-week-d${d.on ? ' on' : ''}${d.today ? ' today' : ''}"><i>${d.label}</i><b></b></span>`).join('')}
       </div>

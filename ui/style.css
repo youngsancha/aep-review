@@ -1654,6 +1654,29 @@ body.logged-out #app-version { display: none; }
 .study-pill { font-size: 12px; font-weight: 700; color: var(--text-2); background: var(--surface-2); padding: 5px 11px; border-radius: 999px; }
 .study-pill.streak { background: var(--chip-warn-bg); color: var(--chip-warn-tx); }  /* 데일리 스트릭 — 따뜻한 강조 */
 
+/* ── Proficiency 패널 (영어 실력 5축 수치화 — Fluency Index + 축 막대 + CEFR ≈밴드) ── */
+.prof-card { background: var(--surface); border-radius: 18px; padding: 14px 16px; box-shadow: var(--shadow-card); margin-bottom: 14px; }
+.prof-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+.prof-index { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.prof-index b {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1;
+  background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: var(--grad-2);
+}
+.prof-index span { font-size: 13px; font-weight: 700; color: var(--text-3); }
+.prof-goal { font-size: 11px; font-style: normal; font-weight: 700; color: var(--tint); background: var(--tint-soft); padding: 3px 8px; border-radius: 999px; margin-left: 6px; }
+.prof-cefr { text-align: right; font-size: 12px; color: var(--text-3); font-weight: 700; line-height: 1.35; }
+.prof-cefr b { color: var(--text); font-size: 15px; }
+.prof-cefr span { display: block; font-size: 10.5px; color: var(--text-3); font-weight: 600; }
+.prof-axes { display: flex; flex-direction: column; gap: 8px; }
+.prof-axis { display: grid; grid-template-columns: 78px 1fr 26px; align-items: center; gap: 10px; }
+.prof-axis-l { font-size: 12px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.prof-axis-bar { height: 8px; border-radius: 4px; background: var(--separator-thin); overflow: hidden; }
+.prof-axis-bar > i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--grad-1), var(--grad-3)); transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+.prof-axis-v { font-size: 12.5px; font-weight: 800; color: var(--text); text-align: right; }
+.prof-axis.un .prof-axis-l, .prof-axis.un .prof-axis-v { color: var(--text-3); }
+.prof-note { margin-top: 11px; font-size: 10.5px; line-height: 1.45; color: var(--text-3); }
+
 /* ── "알아요" 마크 버튼 + 마스터된 행 ── */
 .study-x-know {
   flex-shrink: 0; border: 0; cursor: pointer;
