@@ -205,25 +205,39 @@ export async function markUnknown(vocabId) {
   if (error) throw new Error(error.message);
 }
 
-// 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
-export async function expressionsByKind(kind, limit = 800) {
-  const { data, error } = await withShow(
-    supabase
-      .from('vocab_cards')
-      .select('id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)')
-      .eq('kind', kind))
-    .order('term', { ascending: true })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
-  return (data || []).map((v) => ({
+// vocab 행 → 뷰 표준 모양(에피소드 제목·재생 audio_url·known·예문 한글). expressionsByKind/allExpressions 공용.
+const VOCAB_SELECT =
+  'id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)';
+function _mapVocab(v, hosted, exKo) {
+  return {
     ...v,
     episode_title: v.episodes?.title || '',
     // 인라인 문장 재생용 — 호스팅된 회차는 R2(자막 문장시각과 일치) 아니면 megaphone clean.
     audio_url: hosted.has(Number(v.episode_id)) ? hostedAudioUrl(v.episode_id) : cleanAudioUrl(v.episodes?.audio_url || ''),
     known: Array.isArray(v.srs) && v.srs.some((s) => (s.interval_days || 0) >= KNOWN_INTERVAL),
     example_ko: exKo[String(v.id)] || null,   // 사전번역(있으면 KR 버튼 즉시 표시)
-  }));
+  };
+}
+
+// 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
+export async function expressionsByKind(kind, limit = 800) {
+  const { data, error } = await withShow(
+    supabase.from('vocab_cards').select(VOCAB_SELECT).eq('kind', kind))
+    .order('term', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
+  return (data || []).map((v) => _mapVocab(v, hosted, exKo));
+}
+
+// 전 kind 통합 — 약점(미마스터) 집중 퀴즈용(B4). 호출부가 known=false 우선 샘플링.
+export async function allExpressions(limit = 1500) {
+  const { data, error } = await withShow(
+    supabase.from('vocab_cards').select(VOCAB_SELECT))
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
+  return (data || []).map((v) => _mapVocab(v, hosted, exKo));
 }
 
 // ─────────────────────────── SRS ───────────────────────────

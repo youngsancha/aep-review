@@ -3,7 +3,7 @@
 //  ② Supabase 데이터/Storage(자막·번역·vocab·essentials·소형 TTS) → network-first + 캐시 폴백
 //     (온라인=항상 최신, 오프라인=마지막으로 본 자료 열람). 데이터 캐시는 버전과 분리·상한 트림.
 //  ③ 대용량 오디오(R2 CDN)·esm.sh 는 그대로 네트워크(SW 우회) — Range 재생/용량 때문.
-const VERSION = '1.8.2';
+const VERSION = '1.9.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존). 용량 상한으로 트림.
 const DATA_CACHE = 'aep-review-data-v1';

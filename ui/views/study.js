@@ -1,7 +1,7 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml, highlightTerm } from '/app.js';
-import { studyOverview, expressionsByKind, markKnown, markUnknown } from '/db.js';
+import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
@@ -117,6 +117,7 @@ export async function renderStudy(root) {
       <div class="study-quiz-row">
         <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span></button>
         <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span></button>
+        <button class="study-quiz-btn" id="study-quiz-weak"><span class="qb-ico">⚡</span><span class="qb-txt">Weak</span></button>
         <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span></button>
         <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span></button>
         <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span></button>
@@ -296,6 +297,7 @@ export async function renderStudy(root) {
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
+    root.querySelector('#study-quiz-weak')?.addEventListener('click', startWeakQuiz);
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
@@ -322,9 +324,9 @@ export async function renderStudy(root) {
 
   // ── 4지선다 퀴즈 (현재 종류의 표현으로 능동 회상) ──
   const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
-  function startQuiz(mode = 'read') {
+  function startQuiz(mode = 'read', source = null) {
     stopClip();
-    const pool = items.filter((v) => v.term && v.definition);
+    const pool = (source || items).filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
       if (el) el.innerHTML = '<div class="empty">Not enough expressions for a quiz (need 4+).</div>';
@@ -388,10 +390,26 @@ export async function renderStudy(root) {
             <button class="study-cta-btn secondary" id="q-home">Study Home</button>
           </div>
         </div>`;
-      root.querySelector('#q-again').addEventListener('click', startQuiz);
+      root.querySelector('#q-again').addEventListener('click', () => startQuiz(mode, source));
       root.querySelector('#q-home').addEventListener('click', () => renderStudy(root));
     }
     paintQ();
+  }
+
+  // ── 약점 집중 퀴즈 (전 kind 통합 + 미마스터(known=false) 우선) ──
+  async function startWeakQuiz() {
+    stopClip();
+    const listEl = root.querySelector('#study-list');
+    if (listEl) listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    let all = [];
+    try { all = await allExpressions(); } catch (e) { all = []; }
+    const weak = all.filter((v) => !v.known && v.term && v.definition);
+    const pool = weak.length >= 4 ? weak : all.filter((v) => v.term && v.definition);
+    if (pool.length < 4) {
+      if (listEl) listEl.innerHTML = '<div class="empty">Not enough expressions for a quiz (need 4+).</div>';
+      return;
+    }
+    startQuiz('read', pool);   // 4지선다 회상 — startQuiz 가 셔플·슬라이스
   }
 
   // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
