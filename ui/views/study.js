@@ -30,6 +30,34 @@ function getStreak() {
   } catch (e) { return 0; }
 }
 
+// 주간 활동 — 최근 7일(오늘 포함) 학습 여부. aep-study-days(스트릭과 동일 소스) 재사용.
+function weekActivity() {
+  let s = new Set();
+  try { s = new Set(JSON.parse(localStorage.getItem('aep-study-days') || '[]')); } catch (e) {}
+  const out = [];
+  const today = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const dd = new Date(today); dd.setDate(today.getDate() - i);
+    out.push({ label: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][dd.getDay()], on: s.has(_dayKey(dd)), today: i === 0 });
+  }
+  return out;
+}
+
+// 누적 퀴즈 정답률 — 모드 무관 합산(read/listen/dictation/cloze). localStorage.
+const QUIZ_STATS_KEY = 'aep-quiz-stats';
+function quizStats() {
+  try { return JSON.parse(localStorage.getItem(QUIZ_STATS_KEY) || '{"correct":0,"total":0,"sessions":0}'); }
+  catch (e) { return { correct: 0, total: 0, sessions: 0 }; }
+}
+function recordQuiz(correct, total) {
+  if (!total) return;
+  try {
+    const s = quizStats();
+    s.correct += correct; s.total += total; s.sessions += 1;
+    localStorage.setItem(QUIZ_STATS_KEY, JSON.stringify(s));
+  } catch (e) { /* quota */ }
+}
+
 // Study 예문 재생 — 가능하면 Shana '실제 음성'(에피소드 클립)으로, 없으면 TTS 폴백.
 // 네이티브 영어 학습엔 합성음보다 실제 발화(억양·연음·리듬)가 핵심이라 실제 음성을 우선한다.
 function playExample(c, rate, loop) {
@@ -91,9 +119,13 @@ export async function renderStudy(root) {
           <div class="study-progress-pills">
             ${getStreak() > 0 ? `<span class="study-pill streak">🔥 ${getStreak()}-day streak</span>` : ''}
             <span class="study-pill">📚 Learned ${ov.learned.toLocaleString()}</span>
+            ${(() => { const qs = quizStats(); return qs.total ? `<span class="study-pill">🎯 ${Math.round(qs.correct / qs.total * 100)}% quiz</span>` : ''; })()}
           </div>
           <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
+      </div>
+      <div class="study-week">
+        ${weekActivity().map((d) => `<span class="study-week-d${d.on ? ' on' : ''}${d.today ? ' today' : ''}"><i>${d.label}</i><b></b></span>`).join('')}
       </div>
       ${ov.due > 0 ? `
       <a class="study-due-cta" href="#/srs">
@@ -378,6 +410,7 @@ export async function renderStudy(root) {
       setTimeout(() => { idx++; answered = false; paintQ(); }, ok ? 750 : 1600);
     }
     function finishQ() {
+      recordQuiz(score, qs.length);
       const pct = Math.round((score / qs.length) * 100);
       const msg = pct >= 80 ? 'Excellent! 🎉' : pct >= 50 ? 'Well done! 💪' : 'Try again! 🔥';
       root.innerHTML = `
@@ -600,6 +633,7 @@ export async function renderStudy(root) {
     prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
 
     function finishD() {
+      recordQuiz(correct, cards.length);
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Great ears! 👂' : pct >= 50 ? 'Getting there! 💪' : 'Keep at it! 🔁';
       root.innerHTML = `
@@ -1018,6 +1052,7 @@ export async function renderStudy(root) {
     prefetch(cards.slice(0, 4).map((c) => c.term));
 
     function finishC() {
+      recordQuiz(correct, cards.length);
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Got it down! 🧩' : pct >= 50 ? 'Nice! 💪' : 'Keep practicing 🔁';
       root.innerHTML = `

@@ -1834,6 +1834,15 @@ body.logged-out #app-version { display: none; }
 .study-due-txt span { font-size: 11.5px; opacity: 0.94; }
 .study-due-go { font-size: 26px; font-weight: 300; opacity: 0.9; }
 
+/* 주간 활동 스트립 — 최근 7일 학습 점(채워짐=그날 Study 열었음) */
+.study-week { display: flex; justify-content: space-between; gap: 6px; margin: 0 2px 14px; }
+.study-week-d { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: 1 1 0; }
+.study-week-d i { font-size: 10px; font-style: normal; color: var(--text-3); font-weight: 700; }
+.study-week-d b { width: 14px; height: 14px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--separator); }
+.study-week-d.on b { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); border-color: transparent; }
+.study-week-d.today i { color: var(--tint); }
+.study-week-d.today b { box-shadow: 0 0 0 2px var(--tint-soft); }
+
 .ess-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
 .ess-back {
   flex: 0 0 auto; width: 44px; height: 44px; border: 0; border-radius: 13px; cursor: pointer;
