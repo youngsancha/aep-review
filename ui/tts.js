@@ -76,7 +76,15 @@ export async function speak(text, opts = {}) {
 
   const voice = opts.voice || getVoice();
   const rate  = opts.rate  || getRate();
-  const url = await ttsUrl(text, voice, rate);
+  let url;
+  try {
+    url = await ttsUrl(text, voice, rate);
+  } catch (e) {
+    // crypto.subtle 부재(비보안 컨텍스트: http LAN 직접접속 등) → 키 계산 불가.
+    // 던지지 말고(이전엔 여기서 throw 돼 폴백 자체가 안 됨) 브라우저 TTS 로 강등.
+    if (myGen === _gen) browserFallback(text, opts.playbackRate);
+    return;
+  }
   if (myGen !== _gen) return;
   audio.src = url;
   audio.playbackRate = opts.playbackRate || 1;  // 받아쓰기 "천천히" 등 슬로우 재생

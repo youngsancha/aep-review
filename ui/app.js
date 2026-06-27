@@ -295,3 +295,12 @@ if ('serviceWorker' in navigator) {
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && pendingReload) doReload(); });
 }
+
+// 비보안 컨텍스트(http LAN 직접접속 등)에서는 crypto.subtle 부재로 고품질 TTS 키 계산 불가 →
+// speak() 가 브라우저 기본음으로 자동 강등된다(tts.js). 왜 음질이 다른지 1회만 안내(https·설치앱에선 안 뜸).
+try {
+  if (!window.isSecureContext && !localStorage.getItem('aep-hint-insecure')) {
+    localStorage.setItem('aep-hint-insecure', '1');
+    setTimeout(() => toast('http 접속이라 음성은 브라우저 기본음으로 재생돼요 · https·설치앱 권장'), 1600);
+  }
+} catch (e) { /* no-storage/quota */ }
