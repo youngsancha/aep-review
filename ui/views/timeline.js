@@ -213,7 +213,7 @@ function heroHtml({total, ready}) {
 function featuredHtml(e) {
   if (!e) return '';
   const title = (e.title || '').replace(/^\d+\s*[-:.]\s*/, '');
-  const meta = [fmtDate(e.pub_date), e.duration_sec ? fmtDuration(e.duration_sec) : '', e.vocab_count ? `${e.vocab_count} vocab` : '']
+  const meta = [fmtDate(e.pub_date), e.duration_sec ? fmtDuration(e.duration_sec) : '']
     .filter(Boolean).join(' · ');
   const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
   return `
@@ -251,7 +251,6 @@ function rowHtml(e) {
   const isNew = e.pub_date && (Date.now() - new Date(e.pub_date).getTime()) < 21 * 864e5;
   if (isNew) chips.push('<span class="chip new-ep">NEW</span>');
   if (done) chips.push('<span class="chip done-ep">✓ Played</span>');
-  if (e.vocab_count > 0) chips.push(`<span class="chip vocab">${e.vocab_count} vocab</span>`);
   if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
 
   return `

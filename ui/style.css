@@ -108,8 +108,10 @@ body.on-episode {
 }
 #brand-icon {
   width: 28px; height: 28px; border-radius: 6px;
-  flex: 0 0 auto;
+  flex: 0 0 auto; display: block;
 }
+/* 브랜드 로고는 메인/상위 탭(뒤로가기 숨김)에서만 — 하위 화면(에피소드 등 뒤로가기 노출)에선 숨김 */
+#back-btn:not([hidden]) + #brand #brand-icon { display: none; }
 #page-title {
   font-family: var(--font);
   font-weight: 700;
@@ -2041,10 +2043,10 @@ a { color: var(--tint); }
   color: transparent; font-size: 0; line-height: 0; overflow: hidden;  /* "한" 글자는 막대로 대체 */
 }
 .tx-trans-ko {
-  /* 한글 번역은 '고정 크기'(23px) — A−/A＋(본문 --tx-scale)와 함께 커지/작아지지 않는다(사용자 요청).
-     본문(영어)만 A−/A＋ 로 조절되고, 번역은 늘 같은 크기로 안정적으로 보인다(요청에 따라 한 단계 키움 21→23).
+  /* 한글 번역 크기는 본문(영어)의 A−/A＋(--tx-scale)와 '독립'된 별도 축(--ko-scale)으로 조절된다.
+     본문은 A−/A＋, 번역은 '가' 칩 — 둘이 함께 움직이지 않는다(사용자 요청). 기준 23px × --ko-scale.
      한글은 600 이 다소 무거워 500 으로 — 자막처럼 가볍고 읽기 좋게. */
-  font-family: var(--font); font-size: 23px; line-height: 1.55;
+  font-family: var(--font); font-size: calc(23px * var(--ko-scale, 1)); line-height: 1.55;
   color: var(--text); font-weight: 500; letter-spacing: -0.01em;
   align-self: center;
 }
@@ -2052,6 +2054,11 @@ a { color: var(--tint); }
 /* 번역 토글 on 상태 */
 .tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }
+
+/* 한국어 번역 크기 칩('가') — 탭마다 작게→보통→크게→아주크게 순환. 기본(1.0) 아닐 때만 on 강조 */
+.tx-ko-size-btn { min-width: 34px; }
+.tx-ko-size-btn.on { background: var(--tint); color: #fff; }
+.tx-ko-size-btn.on:hover { background: var(--tint-hover); color: #fff; }
 
 /* ========================================================================
    다크 테마 (세련된 색감) — 명시적 [data-theme="dark"] 또는 시스템 자동

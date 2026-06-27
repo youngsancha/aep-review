@@ -148,11 +148,11 @@ export async function renderEpisode(root, idStr, tStr) {
   const $txSeekRem    = document.getElementById('tx-seek-rem');
   let txScrub = null;
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | loop(무한반복) | auto5(5회반복 후 다음문단 자동이동)
+  let shadowMode = 'off';  // off | loop(무한반복) | auto5/auto10(5·10회반복 후 다음문단 자동이동)
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
-  let loopCount = 0;       // auto5: 현재 문단을 몇 번 반복했는지(0~REPEAT_N)
-  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→auto5 순환) — refresh 에서 종료시 리셋하려 상위 선언
-  const REPEAT_N = 5;      // 5× Auto: 한 문단을 다섯 번 반복 후 다음 문단으로
+  let loopCount = 0;       // auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
 
@@ -199,15 +199,15 @@ export async function renderEpisode(root, idStr, tStr) {
 
     // 쉐도잉 반복: 누를 때 확정한 '문단'을 끝(마지막 문장)에서 처음(첫 문장)으로 되돌린다.
     //  loop  = 무한 반복.
-    //  auto5 = 5회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고 구간은 시크로 건너뜀).
+    //  auto5/auto10 = 5·10회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고 구간은 시크로 건너뜀).
     //          마지막 문단까지 끝나면 쉐도잉을 끄고 그대로 계속 재생.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0 && !player.paused) {
+    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0 && !player.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
         if (shadowMode === 'loop') {
           player.seek(toAudio(loopStart) + 0.01);
         } else {
           loopCount++;
-          if (loopCount < REPEAT_N) {
+          if (loopCount < (REPEAT_OF[shadowMode] || 5)) {
             player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
           } else {
             loopCount = 0;
@@ -397,7 +397,7 @@ export async function renderEpisode(root, idStr, tStr) {
     let t = txTime();
     // 반복 모드: 문단 끝에서 처음으로 되감은 직후 txTime 이 HL_LAG(0.2s)만큼 뒤로 가 직전 문단이
     // 잠깐 잡히는 것 방지 — 활성 판정 시각을 반복 문단 시작 아래로 안 내려가게 클램프.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) t = Math.max(t, loopStart);
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
     // 광고 경계는 '정확한 컷'이라 HL_LAG 미적용한 실제 오디오 위치로 판정 → 스킵 직후 즉시 본편 인식.
@@ -458,7 +458,7 @@ export async function renderEpisode(root, idStr, tStr) {
       // 반복(loop/auto5) 중 같은 문단 안에서는 문장이 진행돼도 화면을 움직이지 않는다(사용자 요청):
       // 문단 진입 시(paraChanged) 한 번만 위치를 잡고, 끝→처음 되감기 때 '아래로 흔들렸다 되돌아오던'
       // 스크롤을 없앤다. (auto5 가 '다음 문단'으로 넘어갈 때는 paraChanged 라 정상 재배치된다.)
-      const inLoopPara = (shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0 && newPara === loopPara;
+      const inLoopPara = (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0 && newPara === loopPara;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
@@ -529,7 +529,7 @@ export async function renderEpisode(root, idStr, tStr) {
       else if (para) txSec = parseFloat(para.dataset.start);
       if (txSec == null) return;
       // 반복 중에 다른 문장을 탭하면, 그 문장이 속한 문단으로 반복 대상을 옮긴다(auto5 카운트도 리셋).
-      if (shadowMode === 'loop' || shadowMode === 'auto5') {
+      if (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') {
         const pEl = para || (sent && sent.closest('.tx-para'));
         if (pEl) { setLoopPara(paraEls.indexOf(pEl)); loopCount = 0; }
       }
@@ -608,11 +608,12 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → auto5(5× Auto: 5회 후 다음문단) → off … 순환.
+  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → auto5(5× Auto) → auto10(10× Auto) → off … 순환.
   const SHADOW = [
-    { mode: 'off',   label: '🔁 Shadow', on: false },
-    { mode: 'loop',  label: '🔁 Repeat', on: true },
-    { mode: 'auto5', label: '5× Auto',   on: true },
+    { mode: 'off',    label: '🔁 Shadow', on: false },
+    { mode: 'loop',   label: '🔁 Repeat', on: true },
+    { mode: 'auto5',  label: '5× Auto',   on: true },
+    { mode: 'auto10', label: '10× Auto',  on: true },
   ];
   const $shadow = document.getElementById('tx-shadow');
   // 한 '문단'을 반복 대상으로 확정 — pIdx 의 문단 시작/끝(자막시각)을 loopStart/End 로.
@@ -651,7 +652,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $shadow.textContent = s.label;
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
-    if (shadowMode === 'loop' || shadowMode === 'auto5') confirmLoopBoundary();
+    if (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') confirmLoopBoundary();
     else loopPara = -1;
     if (player.paused) player.play();  // 모드 전환 즉시 이어 재생
   });
@@ -718,6 +719,26 @@ export async function renderEpisode(root, idStr, tStr) {
   applyTxScale();
   document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
   document.getElementById('tx-fs-dn')?.addEventListener('click', (e) => { e.stopPropagation(); txScale -= 0.1; applyTxScale(); });
+
+  // 한국어 번역 글자 크기 ('가' 칩) — A−/A＋(본문 --tx-scale)와 '완전 독립'. 별도 --ko-scale 을
+  // 번역카드(.tx-notes; 노드는 유지되고 innerHTML 만 갱신됨)에 둬 문장이 바뀌어도 크기가 유지된다.
+  // 추가 +/− 버튼 없이 칩 하나를 탭할 때마다 작게→보통→크게→아주크게 순환(cnpod-review 와 동일).
+  const KO_KEY = 'aep-tx-ko-scale';
+  const KO_STEPS = [0.85, 1.0, 1.22, 1.45];
+  let koIdx = (() => { const i = KO_STEPS.indexOf(parseFloat(localStorage.getItem(KO_KEY) || '1')); return i >= 0 ? i : 1; })();
+  const $koSize = document.getElementById('tx-ko-size');
+  function applyKoScale() {
+    const s = KO_STEPS[koIdx];
+    if ($notes) $notes.style.setProperty('--ko-scale', String(s));
+    if ($koSize) $koSize.classList.toggle('on', s !== 1);  // 기본(1.0)이 아닐 때만 활성 표시
+    try { localStorage.setItem(KO_KEY, String(s)); } catch (e) {}
+  }
+  applyKoScale();
+  $koSize?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    koIdx = (koIdx + 1) % KO_STEPS.length;
+    applyKoScale();
+  });
 
   // ⏮/⏭ = '에피소드(곡)' 단위 이동 (미디어 플레이어 표준) — 트랜스크립트 시트와 메인 화면이 공유.
   //   ⏭ 다음 → 바로 다음 에피소드.
@@ -794,7 +815,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
     let t = txTime();
     // 반복 모드: 되감기 직후 HL_LAG 로 t 가 직전 문장 단어로 내려가 카라오케가 깜빡이던 것 방지.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5') && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) t = Math.max(t, loopStart);
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
@@ -1070,10 +1091,11 @@ function transcriptSheetHtml(segments, title, sub) {
         <div class="tx-card">
           <div class="tx-toolbar">
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="Korean translation">KR</button>
+            <button id="tx-ko-size" class="tx-toggle tx-ko-size-btn" aria-label="Translation text size">가</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="Decrease text size">A−</button>
-            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="Increase text size">A＋</button>
+            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="Increase text size">A+</button>
           </div>
           <div class="tx-scroll">
             ${body}
