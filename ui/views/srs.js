@@ -206,7 +206,7 @@ export async function renderSrs(root) {
       const ctxBtn = root.querySelector('.srs-context-btn');
       if (ctxBtn) ctxBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        playSentenceClip(ctxBtn.dataset.url, ctxBtn.dataset.s, ctxBtn.dataset.e, ctxBtn);
+        playSentenceClip(ctxBtn.dataset.url, ctxBtn.dataset.s, ctxBtn.dataset.e, ctxBtn, undefined, false, 0, () => speak(example));
       });
       attachBookFlip(card, (dir) => {
         if (dir === 'right') grade('good');

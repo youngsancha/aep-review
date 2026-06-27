@@ -38,7 +38,9 @@ function playExample(c, rate, loop) {
     // 단어수 기반 최소 재생길이 — whisper 타임스탬프 압축으로 클립이 말 도중 끊기는 것 방지(늘리기만).
     const wc = (c.example_sentence || '').trim().split(/\s+/).filter(Boolean).length;
     const minDur = wc >= 4 ? Math.min(wc * 0.33, 12) : 0;
-    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate, loop, minDur);
+    // 클립(R2) 실패 시 TTS 로 캐스케이드 — 드릴이 무음으로 멈추지 않게(AUDIT I2).
+    playSentenceClip(c.audio_url, c.sentence_start_sec, c.sentence_end_sec, null, rate, loop, minDur,
+      () => speak(c.example_sentence, rate ? { playbackRate: rate } : undefined));
   } else {
     speak(c.example_sentence, rate ? { playbackRate: rate } : undefined);  // TTS 폴백은 단발
   }
@@ -475,7 +477,7 @@ export async function renderStudy(root) {
         root.querySelector('#sent-reveal').hidden = false;
         e.target.disabled = true;
         const cx = root.querySelector('#sent-ctx');
-        if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); playSentenceClip(cx.dataset.url, cx.dataset.s, cx.dataset.e, cx); });
+        if (cx) cx.addEventListener('click', (ev) => { ev.stopPropagation(); playSentenceClip(cx.dataset.url, cx.dataset.s, cx.dataset.e, cx, undefined, false, 0, () => speak(c.example_sentence)); });
       });
       wireSentSwipe(card, advance);
     }

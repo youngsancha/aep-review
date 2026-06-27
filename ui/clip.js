@@ -17,7 +17,9 @@ export function stopClip() {
 
 // url: 정제된 CDN mp3, start/end: 초. btn: 재생중 표시할 버튼(선택). rate: 재생속도. loop: 끝에서
 // 처음으로 되감아 무한 반복(드릴 자동반복용). 다음 카드/정지 시 stopClip 으로 종료.
-export function playSentenceClip(url, start, end, btn, rate, loop, minDur) {
+// onError: 클립(R2/CDN) 로드·재생 실패 시 호출 — 호출부가 speak() TTS 로 캐스케이드(무음 방지, AUDIT I2).
+//   clip.js 는 tts.js 를 import 하지 않고 콜백만 받아 결합도를 낮춘다.
+export function playSentenceClip(url, start, end, btn, rate, loop, minDur, onError) {
   if (!url) return;
   const toggleOff = (_btn === btn && _clip && btn);  // 같은 버튼 재탭 → 정지(버튼 없으면 토글 안 함)
   stopClip();
@@ -40,7 +42,7 @@ export function playSentenceClip(url, start, end, btn, rate, loop, minDur) {
   const atEnd = () => { if (loop) { try { a.currentTime = s; } catch (_) {} a.play().catch(() => {}); } else stopClip(); };
   a.ontimeupdate = () => { if (a.currentTime >= e) atEnd(); };  // 문장 끝 → 반복 or 정지
   a.onended = atEnd;
-  a.onerror = stopClip;
+  a.onerror = () => { stopClip(); if (typeof onError === 'function') onError(); };  // 클립 실패 → 호출부 TTS 폴백
 }
 
 // 다른 화면으로 이동하면 즉시 정지 — 모듈 로드 시 1회만 등록(누적 없음).
