@@ -165,10 +165,24 @@ export async function renderStudy(root) {
       </li>`;
   }
 
+  // 검색/필터 — term/뜻/예문에 q 부분일치. q 는 loadKind 에서 kind 전환 시 ''로 초기화.
+  function matchQ(v) {
+    if (!q) return true;
+    const s = q.toLowerCase();
+    return (v.term || '').toLowerCase().includes(s)
+      || (v.definition || '').toLowerCase().includes(s)
+      || (v.example_sentence || '').toLowerCase().includes(s);
+  }
+  function xlistHtml() {
+    const list = items.filter(matchQ);
+    if (!list.length) return '<div class="empty">No matches.</div>';
+    return `<ul class="study-xlist">${list.map(rowHtml).join('')}</ul>`;
+  }
   function listHtml() {
     if (!items.length) return '<div class="empty">No expressions.</div>';
     return `<div class="study-swipe-tip"><b>Swipe →</b> to mark <b>Known</b> · <b>←</b> to undo · tap card for audio</div>`
-      + `<ul class="study-xlist">${items.map(rowHtml).join('')}</ul>`;
+      + `<input class="study-search" id="study-search" type="search" inputmode="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Search expressions…" value="${escapeHtml(q)}" />`
+      + `<div id="study-xlist-host">${xlistHtml()}</div>`;
   }
 
   async function markKnownLi(li) {
@@ -223,7 +237,7 @@ export async function renderStudy(root) {
     });
     ['pointercancel', 'pointerleave'].forEach((ev) => li.addEventListener(ev, reset));
   }
-  function wireList() {
+  function wireRows() {
     // 예문 탭 → 맥락 실음성(기존). stopPropagation 으로 카드 탭(발음)과 분리.
     root.querySelectorAll('.study-x-ex.tappable').forEach((el) =>
       el.addEventListener('click', (e) => {
@@ -261,6 +275,17 @@ export async function renderStudy(root) {
       wireSwipeKnown(li);
     });
     prefetch([...root.querySelectorAll('.study-x-term')].slice(0, 8).map((e) => e.textContent));
+  }
+
+  // 검색창은 한 번만 그리고(포커스·IME 유지), 입력 시 결과 호스트(#study-xlist-host)만 다시 그린다.
+  function wireList() {
+    const search = root.querySelector('#study-search');
+    if (search) search.addEventListener('input', () => {
+      q = search.value;
+      const host = root.querySelector('#study-xlist-host');
+      if (host) { host.innerHTML = xlistHtml(); wireRows(); }
+    });
+    wireRows();
   }
 
   function paintShell() {
