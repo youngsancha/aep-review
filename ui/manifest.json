@@ -10,10 +10,6 @@
   "theme_color": "#cc6cff",
   "lang": "en-US",
   "categories": ["education"],
-  "shortcuts": [
-    {"name": "오늘 복습", "short_name": "복습", "url": "/#/srs", "description": "오늘 복습할 표현 플래시카드"},
-    {"name": "표현 학습", "short_name": "학습", "url": "/#/study", "description": "에피소드 표현 학습 허브"}
-  ],
   "icons": [
     {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
     {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
