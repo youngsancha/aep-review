@@ -126,6 +126,16 @@ test('accuracyPct: ACC 모드만 n 가중(speak/prod 제외)', () => {
   assert.equal(P.accuracyPct([]), null);
 });
 
+// ─────────────────────────── 현재 밴드 추정 ───────────────────────────
+test('estimateBand: Fluency Index → 현재 수준 밴드(읽기전용)', () => {
+  assert.equal(P.estimateBand(0), 'A1');
+  assert.equal(P.estimateBand(10), 'A2');
+  assert.equal(P.estimateBand(20), 'B1');
+  assert.equal(P.estimateBand(40), 'B2');
+  assert.equal(P.estimateBand(60), 'C1');
+  assert.equal(P.estimateBand(85), 'C2');
+});
+
 // ─────────────────────────── ISO 주차 ───────────────────────────
 test('isoWeek: 형식 YYYY-Www', () => {
   assert.match(P.isoWeek(new Date('2026-06-27T00:00:00Z')), /^\d{4}-W\d{2}$/);

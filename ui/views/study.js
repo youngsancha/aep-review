@@ -6,7 +6,7 @@ import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
 import { renderEssentials } from '/views/essentials.js';
-import { recordMeasure, readProficiency, recordSnapshot, setTarget, markSeen, loadSeen, loadSnapshots, weakestAxis } from '/proficiency.js';
+import { recordMeasure, readProficiency, recordSnapshot, markSeen, loadSeen, loadSnapshots, weakestAxis } from '/proficiency.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
@@ -119,9 +119,7 @@ export async function renderStudy(root) {
   // 미측정 축(드릴 기록 없음)은 '—'·회색으로 표시해 "아직 모름"을 솔직히 드러낸다.
   function profCardHtml() {
     const cefr = prof.cefr;
-    const cefrSub = cefr.nextLabel
-      ? `다음 ${cefr.nextLabel}·${cefr.toNext.toLocaleString()} 표현`
-      : '최상위 밴드';
+    const vocabSub = cefr.nextLabel ? `어휘 ${cefr.band} · 다음 ${cefr.nextLabel}` : `어휘 ${cefr.band}`;
     const axes = PROF_AXES.map(([k, label, emoji]) => {
       const v = prof.scores[k];
       const has = v != null;
@@ -140,8 +138,8 @@ export async function renderStudy(root) {
     return `
       <div class="prof-card">
         <div class="prof-head">
-          <div class="prof-index"><b>${prof.index}</b><span>/100</span><button class="prof-goal" id="prof-goal">→ ${prof.band} 목표 ⇅</button></div>
-          <div class="prof-cefr">≈ <b>${cefr.band}</b><span>${cefrSub}</span></div>
+          <div class="prof-index"><b>${prof.index}</b><span>/100<i>→ 목표 C2</i></span></div>
+          <div class="prof-cefr">현재 ≈ <b>${prof.currentBand}</b><span>${vocabSub}</span></div>
         </div>
         <div class="prof-axes">${axes}</div>
         ${profSpark()}
@@ -424,12 +422,6 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
-    // 목표 밴드 순환(B2→C1→C2) — 모든 축 점수가 새 목표 기준으로 재계산되게 전체 재렌더.
-    root.querySelector('#prof-goal')?.addEventListener('click', () => {
-      const order = ['B2', 'C1', 'C2'];
-      setTarget(order[(order.indexOf(prof.band) + 1) % order.length]);
-      renderStudy(root);
-    });
     root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);
     // 오늘의 플랜 — 약점 축에 맞는 드릴로 직행.
     root.querySelector('#plan-go')?.addEventListener('click', (e) => {

@@ -186,17 +186,25 @@ export function accuracyPct(log) {
 //   db: { known, corpusTotal, retentionFrac }
 export function readProficiency(db = {}) {
   const log = loadLog();
-  const band = getTarget();
-  const target = bandTargets(band);
+  const target = bandTargets('C2');   // 목표는 네이티브(C2) 고정 — 점수를 깎아 올리는 레버 없음
   const raw = rawFromLog(log, { ...db, shadowReps: getShadowReps() });
   const scores = axisScores(raw, target);
   const index = fluencyIndex(scores);
   return {
-    band, target, raw, scores, index,
+    band: 'C2', target, raw, scores, index,
+    currentBand: estimateBand(index),   // 측정에서 추정한 '현재 수준'(읽기전용)
     cefr: cefrBand(db.known || 0),
     accuracy: accuracyPct(log),
     shadowReps: getShadowReps(),
   };
+}
+
+// 현재 수준 ≈ CEFR 밴드 추정(읽기전용 출력) — Fluency Index(네이티브 대비 %)를 밴드로 환산.
+// 목표는 항상 C2 고정이라 '내 목표'와 '내 현재'를 한 다이얼에 섞지 않는다(밴드는 돌리는 게 아니라 읽는 값).
+export const BAND_CUTS = [['C2', 80], ['C1', 55], ['B2', 32], ['B1', 15], ['A2', 5]];
+export function estimateBand(index) {
+  for (const [b, cut] of BAND_CUTS) if (index >= cut) return b;
+  return 'A1';
 }
 
 // 가장 약한(달성률 최저) 축 — 적응형 'Today's plan' 이 여기로 학습을 민다.
