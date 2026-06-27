@@ -19,6 +19,14 @@ const PROF_AXES = [
   ['production', '산출', '🗣️'],
   ['automaticity', '자동화', '⚡'],
 ];
+// 각 축을 '무엇을 하면 오르는가' — ⓘ 안내 시트가 그대로 보여준다. (proficiency.js 계산식과 1:1)
+const AXIS_HELP = {
+  breadth:      { how: '아는 표현을 오른쪽으로 스와이프해 <b>Known</b>(마스터)', where: '표현 목록 · Sentences 덱(✓Known)', goal: '전체 표현의 90% 마스터' },
+  retention:    { how: '매일 <b>복습(due)</b>을 풀어 간격을 90일↑로 키우기', where: '오늘의 플랜 → 복습(SRS)', goal: '학습카드의 75%가 간격 90일↑' },
+  listening:    { how: '<b>받아쓰기·클로즈·듣기</b> 정확도 ↑ — 레벨체크는 처음 보는 문장', where: '✍️Dictation · 🧩Cloze · 🎧Listen · 🎯레벨체크', goal: '정확도 92% (레벨체크 후 unseen만 반영)' },
+  production:   { how: '또박또박 <b>말해서</b> 인식 정확도 ↑', where: '🎤Speak · 🗣️KR→EN (마이크 필요)', goal: '평균 단어일치 85%' },
+  automaticity: { how: '퀴즈를 <b>빨리 답</b> + 에피소드 <b>쉐도잉 반복</b>', where: 'Quiz/Listen 속도 · 플레이어 🔁Repeat·5×·10×', goal: '응답 ≤2.2초 + 쉐도잉 400회' },
+};
 
 // 데일리 학습 스트릭 — 매일 꾸준함이 유창성의 핵심. Study 를 연 날을 기록해 연속일을 센다(추가형).
 const _dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -124,7 +132,7 @@ export async function renderStudy(root) {
       const v = prof.scores[k];
       const has = v != null;
       return `
-        <div class="prof-axis${has ? '' : ' un'}">
+        <div class="prof-axis tappable${has ? '' : ' un'}" data-axis="${k}" role="button" tabindex="0" aria-label="${label} 올리는 법">
           <span class="prof-axis-l">${emoji} ${label}</span>
           <span class="prof-axis-bar"><i style="width:${has ? v : 0}%"></i></span>
           <span class="prof-axis-v">${has ? v : '—'}</span>
@@ -145,8 +153,44 @@ export async function renderStudy(root) {
         ${profSpark()}
         ${weakHtml}
         <button class="prof-levelcheck" id="prof-levelcheck"><span>🎯 레벨 체크</span><i>처음 보는 문장 받아쓰기 — 외운 게 아닌 실제 청해를 비편향 측정</i></button>
+        <button class="prof-help" id="prof-info">ⓘ 점수 올리는 법 — 무엇을 공부하면 오르나</button>
         <div class="prof-note">이 앱이 보여준 표현·드릴 기록 기준 · unseen(레벨체크) 우선 · ASR은 ‘알아들힘’(발음 정확도 아님)</div>
       </div>`;
+  }
+
+  // ⓘ 안내 시트 — 5축이 무엇이고 각각 '무엇을 하면 오르는가'를 앱 안에서 바로. focusKey 축을 강조.
+  function openProfInfo(focusKey) {
+    const rows = PROF_AXES.map(([k, label, emoji]) => {
+      const h = AXIS_HELP[k]; const v = prof.scores[k];
+      return `
+        <div class="pinfo-axis${k === focusKey ? ' focus' : ''}" id="pinfo-${k}">
+          <div class="pinfo-axis-h">${emoji} <b>${label}</b><span>${v != null ? v + '/100' : '미측정'}</span></div>
+          <div class="pinfo-line"><i>이렇게</i> ${h.how}</div>
+          <div class="pinfo-line"><i>어디서</i> ${escapeHtml(h.where)}</div>
+          <div class="pinfo-line"><i>만점</i> ${escapeHtml(h.goal)}</div>
+        </div>`;
+    }).join('');
+    const back = document.createElement('div');
+    back.className = 'pinfo-backdrop';
+    back.innerHTML = `
+      <div class="pinfo-sheet" role="dialog" aria-modal="true" aria-label="점수 올리는 법">
+        <div class="pinfo-grab"></div>
+        <div class="pinfo-head"><h3>점수 올리는 법</h3><button class="pinfo-x" id="pinfo-x" aria-label="닫기">✕</button></div>
+        <div class="pinfo-body">
+          <p class="pinfo-intro"><b>Fluency Index</b>는 5개 능력을 <b>네이티브(C2) 목표 대비 달성률</b>로 합친 한 숫자예요. 현재 ≈ <b>${prof.currentBand}</b> · 목표 C2. 아래 축을 올리면 지수가 오릅니다.</p>
+          ${rows}
+          <div class="pinfo-tip">💡 어느 걸 할지 고민되면 <b>🎯 오늘의 플랜</b>을 누르세요 — 가장 약한 축으로 바로 보냅니다.</div>
+          <p class="pinfo-caveat">측정은 이 앱이 보여준 표현·드릴 기록 기준입니다. 레벨체크(처음 보는 문장)를 우선하고, 말하기는 발음 정확도가 아니라 ‘알아들힘’을 봅니다.</p>
+        </div>
+      </div>`;
+    document.body.appendChild(back);
+    requestAnimationFrame(() => back.classList.add('open'));
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    function close() { back.classList.remove('open'); document.removeEventListener('keydown', onKey); setTimeout(() => back.remove(), 260); }
+    back.addEventListener('click', (e) => { if (e.target === back) close(); });
+    back.querySelector('#pinfo-x')?.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    if (focusKey) requestAnimationFrame(() => back.querySelector(`#pinfo-${focusKey}`)?.scrollIntoView({ block: 'center' }));
   }
 
   // Fluency Index 주간 추세 스파크라인 — 스냅샷 2개 이상일 때만(최근 12주).
@@ -423,6 +467,13 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
     root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);
+    // ⓘ 안내: 약점 축을 강조해 열기. 각 축 행을 탭하면 그 축으로 포커스.
+    root.querySelector('#prof-info')?.addEventListener('click', () => openProfInfo(weakestAxis(prof.scores)));
+    root.querySelectorAll('.prof-axis[data-axis]').forEach((el) => {
+      const open = () => openProfInfo(el.dataset.axis);
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
     // 오늘의 플랜 — 약점 축에 맞는 드릴로 직행.
     root.querySelector('#plan-go')?.addEventListener('click', (e) => {
       const act = e.currentTarget.dataset.act;

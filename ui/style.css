@@ -1696,6 +1696,42 @@ body.logged-out #app-version { display: none; }
 .prof-levelcheck span { font-size: 14px; font-weight: 800; color: var(--tint); }
 .prof-levelcheck i { font-size: 11px; font-style: normal; font-weight: 600; color: var(--text-3); }
 .prof-levelcheck:active { transform: scale(0.99); }
+.prof-axis.tappable { cursor: pointer; }
+.prof-help { width: 100%; margin-top: 10px; border: 0; background: transparent; color: var(--tint); cursor: pointer; font-family: var(--font); font-size: 12.5px; font-weight: 700; padding: 9px; text-align: center; border-radius: 10px; }
+.prof-help:active { background: var(--tint-soft); }
+
+/* ── ⓘ 점수 안내 바텀시트 (무엇을 하면 각 축이 오르나) ── */
+.pinfo-backdrop {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.4); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; transition: opacity 0.24s ease;
+}
+.pinfo-backdrop.open { opacity: 1; }
+.pinfo-sheet {
+  width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: var(--surface); border-radius: 20px 20px 0 0;
+  padding: 6px 18px calc(22px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.28);
+  transform: translateY(102%); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pinfo-backdrop.open .pinfo-sheet { transform: translateY(0); }
+.pinfo-grab { width: 40px; height: 4px; border-radius: 2px; background: var(--separator); margin: 8px auto 2px; }
+.pinfo-head { display: flex; align-items: center; justify-content: space-between; }
+.pinfo-head h3 { margin: 6px 0 12px; font-size: 17px; font-weight: 800; color: var(--text); }
+.pinfo-x { border: 0; background: var(--surface-2); color: var(--text-2); width: 30px; height: 30px; border-radius: 50%; font-size: 13px; cursor: pointer; }
+.pinfo-intro { font-size: 13px; line-height: 1.55; color: var(--text-2); margin: 0 0 14px; }
+.pinfo-intro b { color: var(--text); font-weight: 800; }
+.pinfo-axis { background: var(--surface-2); border-radius: 14px; padding: 12px 14px; margin-bottom: 9px; }
+.pinfo-axis.focus { box-shadow: 0 0 0 2px var(--tint) inset; }
+.pinfo-axis-h { font-size: 14.5px; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; }
+.pinfo-axis-h b { font-weight: 800; margin-left: 3px; }
+.pinfo-axis-h span { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--text-3); }
+.pinfo-line { font-size: 12.5px; line-height: 1.5; color: var(--text-2); margin-top: 3px; }
+.pinfo-line i { font-style: normal; font-weight: 800; color: var(--text-3); font-size: 10.5px; display: inline-block; min-width: 44px; }
+.pinfo-line b { font-weight: 700; color: var(--text); }
+.pinfo-tip { background: var(--tint-soft); color: var(--tint); border-radius: 12px; padding: 11px 13px; font-size: 12.5px; line-height: 1.5; font-weight: 600; margin: 13px 0 11px; }
+.pinfo-caveat { font-size: 11px; line-height: 1.55; color: var(--text-3); margin: 0; }
 
 /* ── "알아요" 마크 버튼 + 마스터된 행 ── */
 .study-x-know {
