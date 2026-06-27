@@ -185,6 +185,18 @@ export async function studyOverview() {
   return { total, learned, due, dueReview, dueNew, known, byKind };
 }
 
+// 보존력(retention) 통계 — Proficiency 5축 중 '안 잊는 힘'. 학습(reps>0) 카드 중 장기간격(>90d) 비율.
+// strong(>90d) 에는 markKnown(interval 365)·실제 장기복습 도달분이 모두 포함된다. mature(>21d)는 참고치.
+// (lapse 율은 SM-2 가 again 시 reps=0 으로 리셋해 신규처럼 위장 → 별도 추적 필요, 본 버전 범위 밖.)
+export async function retentionStats() {
+  const [learned, strong, mature] = await Promise.all([
+    _count('srs_cards', (q) => q.gt('reps', 0)),
+    _count('srs_cards', (q) => q.gt('reps', 0).gt('interval_days', 90)),
+    _count('srs_cards', (q) => q.gt('reps', 0).gt('interval_days', 21)),
+  ]);
+  return { learned, strong, mature, retentionFrac: learned ? strong / learned : 0 };
+}
+
 // "알아요" — 해당 vocab 의 SRS 카드를 마스터(1년 뒤 복습) 상태로. 진도(known)에 즉시 반영된다.
 export async function markKnown(vocabId) {
   const due = new Date();

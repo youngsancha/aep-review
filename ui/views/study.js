@@ -6,6 +6,7 @@ import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
 import { renderEssentials } from '/views/essentials.js';
+import { recordMeasure } from '/proficiency.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
@@ -356,7 +357,7 @@ export async function renderStudy(root) {
 
   // ── 4지선다 퀴즈 (현재 종류의 표현으로 능동 회상) ──
   const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
-  function startQuiz(mode = 'read', source = null) {
+  function startQuiz(mode = 'read', source = null, unseen = false) {
     stopClip();
     const pool = (source || items).filter((v) => v.term && v.definition);
     if (pool.length < 4) {
@@ -370,6 +371,7 @@ export async function renderStudy(root) {
       return { correct, options: _shuffle([correct, ...others]) };
     });
     let idx = 0, score = 0, answered = false;
+    let tShown = 0; const lats = [];   // 응답 지연(자동화 축) — 카드 표시→선택까지 ms
 
     function paintQ() {
       if (idx >= qs.length) return finishQ();
@@ -393,10 +395,12 @@ export async function renderStudy(root) {
       if (mode === 'listen') requestAnimationFrame(() => speak(c.term));
       root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
+      tShown = performance.now();   // 표시 시각 기록(다음 클릭까지가 응답 지연)
     }
     function answerQ(btn, c) {
       if (answered) return;
       answered = true;
+      if (tShown) lats.push(performance.now() - tShown);   // 응답 지연 누적
       const ok = btn.dataset.ok === '1';
       if (ok) { score++; btn.classList.add('right'); }
       else { btn.classList.add('wrong'); root.querySelectorAll('.quiz-opt').forEach((b) => { if (b.dataset.ok === '1') b.classList.add('right'); }); }
@@ -411,6 +415,8 @@ export async function renderStudy(root) {
     }
     function finishQ() {
       recordQuiz(score, qs.length);
+      const med = lats.length ? [...lats].sort((a, b) => a - b)[lats.length >> 1] : 0;
+      recordMeasure(mode, score / qs.length, qs.length, { ms: med, unseen });
       const pct = Math.round((score / qs.length) * 100);
       const msg = pct >= 80 ? 'Excellent! 🎉' : pct >= 50 ? 'Well done! 💪' : 'Try again! 🔥';
       root.innerHTML = `
@@ -423,7 +429,7 @@ export async function renderStudy(root) {
             <button class="study-cta-btn secondary" id="q-home">Study Home</button>
           </div>
         </div>`;
-      root.querySelector('#q-again').addEventListener('click', () => startQuiz(mode, source));
+      root.querySelector('#q-again').addEventListener('click', () => startQuiz(mode, source, unseen));
       root.querySelector('#q-home').addEventListener('click', () => renderStudy(root));
     }
     paintQ();
@@ -620,9 +626,9 @@ export async function renderStudy(root) {
       return `<span class="dw ${ok ? 'hit' : 'miss'}">${escapeHtml(tok)}</span>`;
     }).join('');
   }
-  function startDictation() {
+  function startDictation(source = null, unseen = false) {
     stopClip();
-    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
+    const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
       if (el) el.innerHTML = '<div class="empty">No expressions with examples yet.</div>';
@@ -634,6 +640,7 @@ export async function renderStudy(root) {
 
     function finishD() {
       recordQuiz(correct, cards.length);
+      recordMeasure('dictation', correct / cards.length, cards.length, { unseen });
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Great ears! 👂' : pct >= 50 ? 'Getting there! 💪' : 'Keep at it! 🔁';
       root.innerHTML = `
@@ -646,7 +653,7 @@ export async function renderStudy(root) {
             <button class="study-cta-btn secondary" id="d-home">Study Home</button>
           </div>
         </div>`;
-      root.querySelector('#d-again').addEventListener('click', startDictation);
+      root.querySelector('#d-again').addEventListener('click', () => startDictation(source, unseen));
       root.querySelector('#d-home').addEventListener('click', () => renderStudy(root));
     }
     function paintD() {
@@ -717,6 +724,7 @@ export async function renderStudy(root) {
 
     function finishSp() {
       const avg = scored ? Math.round(scoreSum / scored) : 0;
+      if (scored) recordMeasure('speak', avg / 100, scored);   // 산출(Production) 축 — 이전엔 버려지던 점수
       const msg = !scored ? 'Practice done! 🎤' : avg >= 80 ? 'Native-level! 🌟' : avg >= 55 ? 'Good — clearer! 💪' : 'Repeat slowly 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
@@ -891,6 +899,7 @@ export async function renderStudy(root) {
 
     function finishPr() {
       const avg = scored ? Math.round(scoreSum / scored) : 0;
+      if (scored) recordMeasure('prod', avg / 100, scored);   // 산출(KR→EN) 축
       const msg = !scored ? 'Practice done! 🗣️' : avg >= 80 ? 'Native-like! 🌟' : avg >= 55 ? 'Good — more natural! 💪' : 'Translate slowly 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
@@ -1038,9 +1047,9 @@ export async function renderStudy(root) {
     }
     return out + escapeHtml(ex.slice(last));
   }
-  function startCloze() {
+  function startCloze(source = null, unseen = false) {
     stopClip();
-    const pool = items.filter((v) => v.example_sentence && v.term &&
+    const pool = (source || items).filter((v) => v.example_sentence && v.term &&
       v.example_sentence.toLowerCase().includes(v.term.toLowerCase()));
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -1053,6 +1062,7 @@ export async function renderStudy(root) {
 
     function finishC() {
       recordQuiz(correct, cards.length);
+      recordMeasure('cloze', correct / cards.length, cards.length, { unseen });
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Got it down! 🧩' : pct >= 50 ? 'Nice! 💪' : 'Keep practicing 🔁';
       root.innerHTML = `
@@ -1065,7 +1075,7 @@ export async function renderStudy(root) {
             <button class="study-cta-btn secondary" id="cz-home">Study Home</button>
           </div>
         </div>`;
-      root.querySelector('#cz-again').addEventListener('click', startCloze);
+      root.querySelector('#cz-again').addEventListener('click', () => startCloze(source, unseen));
       root.querySelector('#cz-home').addEventListener('click', () => renderStudy(root));
     }
     function paintC() {
