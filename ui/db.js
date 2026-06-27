@@ -171,15 +171,18 @@ const KNOWN_INTERVAL = 365;
 // Study 홈 통계 — 전체 표현 / 학습(reps>0) / 오늘 복습 / 알아요(마스터) / 종류별 개수
 export async function studyOverview() {
   const today = todayStr();
-  const [total, learned, due, known, ...kindCounts] = await Promise.all([
+  const [total, learned, dueReview, dueNew, known, ...kindCounts] = await Promise.all([
     _count('vocab_cards'),
     _count('srs_cards', (q) => q.gt('reps', 0)),
-    _count('srs_cards', (q) => q.lte('due_date', today)),
+    _count('srs_cards', (q) => q.lte('due_date', today).gt('reps', 0)),
+    _count('srs_cards', (q) => q.lte('due_date', today).eq('reps', 0)),
     _count('srs_cards', (q) => q.gte('interval_days', KNOWN_INTERVAL)),
     ...STUDY_KINDS.map((k) => _count('vocab_cards', (q) => q.eq('kind', k))),
   ]);
   const byKind = STUDY_KINDS.map((k, i) => ({ kind: k, total: kindCounts[i] }));
-  return { total, learned, due, known, byKind };
+  // due = 오늘 실제 복습 세션 크기(srsQueue 상한과 동일: 복습 50 + 신규 5) — 'N due' CTA 가 실제 풀 양과 일치.
+  const due = Math.min(dueReview, REVIEW_LIMIT) + Math.min(dueNew, NEW_LIMIT);
+  return { total, learned, due, dueReview, dueNew, known, byKind };
 }
 
 // "알아요" — 해당 vocab 의 SRS 카드를 마스터(1년 뒤 복습) 상태로. 진도(known)에 즉시 반영된다.

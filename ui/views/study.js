@@ -93,6 +93,12 @@ export async function renderStudy(root) {
           <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
       </div>
+      ${ov.due > 0 ? `
+      <a class="study-due-cta" href="#/srs">
+        <span class="study-due-ico">🔥</span>
+        <span class="study-due-txt"><b>${ov.due} due to review</b><span>지금 복습 — 간격반복으로 장기기억</span></span>
+        <span class="study-due-go">›</span>
+      </a>` : ''}
       <button class="study-ess-cta" id="study-essentials">
         <span class="study-ess-ico">✨</span>
         <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현 — 빠르게 네이티브로</span></span>
