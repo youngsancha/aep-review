@@ -6,7 +6,7 @@ import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
 import { renderEssentials } from '/views/essentials.js';
-import { recordMeasure, readProficiency, recordSnapshot } from '/proficiency.js';
+import { recordMeasure, readProficiency, recordSnapshot, setTarget, markSeen, loadSeen, loadSnapshots, weakestAxis } from '/proficiency.js';
 
 const KIND_LABEL = { idiom: 'Idioms', phrasal_verb: 'Phrasal Verbs', collocation: 'Collocations', word: 'Words' };
 const KIND_EMOJI = { idiom: '💬', phrasal_verb: '🔗', collocation: '🧩', word: '📖' };
@@ -132,14 +132,36 @@ export async function renderStudy(root) {
           <span class="prof-axis-v">${has ? v : '—'}</span>
         </div>`;
     }).join('');
+    const weakKey = weakestAxis(prof.scores);
+    const weakLabel = weakKey ? (PROF_AXES.find((a) => a[0] === weakKey) || [])[1] : null;
+    const weakHtml = weakLabel
+      ? `<div class="prof-weak">⚡ 가장 약한 축 <b>${weakLabel} ${prof.scores[weakKey]}</b> — 오늘 여기 집중하면 점수가 가장 빨리 오릅니다</div>`
+      : '';
     return `
       <div class="prof-card">
         <div class="prof-head">
-          <div class="prof-index"><b>${prof.index}</b><span>/100</span><i class="prof-goal">→ ${prof.band} 목표</i></div>
+          <div class="prof-index"><b>${prof.index}</b><span>/100</span><button class="prof-goal" id="prof-goal">→ ${prof.band} 목표 ⇅</button></div>
           <div class="prof-cefr">≈ <b>${cefr.band}</b><span>${cefrSub}</span></div>
         </div>
         <div class="prof-axes">${axes}</div>
+        ${profSpark()}
+        ${weakHtml}
+        <button class="prof-levelcheck" id="prof-levelcheck"><span>🎯 레벨 체크</span><i>처음 보는 문장 받아쓰기 — 외운 게 아닌 실제 청해를 비편향 측정</i></button>
         <div class="prof-note">이 앱이 보여준 표현·드릴 기록 기준 · unseen(레벨체크) 우선 · ASR은 ‘알아들힘’(발음 정확도 아님)</div>
+      </div>`;
+  }
+
+  // Fluency Index 주간 추세 스파크라인 — 스냅샷 2개 이상일 때만(최근 12주).
+  function profSpark() {
+    const snaps = loadSnapshots().slice().sort((a, b) => (a.w < b.w ? -1 : 1)).slice(-12);
+    if (snaps.length < 2) return '';
+    const pts = snaps.map((s) => s.idx);
+    const W = 116, H = 26, step = W / (pts.length - 1);
+    const coords = pts.map((v, i) => `${(i * step).toFixed(1)},${(H - (v / 100) * H).toFixed(1)}`).join(' ');
+    const delta = pts[pts.length - 1] - pts[0];
+    return `<div class="prof-trend">
+        <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${coords}"/></svg>
+        <span class="prof-trend-d ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'}${Math.abs(delta)} <i>${snaps.length}주 추세</i></span>
       </div>`;
   }
 
@@ -381,6 +403,31 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
+    // 목표 밴드 순환(B2→C1→C2) — 모든 축 점수가 새 목표 기준으로 재계산되게 전체 재렌더.
+    root.querySelector('#prof-goal')?.addEventListener('click', () => {
+      const order = ['B2', 'C1', 'C2'];
+      setTarget(order[(order.indexOf(prof.band) + 1) % order.length]);
+      renderStudy(root);
+    });
+    root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);
+  }
+
+  // ── 레벨 체크 — 드릴에서 안 만난(unseen) 표현만 골라 받아쓰기. 외운 게 아닌 실제 청해를 비편향 측정. ──
+  async function startLevelCheck() {
+    stopClip();
+    const listEl = root.querySelector('#study-list');
+    if (listEl) listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    let all = [];
+    try { all = await allExpressions(); } catch (e) { all = []; }
+    const seen = loadSeen();
+    const withEx = all.filter((v) => v.example_sentence && v.example_sentence.trim());
+    const unseen = withEx.filter((v) => !seen.has(v.id));
+    const pool = unseen.length >= 5 ? unseen : withEx;   // unseen 부족(첫 측정 등)하면 전체로 폴백
+    if (!pool.length) {
+      if (listEl) listEl.innerHTML = '<div class="empty">No material to test yet.</div>';
+      return;
+    }
+    startDictation(pool, true);   // unseen=true → listeningUnseen 으로 기록(axisScores 우선 채택)
   }
 
   async function loadKind(k) {
@@ -414,6 +461,7 @@ export async function renderStudy(root) {
       const others = _shuffle(pool.filter((x) => x.id !== correct.id)).slice(0, 3);
       return { correct, options: _shuffle([correct, ...others]) };
     });
+    markSeen(qs.map((x) => x.correct.id));   // 본 표현 적립(Level Check unseen 판정)
     let idx = 0, score = 0, answered = false;
     let tShown = 0; const lats = [];   // 응답 지연(자동화 축) — 카드 표시→선택까지 ms
 
@@ -507,6 +555,7 @@ export async function renderStudy(root) {
       return;
     }
     let deck = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    markSeen(deck.map((c) => c.id));
     const total = deck.length;
     let mastered = 0, againCnt = 0;
     prefetch(deck.slice(0, 6).map((c) => c.example_sentence));
@@ -679,6 +728,7 @@ export async function renderStudy(root) {
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    markSeen(cards.map((c) => c.id));
     let idx = 0, correct = 0;
     prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
 
@@ -763,6 +813,7 @@ export async function renderStudy(root) {
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    markSeen(cards.map((c) => c.id));
     let idx = 0, scoreSum = 0, scored = 0;
     prefetch(cards.slice(0, 4).map((c) => c.example_sentence));
 
@@ -939,6 +990,7 @@ export async function renderStudy(root) {
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    markSeen(cards.map((c) => c.id));
     let idx = 0, scoreSum = 0, scored = 0;
 
     function finishPr() {
@@ -1101,6 +1153,7 @@ export async function renderStudy(root) {
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
+    markSeen(cards.map((c) => c.id));
     let idx = 0, correct = 0;
     prefetch(cards.slice(0, 4).map((c) => c.term));
 

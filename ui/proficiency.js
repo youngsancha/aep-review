@@ -18,7 +18,9 @@ export const LOG_KEY = 'aep-measure-log';     // [{t, mode, score(0~1), n, unsee
 export const TARGET_KEY = 'aep-prof-target';  // 'B2' | 'C1' | 'C2'
 export const SNAP_KEY = 'aep-prof-snap';      // [{w:'YYYY-Www', t, idx, ax:{...}}]
 export const SHADOW_KEY = 'aep-shadow-reps';  // { n }  — 1.0x shadowing 반복 누적
+export const SEEN_KEY = 'aep-seen-ids';       // 드릴에서 한 번이라도 만난 vocab id (Level Check 의 unseen 판정)
 const LOG_MAX = 600;
+const SEEN_MAX = 4000;
 
 // 어느 로그 모드가 어느 축을 먹이는지
 export const LISTEN_MODES = ['listen', 'dictation', 'cloze'];
@@ -54,6 +56,18 @@ export function setTarget(band) { if (band === 'B2' || band === 'C1' || band ===
 
 export function addShadowReps(n = 1) { const s = _read(SHADOW_KEY, { n: 0 }); s.n = (s.n || 0) + n; _write(SHADOW_KEY, s); return s.n; }
 export function getShadowReps() { return (_read(SHADOW_KEY, { n: 0 }).n) || 0; }
+
+// 본 적 있는 표현(드릴에서 만난 것) — Level Check 는 이 집합 밖(unseen)에서만 출제해 '외운 것'이 아닌
+// 실제 청해/산출을 비편향 측정한다. 드릴 시작 시 그 카드 id 들을 markSeen 으로 적립.
+export function markSeen(ids) {
+  if (!ids || !ids.length) return;
+  const s = new Set(_read(SEEN_KEY, []));
+  for (const id of ids) if (id != null) s.add(id);
+  let arr = [...s];
+  if (arr.length > SEEN_MAX) arr = arr.slice(arr.length - SEEN_MAX);
+  _write(SEEN_KEY, arr);
+}
+export function loadSeen() { return new Set(_read(SEEN_KEY, [])); }
 
 // 주간 스냅샷(추세) — ISO 주차당 1건만(최신으로 덮어씀). 최근 ~80주 유지.
 export function recordSnapshot(index, axes) {

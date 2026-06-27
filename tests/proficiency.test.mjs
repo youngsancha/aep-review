@@ -141,3 +141,19 @@ test('getTarget/setTarget: 기본 C2, 유효값만 저장', () => {
   P.setTarget('ZZ'); assert.equal(P.getTarget(), 'B2');  // 무효 무시
   delete globalThis.localStorage;
 });
+test('markSeen/loadSeen: 합집합 누적·중복 제거(Level Check unseen 판정)', () => {
+  globalThis.localStorage = fakeLS();
+  P.markSeen([1, 2, 2, 3]);
+  P.markSeen([3, 4, null]);   // null 무시, 3 중복
+  const s = P.loadSeen();
+  assert.equal(s.size, 4);
+  assert.ok(s.has(1) && s.has(4) && !s.has(99));
+  delete globalThis.localStorage;
+});
+test('addShadowReps/getShadowReps: 누적', () => {
+  globalThis.localStorage = fakeLS();
+  assert.equal(P.getShadowReps(), 0);
+  P.addShadowReps(3); P.addShadowReps(2);
+  assert.equal(P.getShadowReps(), 5);
+  delete globalThis.localStorage;
+});

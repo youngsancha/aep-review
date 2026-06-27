@@ -1664,7 +1664,8 @@ body.logged-out #app-version { display: none; }
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: var(--grad-2);
 }
 .prof-index span { font-size: 13px; font-weight: 700; color: var(--text-3); }
-.prof-goal { font-size: 11px; font-style: normal; font-weight: 700; color: var(--tint); background: var(--tint-soft); padding: 3px 8px; border-radius: 999px; margin-left: 6px; }
+.prof-goal { font-size: 11px; font-weight: 700; color: var(--tint); background: var(--tint-soft); padding: 3px 9px; border-radius: 999px; margin-left: 6px; border: 0; cursor: pointer; font-family: var(--font); }
+.prof-goal:active { transform: scale(0.95); }
 .prof-cefr { text-align: right; font-size: 12px; color: var(--text-3); font-weight: 700; line-height: 1.35; }
 .prof-cefr b { color: var(--text); font-size: 15px; }
 .prof-cefr span { display: block; font-size: 10.5px; color: var(--text-3); font-weight: 600; }
@@ -1676,6 +1677,26 @@ body.logged-out #app-version { display: none; }
 .prof-axis-v { font-size: 12.5px; font-weight: 800; color: var(--text); text-align: right; }
 .prof-axis.un .prof-axis-l, .prof-axis.un .prof-axis-v { color: var(--text-3); }
 .prof-note { margin-top: 11px; font-size: 10.5px; line-height: 1.45; color: var(--text-3); }
+/* Fluency Index 주간 추세 */
+.prof-trend { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+.prof-trend svg { flex: 0 0 auto; }
+.prof-trend polyline { fill: none; stroke: var(--tint); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.prof-trend-d { font-size: 11.5px; font-weight: 800; }
+.prof-trend-d i { font-style: normal; font-weight: 600; color: var(--text-3); font-size: 10.5px; }
+.prof-trend-d.up { color: var(--chip-coll-tx); }
+.prof-trend-d.down { color: var(--text-3); }
+/* 가장 약한 축 콜아웃 (Phase 3 Today's plan 으로 연결) */
+.prof-weak { margin-top: 11px; font-size: 12px; line-height: 1.4; font-weight: 600; color: var(--chip-warn-tx); background: var(--chip-warn-bg); padding: 9px 12px; border-radius: 12px; }
+.prof-weak b { font-weight: 800; }
+/* 레벨 체크 CTA */
+.prof-levelcheck {
+  width: 100%; margin-top: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  border: 1.5px solid var(--tint); background: var(--tint-soft); cursor: pointer;
+  padding: 11px 14px; border-radius: 14px; font-family: var(--font); text-align: left;
+}
+.prof-levelcheck span { font-size: 14px; font-weight: 800; color: var(--tint); }
+.prof-levelcheck i { font-size: 11px; font-style: normal; font-weight: 600; color: var(--text-3); }
+.prof-levelcheck:active { transform: scale(0.99); }
 
 /* ── "알아요" 마크 버튼 + 마스터된 행 ── */
 .study-x-know {
