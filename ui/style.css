@@ -1775,7 +1775,7 @@ body.logged-out #app-version { display: none; }
 .study-cta-btn { padding: 14px; border: 0; border-radius: 14px; cursor: pointer; font-family: var(--font); font-size: 15px; font-weight: 700; background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
 .study-cta-btn.secondary { background: var(--surface); color: var(--tint); box-shadow: var(--shadow-card); }
 /* 6개 드릴을 한 줄에(가로 스크롤 없이) — 균등폭, 작은 폰트, 라벨은 칸 안에서 줄바꿈 */
-.study-quiz-row { display: flex; flex-wrap: nowrap; gap: 4px; margin: 2px 0 10px; }
+.study-quiz-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 2px 0 10px; }
 .study-quiz-row .study-quiz-btn {
   margin: 0; flex: 1 1 0; min-width: 0; line-height: 1.1;
   padding: 8px 1px; text-align: center;

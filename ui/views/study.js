@@ -112,6 +112,7 @@ export async function renderStudy(root) {
         <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span></button>
         <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span></button>
         <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span></button>
+        <button class="study-quiz-btn" id="study-quiz-prod"><span class="qb-ico">🗣️</span><span class="qb-txt">KR→EN</span></button>
         <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span></button>
       </div>
     `;
@@ -265,6 +266,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
+    root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
   }
