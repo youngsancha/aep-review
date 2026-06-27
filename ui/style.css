@@ -144,6 +144,10 @@ body.on-episode {
 #topbar button:hover { background: var(--tint-soft); }
 #topbar button:disabled { opacity: 0.4; cursor: default; }
 #back-btn { font-size: 26px; line-height: 1; color: var(--tint); }
+/* hidden 속성을 실제로 적용 — '#topbar button{display:flex}'(작성자 규칙)가 UA 의
+   [hidden]{display:none} 을 덮어써, 상위 화면(back:false)에서도 '<' 가 보이던 버그 수정.
+   id+속성 선택자라 '#topbar button'(id+타입)보다 우선 → 메인/탭에선 숨고, 에피소드(back:true)에선 표시. */
+#back-btn[hidden] { display: none; }
 #sync-btn { font-size: 19px; }
 /* 좌우로 슬라이드되는 테마 토글 스위치 (해=좌/달=우) */
 #topbar button.theme-switch { width: 52px; height: 28px; border-radius: 14px; padding: 0; }
