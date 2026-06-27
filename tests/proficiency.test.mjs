@@ -80,6 +80,20 @@ test('axisScores: 목표 도달=100, 절반=50, 표본 없으면 null', () => {
   assert.equal(s.production, null);         // 표본 0
   assert.equal(s.automaticity, 50);         // 2200/4400
 });
+test('axisScores: 자동화 = 응답지연(0.7)+쉐도잉(0.3) 혼합, 한쪽만 있으면 그것', () => {
+  const T = P.bandTargets('C2');   // latencyMs 2200, shadowReps 400
+  const base = { breadthFrac: 0, retentionFrac: 0, listening: 0, production: 0 };
+  // lat 만(4400ms→50)
+  assert.equal(P.axisScores({ ...base, latencyMs: 4400, shadowReps: 0, samples: { lat: 3, shadow: false } }, T).automaticity, 50);
+  // shadow 만(200/400→50)
+  assert.equal(P.axisScores({ ...base, latencyMs: 0, shadowReps: 200, samples: { lat: 0, shadow: true } }, T).automaticity, 50);
+  // 둘 다 만점 → 100
+  assert.equal(P.axisScores({ ...base, latencyMs: 2200, shadowReps: 400, samples: { lat: 5, shadow: true } }, T).automaticity, 100);
+  // 혼합: lat 100, shadow 40 → round(100*0.7 + 40*0.3)=82
+  assert.equal(P.axisScores({ ...base, latencyMs: 2200, shadowReps: 160, samples: { lat: 5, shadow: true } }, T).automaticity, 82);
+  // 표본 0 → null
+  assert.equal(P.axisScores({ ...base, latencyMs: 0, shadowReps: 0, samples: { lat: 0, shadow: false } }, T).automaticity, null);
+});
 test('axisScores: 초과 달성은 100 으로 캡', () => {
   const raw = { breadthFrac: 2, retentionFrac: 1, listening: 1, production: 1, latencyMs: 500, samples: { listen: 1, prod: 1, lat: 1 } };
   const s = P.axisScores(raw, P.bandTargets('C2'));

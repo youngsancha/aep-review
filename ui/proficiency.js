@@ -115,9 +115,9 @@ export function cefrBand(known) {
 // retentionFrac=장기간격>90d 비율, latencyMs=목표 응답시간(낮을수록 좋음).
 export function bandTargets(band) {
   const T = {
-    B2: { breadthFrac: 0.30, listening: 0.75, production: 0.65, retentionFrac: 0.40, latencyMs: 4000 },
-    C1: { breadthFrac: 0.60, listening: 0.85, production: 0.75, retentionFrac: 0.60, latencyMs: 3000 },
-    C2: { breadthFrac: 0.90, listening: 0.92, production: 0.85, retentionFrac: 0.75, latencyMs: 2200 },
+    B2: { breadthFrac: 0.30, listening: 0.75, production: 0.65, retentionFrac: 0.40, latencyMs: 4000, shadowReps: 120 },
+    C1: { breadthFrac: 0.60, listening: 0.85, production: 0.75, retentionFrac: 0.60, latencyMs: 3000, shadowReps: 240 },
+    C2: { breadthFrac: 0.90, listening: 0.92, production: 0.85, retentionFrac: 0.75, latencyMs: 2200, shadowReps: 400 },
   };
   return T[band] || T.C2;
 }
@@ -138,7 +138,8 @@ export function rawFromLog(log, db = {}) {
     listeningUnseen: listenUnseen.length ? _wmean(listenUnseen) : null,
     production: prod.length ? _mean(prod.map((e) => e.score)) : 0,
     latencyMs: lats.length ? _median(lats) : 0,
-    samples: { listen: listenAll.length, listenUnseen: listenUnseen.length, prod: prod.length, lat: lats.length },
+    shadowReps: db.shadowReps || 0,
+    samples: { listen: listenAll.length, listenUnseen: listenUnseen.length, prod: prod.length, lat: lats.length, shadow: (db.shadowReps || 0) > 0 },
   };
 }
 
@@ -146,13 +147,19 @@ export function rawFromLog(log, db = {}) {
 export function axisScores(raw, target) {
   const pct = (v, t) => (t > 0 ? Math.max(0, Math.min(100, Math.round((v / t) * 100))) : 0);
   const s = raw.samples || {};
+  // 자동화 = 빠른 인식(응답지연) + 유창한 쉐도잉(반복량). 둘 다 자동처리의 증거 → 가중 혼합(0.7/0.3).
+  const latScore = (s.lat && raw.latencyMs) ? Math.max(0, Math.min(100, Math.round((target.latencyMs / raw.latencyMs) * 100))) : null;
+  const shScore = (raw.shadowReps > 0 && target.shadowReps) ? Math.min(100, Math.round((raw.shadowReps / target.shadowReps) * 100)) : null;
+  let automaticity = null;
+  if (latScore != null && shScore != null) automaticity = Math.round(latScore * 0.7 + shScore * 0.3);
+  else if (latScore != null) automaticity = latScore;
+  else if (shScore != null) automaticity = shScore;
   return {
     breadth: pct(raw.breadthFrac, target.breadthFrac),
     retention: pct(raw.retentionFrac, target.retentionFrac),
     listening: s.listen ? pct(raw.listening, target.listening) : null,
     production: s.prod ? pct(raw.production, target.production) : null,
-    // 자동화: 목표시간/실제 (빠를수록 ↑). 표본 없으면 null.
-    automaticity: (s.lat && raw.latencyMs) ? Math.max(0, Math.min(100, Math.round((target.latencyMs / raw.latencyMs) * 100))) : null,
+    automaticity,
   };
 }
 
@@ -181,7 +188,7 @@ export function readProficiency(db = {}) {
   const log = loadLog();
   const band = getTarget();
   const target = bandTargets(band);
-  const raw = rawFromLog(log, db);
+  const raw = rawFromLog(log, { ...db, shadowReps: getShadowReps() });
   const scores = axisScores(raw, target);
   const index = fluencyIndex(scores);
   return {

@@ -165,6 +165,32 @@ export async function renderStudy(root) {
       </div>`;
   }
 
+  // 적응형 '오늘의 플랜' — 가장 약한 축으로 학습을 민다(점수가 가장 빨리 오르는 곳). due 복습은 항상 병기.
+  const PLAN_ACTION = {
+    breadth:      { emoji: '📚', label: '새 표현 마스터', sub: '복습 큐의 신규 카드부터', act: 'srs' },
+    retention:    { emoji: '🧠', label: '복습 (간격반복)', sub: '오늘 due — 장기기억 고정', act: 'srs' },
+    listening:    { emoji: '👂', label: '레벨 체크 (받아쓰기)', sub: 'unseen 문장 청해', act: 'level' },
+    production:   { emoji: '🗣️', label: 'KR→EN 말하기', sub: '뜻 보고 영어로 산출', act: 'prod' },
+    automaticity: { emoji: '⚡', label: '스피드 퀴즈', sub: '빠른 인식으로 자동화', act: 'weak' },
+  };
+  function planCardHtml() {
+    const weakKey = weakestAxis(prof.scores) || 'retention';
+    const a = PLAN_ACTION[weakKey] || PLAN_ACTION.retention;
+    const weakLabel = (PROF_AXES.find((x) => x[0] === weakKey) || [])[1] || '';
+    const dueRow = ov.due > 0
+      ? `<a class="plan-due" href="#/srs"><span>🔥 ${ov.due} 복습 대기</span><i>›</i></a>` : '';
+    return `
+      <div class="study-plan">
+        <div class="plan-head">🎯 오늘의 플랜 <span>약점 «${weakLabel}» 우선</span></div>
+        <button class="plan-primary" id="plan-go" data-act="${a.act}">
+          <span class="plan-emoji">${a.emoji}</span>
+          <span class="plan-txt"><b>${a.label}</b><span>${a.sub}</span></span>
+          <span class="plan-arrow">›</span>
+        </button>
+        ${dueRow}
+      </div>`;
+  }
+
   function heroHtml() {
     const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
     return `
@@ -194,12 +220,7 @@ export async function renderStudy(root) {
       <div class="study-week">
         ${weekActivity().map((d) => `<span class="study-week-d${d.on ? ' on' : ''}${d.today ? ' today' : ''}"><i>${d.label}</i><b></b></span>`).join('')}
       </div>
-      ${ov.due > 0 ? `
-      <a class="study-due-cta" href="#/srs">
-        <span class="study-due-ico">🔥</span>
-        <span class="study-due-txt"><b>${ov.due} due to review</b><span>지금 복습 — 간격반복으로 장기기억</span></span>
-        <span class="study-due-go">›</span>
-      </a>` : ''}
+      ${planCardHtml()}
       <button class="study-ess-cta" id="study-essentials">
         <span class="study-ess-ico">✨</span>
         <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현 — 빠르게 네이티브로</span></span>
@@ -410,6 +431,14 @@ export async function renderStudy(root) {
       renderStudy(root);
     });
     root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);
+    // 오늘의 플랜 — 약점 축에 맞는 드릴로 직행.
+    root.querySelector('#plan-go')?.addEventListener('click', (e) => {
+      const act = e.currentTarget.dataset.act;
+      if (act === 'level') startLevelCheck();
+      else if (act === 'prod') startWeakProduction();
+      else if (act === 'weak') startWeakQuiz();
+      else location.hash = '#/srs';   // breadth/retention → SRS
+    });
   }
 
   // ── 레벨 체크 — 드릴에서 안 만난(unseen) 표현만 골라 받아쓰기. 외운 게 아닌 실제 청해를 비편향 측정. ──
@@ -541,6 +570,20 @@ export async function renderStudy(root) {
       return;
     }
     startQuiz('read', pool);   // 4지선다 회상 — startQuiz 가 셔플·슬라이스
+  }
+
+  // ── 약점 산출(KR→EN) — 전 kind 통합·미마스터 우선. 오늘의 플랜이 production 약점일 때 진입. ──
+  async function startWeakProduction() {
+    stopClip();
+    const listEl = root.querySelector('#study-list');
+    if (listEl) listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    let all = [];
+    try { all = await allExpressions(); } catch (e) { all = []; }
+    const ok = (v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3;
+    const weak = all.filter((v) => !v.known && ok(v));
+    const pool = weak.length >= 3 ? weak : all.filter(ok);
+    if (!pool.length) { if (listEl) listEl.innerHTML = '<div class="empty">No examples to practice yet.</div>'; return; }
+    startProduction(pool);
   }
 
   // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
@@ -980,10 +1023,10 @@ export async function renderStudy(root) {
 
   // ── 한→영 '말로 생산'(Production) — 한국어 뜻만 보고 영어를 직접 '말한다' → 이해/모방을 넘어 '구사' ──
   // 기존 스피킹(영어 보고 따라말하기=모방)과 달리 영어를 가리고 한국어→영어 산출. 네이티브 회화 핵심.
-  function startProduction() {
+  function startProduction(source = null) {
     stopClip();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3);
+    const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3);
     if (!pool.length) {
       const el = root.querySelector('#study-list');
       if (el) el.innerHTML = '<div class="empty">No examples to practice yet.</div>';
@@ -1007,7 +1050,7 @@ export async function renderStudy(root) {
             <button class="study-cta-btn secondary" id="pr-home">Study Home</button>
           </div>
         </div>`;
-      root.querySelector('#pr-again').addEventListener('click', startProduction);
+      root.querySelector('#pr-again').addEventListener('click', () => startProduction(source));
       root.querySelector('#pr-home').addEventListener('click', () => renderStudy(root));
     }
 

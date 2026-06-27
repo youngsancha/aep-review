@@ -6,6 +6,7 @@ import { player, getProgress } from '/player.js';
 import { showCover, currentShow, showMeta } from '/config.js';
 import { translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
+import { addShadowReps } from '/proficiency.js';
 
 // 현재 쇼 커버(렌더 시 평가) — 멀티-쇼에서 에피소드가 속한 쇼의 아트워크를 보여준다.
 // (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
@@ -203,6 +204,7 @@ export async function renderEpisode(root, idStr, tStr) {
     //          마지막 문단까지 끝나면 쉐도잉을 끄고 그대로 계속 재생.
     if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0 && !player.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
+        addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
         if (shadowMode === 'loop') {
           player.seek(toAudio(loopStart) + 0.01);
         } else {
