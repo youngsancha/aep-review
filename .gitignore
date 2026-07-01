@@ -15,3 +15,5 @@ logs/
 .idea/
 .vscode/
 node_modules/
+.vercel
+.env*
