@@ -1468,6 +1468,7 @@ body.logged-out #app-version { display: none; }
 /* Google 로그인 버튼 — 흰 배경/구글 가이드라인 톤(라이트·다크 공통 가독). */
 .login-google {
   position: relative; z-index: 1; width: 100%;
+  flex: 0 0 auto; /* .btn 의 flex:1 무효화 — 100vh 컬럼(.login-wrap) 직계라 세로로 늘어남 */
   display: flex; align-items: center; justify-content: center; gap: 10px;
   padding: 13px 16px; font-size: 15px; font-weight: 600;
   background: #fff; color: #1f1f1f;
