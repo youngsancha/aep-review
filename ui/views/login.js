@@ -33,16 +33,32 @@ export function renderLogin(root, onSuccess) {
   const $google = root.querySelector('#login-google');
 
   // Google 로그인 — Supabase OAuth(PKCE). 리다이렉트 후 복귀 처리는 app.js(onAuthStateChange).
+  // skipBrowserRedirect 로 URL 만 받아 먼저 검사: 프로바이더가 대시보드에서 비활성이면 authorize 가
+  // 400 JSON 을 반환하는데, 바로 네비게이션하면 사용자가 raw JSON 페이지를 보게 된다(실사고 2026-07-04).
   $google.addEventListener('click', async () => {
     $err.hidden = true;
     $google.disabled = true;
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         // 해시(#/) 라우터와 충돌 없도록 쿼리 없는 앱 루트로 복귀(?code= 만 붙음).
-        options: { redirectTo: window.location.origin + window.location.pathname },
+        options: {
+          redirectTo: window.location.origin + window.location.pathname,
+          skipBrowserRedirect: true,
+        },
       });
-      if (error) throw error;   // 정상이면 여기서 페이지가 Google 로 리다이렉트됨
+      if (error) throw error;
+      try {
+        // 정상이면 302(opaqueredirect, status 0) — 400 만 프로바이더 미설정 신호.
+        const probe = await fetch(data.url, { redirect: 'manual' });
+        if (probe.status === 400) {
+          $err.textContent = 'Google sign-in is not enabled on the server yet — please use email + password below.';
+          $err.hidden = false;
+          $google.disabled = false;
+          return;
+        }
+      } catch (_) { /* 프로브 실패(네트워크 등)는 무시하고 정상 경로로 진행 */ }
+      window.location.assign(data.url);   // 여기서 Google 로 리다이렉트
     } catch (err) {
       $err.textContent = 'Google sign-in failed: ' + escapeHtml(String(err.message || err));
       $err.hidden = false;
