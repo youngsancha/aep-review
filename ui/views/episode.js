@@ -153,7 +153,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
   let loopCount = 0;       // smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
   let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart 는 문단마다 다름, loop 는 0(무한)
-  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart→loop→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 15회(사용자 요청).
   // 실측 캘리브레이션(2026-07-09, 최신 8회차 981문단): groupIntoParagraphs 가 문단을 ~16s에서 끊어
@@ -640,11 +640,12 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → smart(길이비례 5~15회) → auto5 → auto10 → off … 순환.
+  // 쉐도잉 버튼: off(Shadow) → smart(길이비례 5~15회, 기본) → loop(Repeat 무한반복) → auto5 → auto10 → off … 순환.
+  // Smart 가 첫 탭(기본) — 사용자 요청 2026-07-09.
   const SHADOW = [
     { mode: 'off',    label: '🔁 Shadow', on: false },
-    { mode: 'loop',   label: '🔁 Repeat', on: true },
     { mode: 'smart',  label: '✨ Smart',  on: true },
+    { mode: 'loop',   label: '🔁 Repeat', on: true },
     { mode: 'auto5',  label: '5× Auto',   on: true },
     { mode: 'auto10', label: '10× Auto',  on: true },
   ];
