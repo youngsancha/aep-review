@@ -149,11 +149,17 @@ export async function renderEpisode(root, idStr, tStr) {
   const $txSeekRem    = document.getElementById('tx-seek-rem');
   let txScrub = null;
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | loop(무한반복) | auto5/auto10(5·10회반복 후 다음문단 자동이동)
+  let shadowMode = 'off';  // off | loop(무한반복) | smart(문단길이 비례 5~15회) | auto5/auto10(고정 N회)
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
-  let loopCount = 0;       // auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
-  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  let loopCount = 0;       // smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
+  let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart 는 문단마다 다름, loop 는 0(무한)
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
+  // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 15회(사용자 요청).
+  // 4초당 1회 기준: ~20s→5회, 32s→8회, 48s→12회, 60s+→15회.
+  const smartReps = (durSec) => Math.max(5, Math.min(15, Math.round(durSec / 4)));
+  // 반복(쉐도잉) 모드 공통 게이트 — loop/smart/auto5/auto10 전부.
+  function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
 
@@ -200,17 +206,19 @@ export async function renderEpisode(root, idStr, tStr) {
 
     // 쉐도잉 반복: 누를 때 확정한 '문단'을 끝(마지막 문장)에서 처음(첫 문장)으로 되돌린다.
     //  loop  = 무한 반복.
-    //  auto5/auto10 = 5·10회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고 구간은 시크로 건너뜀).
+    //  smart = 문단 길이 비례 5~15회(loopTarget, setLoopPara 가 산정) 후 다음 문단으로.
+    //  auto5/auto10 = 고정 5·10회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고는 시크로 건너뜀).
     //          마지막 문단까지 끝나면 쉐도잉을 끄고 그대로 계속 재생.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0 && !player.paused) {
+    if ((inRepeatMode()) && loopPara >= 0 && !player.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
         addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
         if (shadowMode === 'loop') {
           player.seek(toAudio(loopStart) + 0.01);
         } else {
           loopCount++;
-          if (loopCount < (REPEAT_OF[shadowMode] || 5)) {
+          if (loopCount < (loopTarget || 5)) {
             player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
+            updateLoopBadge();                          // 카운트다운 갱신(남은 횟수)
           } else {
             loopCount = 0;
             if (setLoopPara(loopPara + 1)) {
@@ -400,7 +408,7 @@ export async function renderEpisode(root, idStr, tStr) {
     let t = txTime();
     // 반복 모드: 문단 끝에서 처음으로 되감은 직후 txTime 이 HL_LAG(0.2s)만큼 뒤로 가 직전 문단이
     // 잠깐 잡히는 것 방지 — 활성 판정 시각을 반복 문단 시작 아래로 안 내려가게 클램프.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((inRepeatMode()) && loopPara >= 0) t = Math.max(t, loopStart);
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
     // 광고 경계는 '정확한 컷'이라 HL_LAG 미적용한 실제 오디오 위치로 판정 → 스킵 직후 즉시 본편 인식.
@@ -429,7 +437,7 @@ export async function renderEpisode(root, idStr, tStr) {
     let resumeNow = false;
     if (followResume && Date.now() >= userScrolledUntil) {
       followResume = false;   // 반복 모드가 아니면 소거만(일반 재생은 기존 out-of-band 복귀로 충분)
-      if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) {
+      if ((inRepeatMode()) && loopPara >= 0) {
         resumeNow = true;
         lastActivePara = -1;  // paraChanged 강제 → 아래에서 문단 시작을 상단 ~10% 로 재배치
       }
@@ -472,7 +480,7 @@ export async function renderEpisode(root, idStr, tStr) {
       // 반복(loop/auto5) 중 같은 문단 안에서는 문장이 진행돼도 화면을 움직이지 않는다(사용자 요청):
       // 문단 진입 시(paraChanged) 한 번만 위치를 잡고, 끝→처음 되감기 때 '아래로 흔들렸다 되돌아오던'
       // 스크롤을 없앤다. (auto5 가 '다음 문단'으로 넘어갈 때는 paraChanged 라 정상 재배치된다.)
-      const inLoopPara = (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0 && newPara === loopPara;
+      const inLoopPara = (inRepeatMode()) && loopPara >= 0 && newPara === loopPara;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
@@ -548,9 +556,10 @@ export async function renderEpisode(root, idStr, tStr) {
       else if (para) txSec = parseFloat(para.dataset.start);
       if (txSec == null) return;
       // 반복 중에 다른 문장을 탭하면, 그 문장이 속한 문단으로 반복 대상을 옮긴다(auto5 카운트도 리셋).
-      if (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') {
+      if (inRepeatMode()) {
         const pEl = para || (sent && sent.closest('.tx-para'));
-        if (pEl) { setLoopPara(paraEls.indexOf(pEl)); loopCount = 0; }
+        // loopCount 를 먼저 리셋해야 setLoopPara 가 그리는 카운트다운 배지가 전체 횟수로 시작한다.
+        if (pEl) { loopCount = 0; setLoopPara(paraEls.indexOf(pEl)); }
       }
       player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
       player.play();
@@ -629,22 +638,38 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → auto5(5× Auto) → auto10(10× Auto) → off … 순환.
+  // 쉐도잉 버튼: off(Shadow) → loop(Repeat 무한반복) → smart(길이비례 5~15회) → auto5 → auto10 → off … 순환.
   const SHADOW = [
     { mode: 'off',    label: '🔁 Shadow', on: false },
     { mode: 'loop',   label: '🔁 Repeat', on: true },
+    { mode: 'smart',  label: '✨ Smart',  on: true },
     { mode: 'auto5',  label: '5× Auto',   on: true },
     { mode: 'auto10', label: '10× Auto',  on: true },
   ];
   const $shadow = document.getElementById('tx-shadow');
   // 한 '문단'을 반복 대상으로 확정 — pIdx 의 문단 시작/끝(자막시각)을 loopStart/End 로.
+  // 목표 반복 횟수도 여기서 산정(smart=문단 길이 비례, autoN=고정, loop=0(무한)) + 배지 갱신.
   function setLoopPara(pIdx) {
     const pEl = paraEls[pIdx];
     if (!pEl) return false;
     const ps = sentRanges.filter((s) => s.paraEl === pEl);
     if (!ps.length) return false;
     loopPara = pIdx; loopStart = ps[0].start; loopEnd = ps[ps.length - 1].end;
+    loopTarget = shadowMode === 'smart' ? smartReps(loopEnd - loopStart) : (REPEAT_OF[shadowMode] || 0);
+    updateLoopBadge();
     return true;
+  }
+  // 반복 카운트다운 배지 — 반복 중인 문단 위에 남은 횟수를 작게 표시(사용자 요청 2026-07-09).
+  // smart/auto5/auto10 = "↻ N", loop = "↻ ∞". 모드 종료/문단 이동 시 이전 배지는 제거된다.
+  function updateLoopBadge() {
+    document.querySelectorAll('.tx-loop-badge').forEach((b) => b.remove());
+    if (!inRepeatMode() || loopPara < 0) return;
+    const pEl = paraEls[loopPara];
+    if (!pEl) return;
+    const b = document.createElement('span');
+    b.className = 'tx-loop-badge';
+    b.textContent = shadowMode === 'loop' ? '↻ ∞' : `↻ ${Math.max(0, loopTarget - loopCount)}`;
+    pEl.appendChild(b);
   }
   // 현재 재생 위치가 속한 문단을 반복 대상으로(loop/auto5 진입 시 공용). 즉시 되감지 않고
   // 지금 문단을 끝까지 자연스럽게 읽은 뒤, 끝에서 반복/다음이동(사용자 요청).
@@ -657,7 +682,8 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   // auto5 가 마지막 문단까지 끝났을 때 — 쉐도잉을 끄고 버튼/상태 초기화(그대로 계속 재생).
   function endShadow() {
-    shadowMode = 'off'; shadowIdx = 0; loopPara = -1; loopCount = 0;
+    shadowMode = 'off'; shadowIdx = 0; loopPara = -1; loopCount = 0; loopTarget = 0;
+    updateLoopBadge();   // 카운트다운 배지 제거
     if ($shadow) {
       $shadow.textContent = SHADOW[0].label;
       $shadow.classList.remove('on');
@@ -673,8 +699,9 @@ export async function renderEpisode(root, idStr, tStr) {
     $shadow.textContent = s.label;
     $shadow.classList.toggle('on', s.on);
     $shadow.setAttribute('aria-pressed', s.on ? 'true' : 'false');
-    if (shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') confirmLoopBoundary();
+    if (inRepeatMode()) confirmLoopBoundary();
     else loopPara = -1;
+    updateLoopBadge();   // off 전환 시 배지 제거(반복 모드는 setLoopPara 가 이미 갱신)
     if (player.paused) player.play();  // 모드 전환 즉시 이어 재생
   });
 
@@ -836,7 +863,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)
     let t = txTime();
     // 반복 모드: 되감기 직후 HL_LAG 로 t 가 직전 문장 단어로 내려가 카라오케가 깜빡이던 것 방지.
-    if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) t = Math.max(t, loopStart);
+    if ((inRepeatMode()) && loopPara >= 0) t = Math.max(t, loopStart);
     let lo = 0, hi = wordTimed.length - 1, found = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (wordTimed[m].s <= t) { found = m; lo = m + 1; } else hi = m - 1; }
     if (found === lastWordIdx) return;
