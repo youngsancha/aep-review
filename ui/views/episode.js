@@ -335,6 +335,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let lastActivePara = -1;
   let lastAdEl = null;   // 현재 강조 중인 광고 바(중복 스크롤 방지)
   let userScrolledUntil = 0;     // suspend auto-follow until this timestamp
+  let followResume = false;      // 실스크롤로 이탈함 → 보류 만료 시 반복 문단으로 1회 복귀 신호
   let autoScrollUntil = 0;       // (레거시) — 부드러운 ease 로 대체되어 게이트엔 더 안 씀
 
   // === 부드러운 자동 스크롤 (Apple Podcasts 느낌) ===
@@ -422,7 +423,18 @@ export async function renderEpisode(root, idStr, tStr) {
     }
     lastAdEl = null;
     const idx = findActiveSentIdx(t);
-    if (idx === lastActiveSent) return;
+    // 반복(loop/auto5/auto10) 중 사용자가 스크롤로 벗어난 경우: 보류(4s) 만료 시 반복 문단으로 복귀.
+    // 반복은 같은 문단에 머물러 paraChanged 가 다시 안 오고, out-of-band 보정도 inLoopPara 게이트에
+    // 막히므로 여기서 1회 강제 재배치하지 않으면 화면이 영영 안 돌아온다(사용자 보고 2026-07-08).
+    let resumeNow = false;
+    if (followResume && Date.now() >= userScrolledUntil) {
+      followResume = false;   // 반복 모드가 아니면 소거만(일반 재생은 기존 out-of-band 복귀로 충분)
+      if ((shadowMode === 'loop' || shadowMode === 'auto5' || shadowMode === 'auto10') && loopPara >= 0) {
+        resumeNow = true;
+        lastActivePara = -1;  // paraChanged 강제 → 아래에서 문단 시작을 상단 ~10% 로 재배치
+      }
+    }
+    if (idx === lastActiveSent && !resumeNow) return;
 
     if (lastActiveSent >= 0 && sentRanges[lastActiveSent]) {
       sentRanges[lastActiveSent].el.classList.remove('active');
@@ -484,7 +496,10 @@ export async function renderEpisode(root, idStr, tStr) {
   if ($txScroll) {
     // cancel=true 인 실제 스크롤 제스처(휠/드래그/스크롤키)에선 진행 중인 auto-ease 를 즉시 멈춤.
     // 단순 탭(touchstart)은 cancel 하지 않음 → 단어 탭→가운데 정렬 ease 가 살아있게.
-    const markUser = (cancel) => { userScrolledUntil = Date.now() + 4000; if (cancel) cancelEase(); };
+    const markUser = (cancel) => {
+      userScrolledUntil = Date.now() + 4000;
+      if (cancel) { cancelEase(); followResume = true; }  // 실스크롤(휠/드래그/키)만 복귀 예약 — 단순 탭 제외
+    };
     $txScroll.addEventListener('wheel', () => markUser(true), { passive: true });
     $txScroll.addEventListener('touchstart', () => markUser(false), { passive: true });
     $txScroll.addEventListener('touchmove', () => markUser(true), { passive: true });
@@ -502,6 +517,7 @@ export async function renderEpisode(root, idStr, tStr) {
     const elTop = rect.top - cont.top + $tx.scrollTop;
     const target = elTop - $tx.clientHeight / 2 + rect.height / 2;
     userScrolledUntil = Date.now() + 3000;  // give user 3s to read before auto-follow resumes
+    followResume = false;                   // 탭 = 명시적 위치 선택 → 반복 문단 강제 복귀는 취소
     smoothScrollTo(Math.max(0, target));    // 부드러운 ease 로 가운데 정렬
   }
   // 단어/문장 탭으로 그 지점부터 재생할 때: 이미 화면에 잘 보이면 스크롤하지 않는다(사용자 보고:
@@ -510,6 +526,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function scrollSentIntoViewIfNeeded(sentEl) {
     if (!sentEl || !$tx) return;
     userScrolledUntil = Date.now() + 3000;  // 어느 경우든 자동추적은 3s 보류(탭 지점 유지)
+    followResume = false;                   // 탭 = 명시적 위치 선택 → 반복 문단 강제 복귀는 취소
     const rect = sentEl.getBoundingClientRect();
     const cont = $tx.getBoundingClientRect();
     const relTop = rect.top - cont.top, relBot = rect.bottom - cont.top;
@@ -545,6 +562,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $card = document.querySelector('.tx-card');
   document.querySelector('.tx-live-badge')?.addEventListener('click', () => {
     userScrolledUntil = 0;
+    followResume = false;
     lastActivePara = -1;  // force re-trigger of scroll on next update
     highlightActiveSegment();
   });
@@ -563,6 +581,7 @@ export async function renderEpisode(root, idStr, tStr) {
       lastActivePara = -1;
       autoScrollUntil = 0;
       userScrolledUntil = 0;
+      followResume = false;
       highlightActiveSegment();
       showControls();  // 열 때 컨트롤 표시 후 잠시 뒤 자동 숨김
     }, 80);
