@@ -156,8 +156,10 @@ export async function renderEpisode(root, idStr, tStr) {
   let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→loop→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 15회(사용자 요청).
-  // 4초당 1회 기준: ~20s→5회, 32s→8회, 48s→12회, 60s+→15회.
-  const smartReps = (durSec) => Math.max(5, Math.min(15, Math.round(durSec / 4)));
+  // 실측 캘리브레이션(2026-07-09, 최신 8회차 981문단): groupIntoParagraphs 가 문단을 ~16s에서 끊어
+  // 분포가 0~20s(중앙값 10s)라 초기 공식(dur/4)은 전부 5회로 뭉개졌다. → 기본 5회 + 2초당 1회:
+  // 0~2s→5회, 6s→8회, 10s→10회, 16s→13회, 20s+→15회.
+  const smartReps = (durSec) => Math.max(5, Math.min(15, Math.round(5 + durSec / 2)));
   // 반복(쉐도잉) 모드 공통 게이트 — loop/smart/auto5/auto10 전부.
   function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
