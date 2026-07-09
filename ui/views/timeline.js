@@ -39,6 +39,8 @@ export async function renderTimeline(root) {
   const ready = items.filter((e) => e.vocab_count > 0).length;
 
   let html = showSwitchHtml();
+  // 오프라인이면 안내 배너 — ⬇ 배지 회차만 재생 가능함을 미리 알린다.
+  if (!navigator.onLine) html += `<div class="offline-note">📴 Offline — episodes marked ⬇ are available</div>`;
   html += heroHtml({total: items.length, ready});
   html += continueHtml(items);  // 이어듣기 (현재 쇼에서 마지막으로 듣던 회차)
   html += featuredHtml(items[0]);                     // 최신 에피소드 피처 카드
@@ -48,6 +50,7 @@ export async function renderTimeline(root) {
 
   wireShowSwitch(root);
   wirePlay(root, items);
+  markOfflineReady(root);
 
   // 에피소드 검색 — 제목/설명 클라이언트 필터
   const $s = root.querySelector('#ep-search');
@@ -62,9 +65,35 @@ export async function renderTimeline(root) {
         const box = root.querySelector('#ep-groups');
         box.innerHTML = filtered.length ? groupsHtml(filtered, true) : '<div class="empty">No results.</div>';
         wirePlay(box, items);
+        markOfflineReady(box);
       }, 150);
     });
   }
+}
+
+// 오프라인 준비된(오디오 캐시 완료) 회차에 ⬇ 배지 부착 — 캐시 조회가 비동기라 렌더 후 처리.
+// 실패해도(캐시 미지원 등) 라이브러리는 평소대로 동작한다.
+function markOfflineReady(scope) {
+  import('/offline.js').then(async (m) => {
+    const ready = await m.offlineReadyIds();
+    if (!ready.size) return;
+    scope.querySelectorAll('.ep-row[data-id]').forEach((row) => {
+      if (!ready.has(Number(row.dataset.id)) || row.querySelector('.offline-ep')) return;
+      const foot = row.querySelector('.ep-foot');
+      if (!foot) return;
+      let chips = foot.querySelector('.ep-chips');
+      if (!chips) {
+        chips = document.createElement('div');
+        chips.className = 'ep-chips';
+        foot.appendChild(chips);
+      }
+      const b = document.createElement('span');
+      b.className = 'chip offline-ep';
+      b.textContent = '⬇';
+      b.title = 'Available offline';
+      chips.appendChild(b);
+    });
+  }).catch(() => {});
 }
 
 // ▶ 버튼(행/피처/이어재생) → 인라인 재생. 이어재생은 저장 위치에서 resume.
@@ -254,7 +283,7 @@ function rowHtml(e) {
   if (!e.transcribed_at && e.has_audio) chips.push(`<span class="chip warn">pending</span>`);
 
   return `
-    <a class="ep-row${pct ? ' resumable' : ''}${done ? ' played' : ''}" href="#/episode/${e.id}">
+    <a class="ep-row${pct ? ' resumable' : ''}${done ? ' played' : ''}" data-id="${e.id}" href="#/episode/${e.id}">
       <div class="ep-thumb">
         <img src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         ${num ? `<span class="ep-num">${escapeHtml(num)}</span>` : ''}

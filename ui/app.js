@@ -84,6 +84,28 @@ export function withTimeout(promise, ms, fallback) {
 }
 const SESSION_TIMEOUT_MS = 3500;
 
+// 오프라인 부팅 우회: 토큰이 만료돼 리프레시가 필요한데 오프라인이면 getSession 이 세션을 못
+// 돌려준다 → 저장된 세션 흔적이 있으면 입장시킨다(읽기는 SW 캐시, 쓰기는 실패해도 UI 는 graceful).
+// 온라인 복귀 후에는 onAuthStateChange(TOKEN_REFRESHED/SIGNED_OUT)가 상태를 바로잡는다.
+function hasStoredSession() {
+  try {
+    return Object.keys(localStorage).some((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+  } catch (e) { return false; }
+}
+
+// 로그인 후 잠시 뒤 백그라운드로 최근 회차(자막+오디오)를 내려받아 오프라인 청취를 준비한다.
+// 부팅 직후 대역폭 경쟁(목록/자막 로딩)을 피해 지연 실행. 세션당 1회(offline.js 내부 가드).
+let _offlineKicked = false;
+function kickOfflineCache() {
+  if (_offlineKicked || !navigator.onLine) return;
+  _offlineKicked = true;
+  setTimeout(() => {
+    import('/offline.js')
+      .then((m) => m.ensureOfflineCache())
+      .catch((e) => console.warn('[offline] prefetch failed:', e));
+  }, 4000);
+}
+
 async function boot() {
   // Google OAuth 리다이렉트(?code=)로 돌아온 경우: supabase-js 가 비동기로 세션을 교환 중 →
   // 로그인 화면 깜빡임 없이 onAuthStateChange(SIGNED_IN)을 기다린다.
@@ -100,6 +122,12 @@ async function boot() {
     authed = true;
     document.body.classList.remove('logged-out');
     route();
+    kickOfflineCache();
+  } else if (!navigator.onLine && hasStoredSession()) {
+    authed = true;
+    document.body.classList.remove('logged-out');
+    route();
+    toast('Offline — downloaded episodes only');
   } else if (pendingOAuth) {
     document.body.classList.add('logged-out');
     $app.innerHTML = '<div class="login-wrap"><p class="login-sub">Signing in…</p></div>';
@@ -137,6 +165,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     cleanAuthUrl();
     if (!location.hash || location.hash === '#') location.hash = '#/';
     route();
+    kickOfflineCache();
   }
 });
 

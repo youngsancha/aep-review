@@ -483,6 +483,16 @@ body.on-episode {
 .chip.warn   { background: var(--chip-warn-bg);   color: var(--chip-warn-tx);   }
 .chip.new-ep { background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; }
 .chip.done-ep { background: var(--chip-coll-bg); color: var(--chip-coll-tx); }
+/* 오프라인 준비된 회차(오디오 캐시 완료) — timeline.js markOfflineReady 가 부착 */
+.chip.offline-ep { background: var(--chip-audio-bg); color: var(--chip-audio-tx); text-transform: none; }
+/* 오프라인 접속 시 라이브러리 상단 안내 배너 */
+.offline-note {
+  margin: 10px 14px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--chip-warn-bg); color: var(--chip-warn-tx);
+  font-size: 12.5px; font-weight: 600;
+}
 .ep-row.played .ep-title { opacity: 0.55; }  /* 완료한 에피소드는 살짝 흐리게(Apple Podcasts) */
 .chip.word    { background: var(--chip-word-bg);    color: var(--chip-word-tx);    }
 .chip.idiom   { background: var(--chip-idiom-bg);   color: var(--chip-idiom-tx);   }
