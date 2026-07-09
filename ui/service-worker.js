@@ -7,7 +7,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.18.1';
+const VERSION = '1.18.2';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -183,7 +183,31 @@ self.addEventListener('fetch', (e) => {
   // ⑤ 그 외 cross-origin(megaphone 스트리밍·MyMemory 등)은 그대로 네트워크(SW 우회).
   if (url.origin !== self.location.origin) return;
 
-  // ⑥ 같은 출처 앱 셸: stale-while-revalidate
+  // ⑥ 내비게이션(html 문서): network-first — '당겨서 새로고침' 한 번에 항상 최신 셸을 받는다.
+  //    (기존 SWR 는 배포 직후 첫 새로고침에 옛 html 을 서빙했고, 그 직후 새 SW 가 옛 셸 캐시를
+  //     지워 페이지-캐시 버전이 어긋난 좀비 상태가 됐다 — 실기기에선 앱 재시작 전까지 먹통으로
+  //     보이는 증상(사용자 보고 2026-07-09). 오프라인이면 캐시 폴백이라 오프라인 부팅은 그대로.)
+  if (req.mode === 'navigate') {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        // req 를 그대로 재구성하면 navigate 모드라 TypeError — URL 문자열로 새 요청.
+        const res = await fetch(req.url, { cache: 'no-store' });
+        if (res && res.status === 200) {
+          cache.put('/index.html', res.clone()).catch(() => {});
+          cache.put('/', res.clone()).catch(() => {});
+        }
+        return res;
+      } catch (err) {
+        return (await caches.match(req.url, { ignoreVary: true, ignoreSearch: true }))
+            || (await caches.match('/index.html'))
+            || (await caches.match('/'));
+      }
+    })());
+    return;
+  }
+
+  // ⑦ 같은 출처 앱 셸(js/css/아이콘): stale-while-revalidate
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req);

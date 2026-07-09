@@ -298,6 +298,30 @@ export function fmtDate(iso) {
 }
 
 // === Service worker ===
+// 좀비 셸 자가치유 — 배포 직후 새로고침이 옛 html 을 서빙한 사이 새 SW 가 활성화되면, 옛 셸 캐시가
+// 삭제돼 이 페이지(임포트맵 ?v=옛버전)와 캐시가 어긋난다. 내 버전보다 '새로운' 셸 캐시가 보이면
+// 즉시 1회 재로드해 최신 셸로 갈아탄다(내비게이션은 SW 가 network-first 라 재로드=최신 html 보장).
+// sessionStorage 가드로 무한 루프 방지(오프라인 폴백으로 옛 html 이 또 와도 1회로 그침).
+(async function healStaleShell() {
+  try {
+    if (!('caches' in window)) return;
+    const parts = (s) => String(s).split('.').map((n) => parseInt(n, 10) || 0);
+    const isNewer = (a, b) => {   // a > b (semver)
+      const x = parts(a), y = parts(b);
+      for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+      return false;
+    };
+    const vers = (await caches.keys())
+      .map((n) => (n.match(/^aep-review-shell-v(.+)$/) || [])[1])
+      .filter(Boolean);
+    const KEY = 'aep-heal-' + APP_VERSION;
+    if (vers.some((v) => isNewer(v, APP_VERSION)) && !sessionStorage.getItem(KEY)) {
+      sessionStorage.setItem(KEY, '1');
+      location.reload();
+    }
+  } catch (e) { /* 캐시 미지원 등 — 무시 */ }
+})();
+
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/service-worker.js?v=' + APP_VERSION, {updateViaCache: 'none'})
     .then((reg) => {
@@ -316,10 +340,12 @@ if ('serviceWorker' in navigator) {
   // 새 버전(SW) 적용 시 새로고침 — 단, '사용 중'엔 끊지 않는다. 재생 중 페이지가 갑자기 reload 되면
   // 오디오가 끊기고 재생버튼이 안 먹는 것처럼 보였다(사용자 보고). 그래서 화면이 가려질 때(백그라운드)
   // 또는 사용자가 직접 새로고침할 때만 적용 → 활성 사용 중엔 절대 끊기지 않음.
+  // 예외: 페이지가 갓 로드된 상태(<15s, 사용자가 방금 새로고침한 직후)라면 즉시 완료한다 —
+  // 당겨서 새로고침 한 번으로 업데이트가 그 자리에서 끝나고 바로 재생 가능(사용자 요청 2026-07-09).
   let reloaded = false, pendingReload = false;
   const doReload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (document.hidden) doReload();
+    if (document.hidden || performance.now() < 15000) doReload();
     else pendingReload = true;
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && pendingReload) doReload(); });
