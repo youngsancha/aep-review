@@ -155,12 +155,12 @@ export async function renderEpisode(root, idStr, tStr) {
   let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart 는 문단마다 다름, loop 는 0(무한)
   let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart→loop→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
-  // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 3회, 긴 문단 최대 10회.
-  // (v1.18.4: 5~15 → 3~10 로 축소, 같은 비율 유지 — 사용자 요청 2026-07-10)
+  // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 12회.
+  // (v1.19.0: 3~10 → 5~12 — 사용자 요청 2026-07-10. 비율(0~20s 선형 매핑)은 유지)
   // 실측 캘리브레이션(2026-07-09, 최신 8회차 981문단): groupIntoParagraphs 가 문단을 ~16s에서 끊어
-  // 분포가 0~20s(중앙값 10s) → 0~20s 에 3~10회를 선형 매핑(기본 3회 + 초당 0.35회):
-  // 0~2s→3~4회, 6s→5회, 10s→7회, 16s→9회, 20s+→10회.
-  const smartReps = (durSec) => Math.max(3, Math.min(10, Math.round(3 + durSec * 0.35)));
+  // 분포가 0~20s(중앙값 10s) → 0~20s 에 5~12회를 선형 매핑(기본 5회 + 초당 0.35회):
+  // 0~2s→5~6회, 6s→7회, 10s→9회, 16s→11회, 20s+→12회.
+  const smartReps = (durSec) => Math.max(5, Math.min(12, Math.round(5 + durSec * 0.35)));
   // 반복(쉐도잉) 모드 공통 게이트 — loop/smart/auto5/auto10 전부.
   function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
@@ -407,6 +407,13 @@ export async function renderEpisode(root, idStr, tStr) {
     }
   }
   function _highlightImpl() {
+    // 추적 상태 클래스(live/no-follow → 'Now playing' 배지 표시)는 어떤 조기 return 보다 먼저 갱신.
+    // 예전엔 함수 끝에서만 갱신해서, 단일 문장 문단 반복(idx 불변)·광고 구간·일시정지처럼
+    // 조기 return 에 걸리는 상황에서 배지가 영영 안 사라졌다(사용자 보고 2026-07-10).
+    const txCard = document.querySelector('.tx-card');
+    const userActive = Date.now() < userScrolledUntil;
+    txCard?.classList.toggle('live', !userActive);
+    txCard?.classList.toggle('no-follow', userActive);
     if (!sentRanges.length) return;
     let t = txTime();
     // 반복 모드: 문단 끝에서 처음으로 되감은 직후 txTime 이 HL_LAG(0.2s)만큼 뒤로 가 직전 문단이
@@ -455,7 +462,6 @@ export async function renderEpisode(root, idStr, tStr) {
     renderNotes(idx);  // 현재 문장의 어려운 표현 해설을 하단 패널에
 
     const scroll = document.querySelector('.tx-scroll');
-    const txCard = document.querySelector('.tx-card');
 
     // 문단 played/active 표시 (시각용)
     const newPara = idx >= 0 ? paraEls.indexOf(sentRanges[idx].paraEl) : -1;
@@ -473,7 +479,6 @@ export async function renderEpisode(root, idStr, tStr) {
     // 한 화면에 들어오게 한다 → 한 문단을 읽는 동안엔 화면이 안 움직인다(사용자 보고: 4줄 문장 다음
     // 1줄로 넘어갈 때 화면이 위로 튀던 문제 제거). 같은 문단에서 활성 문장이 화면 밖으로 나가려
     // 할 때(아주 긴 문단)만 예외적으로 그 문장을 ~30% 로 살짝 당긴다.
-    const userActive = Date.now() < userScrolledUntil;
     if (idx >= 0 && scroll && !userActive) {
       const cont = scroll.getBoundingClientRect();
       const h = scroll.clientHeight;
@@ -497,8 +502,6 @@ export async function renderEpisode(root, idStr, tStr) {
         if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
       }
     }
-    txCard?.classList.toggle('live', !userActive);
-    txCard?.classList.toggle('no-follow', userActive);
   }
 
   // Detect REAL user-initiated scrolling via wheel/touch — not via 'scroll' event,
@@ -507,9 +510,13 @@ export async function renderEpisode(root, idStr, tStr) {
   if ($txScroll) {
     // cancel=true 인 실제 스크롤 제스처(휠/드래그/스크롤키)에선 진행 중인 auto-ease 를 즉시 멈춤.
     // 단순 탭(touchstart)은 cancel 하지 않음 → 단어 탭→가운데 정렬 ease 가 살아있게.
+    let followTimer = 0;
     const markUser = (cancel) => {
       userScrolledUntil = Date.now() + 4000;
       if (cancel) { cancelEase(); followResume = true; }  // 실스크롤(휠/드래그/키)만 복귀 예약 — 단순 탭 제외
+      // 일시정지 중엔 timeupdate 가 없어 보류 만료를 아무도 재평가 안 함 → 1회 예약(배지 해제+복귀).
+      clearTimeout(followTimer);
+      followTimer = setTimeout(highlightActiveSegment, 4200);
     };
     $txScroll.addEventListener('wheel', () => markUser(true), { passive: true });
     $txScroll.addEventListener('touchstart', () => markUser(false), { passive: true });

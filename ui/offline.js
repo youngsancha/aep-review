@@ -12,6 +12,18 @@ import { toast } from '/app.js';
 const AUDIO_CACHE = 'aep-review-audio-v1';   // service-worker.js 와 반드시 동일한 이름
 const META_KEY = 'aep-offline-meta';         // { [id]: transcribedAt } — 다운로드 당시 자막 버전
 const COUNT_KEY = 'aep-offline-n';           // 유지 회차 수 오버라이드(기본 15, 0=끔)
+const STATUS_KEY = 'aep-offline-run';        // 마지막 프리페치 실행 기록 — 라이브러리 상태줄/진단용
+
+function setStatus(patch) {
+  try {
+    const cur = JSON.parse(localStorage.getItem(STATUS_KEY) || '{}') || {};
+    localStorage.setItem(STATUS_KEY, JSON.stringify({ ...cur, ...patch, at: Date.now() }));
+  } catch (e) {}
+}
+// 마지막 실행 상태 {phase: running|done|skipped|error, done, total, note, at} — timeline 상태줄이 읽는다.
+export function offlineRunStatus() {
+  try { return JSON.parse(localStorage.getItem(STATUS_KEY) || 'null'); } catch (e) { return null; }
+}
 
 export function offlineCount() {
   try {
@@ -68,8 +80,12 @@ export async function ensureOfflineCache() {
   if (_ran) return;              // 세션당 1회
   _ran = true;
   const n = offlineCount();
-  if (!n || !navigator.onLine) return;
-  if (navigator.connection && navigator.connection.saveData) return;   // 데이터 절약 모드 존중
+  if (!n) { setStatus({ phase: 'skipped', note: 'disabled (aep-offline-n=0)' }); return; }
+  if (!navigator.onLine) return;   // 오프라인 접속 자체는 정상 상황 — 기록 안 함
+  if (navigator.connection && navigator.connection.saveData) {
+    setStatus({ phase: 'skipped', note: 'Data Saver on' });   // 절약 모드 존중 — 상태줄로 이유를 보여준다
+    return;
+  }
   try { navigator.storage?.persist?.(); } catch (e) {}                  // 브라우저 임의 축출 방지
 
   if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -77,14 +93,21 @@ export async function ensureOfflineCache() {
   }
 
   // R2 호스팅(자막=오디오 일치 보장) 회차만 대상 — megaphone(DAI)은 세션마다 광고가 달라 캐시 무의미.
-  const [items, hosted] = await Promise.all([listEpisodes(), hostedSet()]);
+  let items, hosted;
+  try {
+    [items, hosted] = await Promise.all([listEpisodes(), hostedSet()]);
+  } catch (err) {
+    setStatus({ phase: 'error', note: 'list: ' + String(err && err.message || err).slice(0, 100) });
+    return;
+  }
   const targets = items.filter((e) => hosted.has(Number(e.id))).slice(0, n);
-  if (!targets.length) return;
+  if (!targets.length) { setStatus({ phase: 'error', note: 'no hosted episodes in list' }); return; }
   try { await episodeNav(targets[0].id); } catch (e) {}   // ⏮/⏭ 용 id 목록도 DATA_CACHE 에
 
   const meta = loadMeta();
   const cache = await caches.open(AUDIO_CACHE);
-  let fresh = 0;
+  let ok = 0, fresh = 0;
+  setStatus({ phase: 'running', done: 0, total: targets.length, note: '' });
   for (const e of targets) {
     try {
       const ep = await getEpisode(e.id);      // REST 행+자막+한글번역 → SW DATA_CACHE 워밍
@@ -95,11 +118,15 @@ export async function ensureOfflineCache() {
       if (await cacheAudio(url)) fresh++;     // 순차 다운로드(대역폭 독점 방지)
       meta[e.id] = ep.transcribed_at || meta[e.id] || '';
       saveMeta(meta);
+      ok++;
+      setStatus({ phase: 'running', done: ok, total: targets.length });
     } catch (err) {
+      setStatus({ note: `ep${e.id}: ` + String(err && err.message || err).slice(0, 100) });
       if (!navigator.onLine) break;           // 네트워크 유실 — 다음 부팅에서 이어받는다
       console.warn('[offline] episode cache failed', e.id, err);
     }
   }
+  setStatus({ phase: 'done', done: ok, total: targets.length });
 
   // 대상 밖(오래된) 오디오 정리 — 최근 N개만 유지
   const keep = new Set(targets.map((e) => hostedAudioUrl(e.id)));

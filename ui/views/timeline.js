@@ -76,6 +76,22 @@ export async function renderTimeline(root) {
 function markOfflineReady(scope) {
   import('/offline.js').then(async (m) => {
     const ready = await m.offlineReadyIds();
+    // 상태줄: 준비된 회차 수 + 마지막 프리페치 실행 상태 — "오프라인이 안 된다"의 원인을 화면에서 진단.
+    const $st = document.getElementById('lib-offline');
+    if ($st) {
+      const target = m.offlineCount();
+      const st = m.offlineRunStatus ? m.offlineRunStatus() : null;
+      let txt = '';
+      if (target > 0 && !navigator.onLine) txt = `⬇ ${ready.size} episodes available offline`;
+      else if (target > 0) {
+        txt = `⬇ Offline: ${ready.size}/${target} ready`;
+        if (st && st.phase === 'running') txt += ' · downloading…';
+        else if (st && st.phase === 'skipped') txt += ` · paused: ${st.note || ''}`;
+        else if (st && st.phase === 'error') txt += ` · error: ${st.note || ''}`;
+        else if (st && st.note) txt += ` · last issue: ${st.note}`;
+      }
+      $st.textContent = txt;
+    }
     if (!ready.size) return;
     scope.querySelectorAll('.ep-row[data-id]').forEach((row) => {
       if (!ready.has(Number(row.dataset.id)) || row.querySelector('.offline-ep')) return;
@@ -235,6 +251,7 @@ function heroHtml({total, ready}) {
     <div class="library-head">
       <h1 class="library-title">Library</h1>
       <div class="library-sub">${total} episodes${ready < total ? ` · ${total - ready} preparing` : ' · all ready'}</div>
+      <div id="lib-offline" class="library-offline"></div>
     </div>
   `;
 }
