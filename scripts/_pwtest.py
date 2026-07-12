@@ -28,6 +28,7 @@ export const highlightTerm = (text, term) => {
 export const fmtTime = (s) => { s = Math.max(0, s | 0); const m = (s / 60) | 0; const ss = s % 60; return m + ':' + String(ss).padStart(2, '0'); };
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
 export const fmtDuration = (s) => Math.round(s / 60) + ' min';
+export const toast = (msg) => { (window.__toasts = window.__toasts || []).push(msg); };
 export const speak = () => {};
 export const prefetch = () => {};
 const calls = []; window.__calls = calls; window.__err = window.__err || [];
@@ -421,12 +422,12 @@ def main() -> int:
                 sent_game_ok = bool(has_card and ka > kb and ka2 == ka and pg.query_selector("#sent-card"))
                 pg.click("#sent-exit") if pg.query_selector("#sent-exit") else None
                 time.sleep(0.2)
-            # 드릴 버튼 줄 균일성: 6개 모두 qb-ico+qb-txt, 높이 동일(들쭉날쭉 2줄/1줄 혼재 없음)
+            # 드릴 버튼 줄 균일성: 8개 모두 qb-ico+qb-txt, 높이 동일(들쭉날쭉 2줄/1줄 혼재 없음)
             qb_ico = pg.eval_on_selector_all(".study-quiz-row .qb-ico", "els=>els.length")
             qb_txt = pg.eval_on_selector_all(".study-quiz-row .qb-txt", "els=>els.length")
             qb_uniform = pg.eval_on_selector_all(
                 ".study-quiz-row .study-quiz-btn",
-                "els=>{const h=els.map(e=>e.offsetHeight);return h.length===6 && Math.max(...h)-Math.min(...h)<=1;}")
+                "els=>{const h=els.map(e=>e.offsetHeight);return h.length===8 && Math.max(...h)-Math.min(...h)<=1;}")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             quiz_opts = 0
             if pg.query_selector("#study-quiz-read"):
@@ -448,7 +449,7 @@ def main() -> int:
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True
                         and sent_ko_ok is True and sent_game_ok is True and ess_ok is True
-                        and qb_ico == 6 and qb_txt == 6 and qb_uniform is True
+                        and qb_ico == 8 and qb_txt == 8 and qb_uniform is True
                         and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
                         and study_tr >= 4)
 

@@ -4,6 +4,7 @@
 import { showCover, currentShow } from '/config.js';
 import { bindMediaSession } from '/media-session.js';
 import { bindScrub } from '/scrub.js';
+import { toast } from '/app.js';   // hoisted export — 순환 import 에서도 안전(함수 선언)
 
 const SVG_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -20,6 +21,7 @@ class Player {
     this.audio.addEventListener('pause', () => this._emit('pause'));
     this.audio.addEventListener('ended', () => this._emit('ended'));
     this.audio.addEventListener('loadedmetadata', () => this._emit('meta'));
+    this.audio.addEventListener('error', () => this._emit('error'));
   }
 
   load(track) {
@@ -75,6 +77,21 @@ class Player {
 }
 
 export const player = new Player();
+
+// 재생 실패를 조용한 데드버튼으로 두지 않고 알린다(사용자 보고: 오프라인에서 미다운로드 회차 ▶ 무반응).
+// 콜드스타트 복구(빈 src→재로드)나 트랙 교체(ABORTED)의 일시 오류는 무시하고, 실제 미디어 오류만
+// 3초 디바운스로 토스트. 오프라인이면 '받은 회차만' 안내, 온라인이면 재시도 유도.
+let _lastErrToast = 0;
+player.on((ev) => {
+  if (ev !== 'error') return;
+  if (!player.current || !player.current.src) return;
+  const err = player.audio.error;
+  if (err && err.code === err.MEDIA_ERR_ABORTED) return;   // 트랙 교체 등 정상 중단
+  const now = Date.now();
+  if (now - _lastErrToast < 3000) return;
+  _lastErrToast = now;
+  toast(navigator.onLine ? '재생 실패 — 다시 시도해 주세요' : '오프라인에선 ⬇ 받은 회차만 재생돼요');
+});
 window.__player = player;  // debug
 
 // 차량/핸들/잠금화면/블루투스 미디어 컨트롤 연동(미지원 환경이면 자동 no-op).

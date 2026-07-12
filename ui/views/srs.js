@@ -8,7 +8,7 @@
 //   - Book-flip drag: 손가락 위치 ↔ 반응 일치, 운동기억 강화
 //   - Haptic + auto-TTS at stage entry
 //   - Keyboard: Space=advance, ←/→=grade, R=replay
-import { escapeHtml, highlightTerm } from '/app.js';
+import { escapeHtml, highlightTerm, toast } from '/app.js';
 import { srsQueue, srsReview } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
@@ -233,7 +233,12 @@ export async function renderSrs(root) {
       card.classList.add('book-flip-' + g.dir);
     }
 
-    srsReview(c.id, gradeKey).catch((e) => console.warn('srs review failed', e));
+    // 오프라인이면 채점 저장이 실패하는데, 카드는 애니메이션으로 사라지고 카운트만 올라가 사용자는
+    // 저장된 줄 안다 → 정직하게 알린다(아직 오프라인 큐/재전송은 없음).
+    srsReview(c.id, gradeKey).catch((e) => {
+      console.warn('srs review failed', e);
+      if (!navigator.onLine) toast('오프라인 — 이 복습 결과는 저장되지 않았어요');
+    });
 
     done++;
     if (gradeKey === 'again') againCount++;

@@ -1,5 +1,5 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
-import { escapeHtml, fmtDuration, fmtDate } from '/app.js';
+import { escapeHtml, fmtDuration, fmtDate, toast } from '/app.js';
 import { listEpisodes, cleanAudioUrl, audioSrcFor } from '/db.js';
 import { player, getProgressMap, getCompleted } from '/player.js';
 import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions, showMeta } from '/config.js';
@@ -89,8 +89,27 @@ function markOfflineReady(scope) {
         else if (st && st.phase === 'skipped') txt += ` · paused: ${st.note || ''}`;
         else if (st && st.phase === 'error') txt += ` · error: ${st.note || ''}`;
         else if (st && st.note) txt += ` · last issue: ${st.note}`;
-      }
+      } else txt = '⬇ Offline downloads off · tap to enable';
       $st.textContent = txt;
+      $st.classList.add('tappable');
+      // 유지 회차 수를 devtools 없이 한 탭으로 조절(0→5→15→30 순환). 켜면 즉시 프리페치 재실행.
+      // markOfflineReady 는 검색/재렌더로 여러 번 불리므로 리스너는 1회만 붙인다.
+      if (!$st.dataset.wired) {
+        $st.dataset.wired = '1';
+        $st.setAttribute('role', 'button');
+        $st.setAttribute('tabindex', '0');
+        const cycle = async () => {
+          const CYCLE = [0, 5, 15, 30];
+          const i = CYCLE.indexOf(m.offlineCount());
+          const next = CYCLE[(i + 1) % CYCLE.length];
+          m.setOfflineCount(next);
+          if (next > 0) { toast(`오프라인 저장: 최근 ${next}개 받는 중…`); m.forceRun && m.forceRun(); }
+          else toast('오프라인 저장 끔');
+          setTimeout(() => markOfflineReady(scope), 400);   // 상태줄 즉시 반영
+        };
+        $st.addEventListener('click', cycle);
+        $st.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycle(); } });
+      }
     }
     if (!ready.size) return;
     scope.querySelectorAll('.ep-row[data-id]').forEach((row) => {

@@ -103,9 +103,26 @@ export async function renderStudy(root) {
   let ov;
   try {
     ov = await studyOverview();
+    try { localStorage.setItem('aep-study-ov', JSON.stringify(ov)); } catch (e) {}
   } catch (e) {
-    root.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(e.message)}</div>`;
-    return;
+    // studyOverview 는 HEAD count 쿼리라 SW 가 캐시하지 못한다(비-GET) → 오프라인이면 첫 await 가 throw.
+    // 마지막으로 성공한 개요를 재사용해 화면을 유지하고, 없으면 막다른 에러 대신 친절한 안내를 보여준다
+    // (Essentials 는 셸 캐시라 오프라인에서도 학습 가능 — 지하철에서 Study 진입이 죽지 않게).
+    try { ov = JSON.parse(localStorage.getItem('aep-study-ov') || 'null'); } catch (e2) { ov = null; }
+    if (!ov) {
+      const offline = !navigator.onLine;
+      root.innerHTML = `<div class="empty study-offline">
+        <p class="study-offline-title">${offline ? '📴 오프라인이에요' : '불러오지 못했어요'}</p>
+        <p class="study-offline-sub">${offline
+          ? 'Study 통계는 온라인에서 채워져요. Essentials 는 오프라인에서도 학습할 수 있어요.'
+          : escapeHtml(e.message)}</p>
+        <button class="btn primary" id="study-ess-cta">✨ Essentials 열기</button>
+        <button class="btn" id="study-retry">다시 시도</button>
+      </div>`;
+      document.getElementById('study-ess-cta')?.addEventListener('click', () => renderEssentials(root));
+      document.getElementById('study-retry')?.addEventListener('click', () => renderStudy(root));
+      return;
+    }
   }
 
   // 5축 수치화 — 보존력은 Supabase 분포(실패해도 0 으로 graceful), 나머지는 localStorage 측정 로그.
@@ -460,10 +477,13 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
     root.querySelector('#study-quiz-listen')?.addEventListener('click', () => startQuiz('listen'));
     root.querySelector('#study-quiz-weak')?.addEventListener('click', startWeakQuiz);
-    root.querySelector('#study-quiz-dict')?.addEventListener('click', startDictation);
-    root.querySelector('#study-quiz-cloze')?.addEventListener('click', startCloze);
+    // ⚠ 이 3개는 (source||items).filter 를 쓰는데, 핸들러로 함수를 '직접' 넘기면 클릭 이벤트가
+    // source 인자로 들어가 event.filter 에서 TypeError → 모드가 클릭 즉시 죽었다(프로덕션 실버그).
+    // 반드시 인자 없는 화살표로 감싼다(위 read/listen 과 동일 패턴).
+    root.querySelector('#study-quiz-dict')?.addEventListener('click', () => startDictation());
+    root.querySelector('#study-quiz-cloze')?.addEventListener('click', () => startCloze());
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
-    root.querySelector('#study-quiz-prod')?.addEventListener('click', startProduction);
+    root.querySelector('#study-quiz-prod')?.addEventListener('click', () => startProduction());
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
     root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);

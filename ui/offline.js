@@ -32,6 +32,19 @@ export function offlineCount() {
   } catch (e) { return 15; }
 }
 
+// 유지 회차 수 변경(라이브러리 상태줄 탭). 0~30 으로 클램프하고 저장한 값을 돌려준다.
+export function setOfflineCount(n) {
+  const v = Math.max(0, Math.min(30, parseInt(n, 10) || 0));
+  try { localStorage.setItem(COUNT_KEY, String(v)); } catch (e) {}
+  return v;
+}
+
+// '지금 받기'/재시도 — 세션 1회 가드를 풀고 프리페치를 다시 돌린다(개수 변경·에러 후 수동 실행).
+export async function forceRun() {
+  _ran = false;
+  await ensureOfflineCache();
+}
+
 function loadMeta() { try { return JSON.parse(localStorage.getItem(META_KEY) || '{}') || {}; } catch { return {}; } }
 function saveMeta(m) { try { localStorage.setItem(META_KEY, JSON.stringify(m)); } catch (e) {} }
 
@@ -128,11 +141,18 @@ export async function ensureOfflineCache() {
   }
   setStatus({ phase: 'done', done: ok, total: targets.length });
 
-  // 대상 밖(오래된) 오디오 정리 — 최근 N개만 유지
+  // 대상 밖(오래된) 오디오 정리 — 최근 N개만 유지. ⚠ 멀티쇼: 에피소드 id 는 두 쇼가 공유하는 전역
+  // 시퀀스라, 삭제를 '현재 쇼에 속한 id'로 한정하지 않으면 다른 쇼가 받아 둔 오디오까지 지운다
+  // (쇼 전환→재실행 때마다 상대 쇼 캐시 수백 MB 증발). listEpisodes 는 현재 쇼 전체를 주므로
+  // curIds 에 없는(=다른 쇼) 키는 건드리지 않는다.
+  const curIds = new Set(items.map((e) => Number(e.id)));
   const keep = new Set(targets.map((e) => hostedAudioUrl(e.id)));
   try {
     const keys = await cache.keys();
-    for (const req of keys) if (!keep.has(req.url)) await cache.delete(req);
+    for (const req of keys) {
+      const cid = Number((new URL(req.url).pathname.match(/\/(\d+)\.mp3$/) || [])[1]);
+      if (Number.isFinite(cid) && curIds.has(cid) && !keep.has(req.url)) await cache.delete(req);
+    }
   } catch (e) {}
 
   if (fresh > 0) {
