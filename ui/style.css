@@ -19,12 +19,18 @@
 
   --text:        #000000;
   --text-2:      rgba(60, 60, 67, 0.85);
-  --text-3:      rgba(60, 60, 67, 0.55);
+  /* --text-3 을 0.55→0.62 로 살짝 올려 캡션 대비를 개선(작은 12–13px 보조 텍스트가 다수). */
+  --text-3:      rgba(60, 60, 67, 0.62);
   --text-4:      rgba(60, 60, 67, 0.35);
+  --border:      rgba(60, 60, 67, 0.18);   /* 미정의였던 토큰 — A/B 구분선 등이 currentColor 로 두껍게 나오던 것 방지 */
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.05);
   --shadow-pop:  0 6px 24px rgba(0, 0, 0, 0.12);
   --shadow-art:  0 8px 28px rgba(0, 0, 0, 0.18);
+  /* 브랜드 글로우 — 예전엔 11곳에 손으로 흩뿌려져 값이 제각각이고 라이트 핑크가 다크에서도 그대로였다.
+     테마별 토큰으로 통일: 큰 FAB/마이크는 -lg. */
+  --glow-brand:    0 6px 18px rgba(245, 64, 141, 0.32);
+  --glow-brand-lg: 0 8px 24px rgba(245, 64, 141, 0.34);
 
   /* Chrome / glass surfaces (flip in dark theme) */
   --topbar-bg:    rgba(248, 248, 250, 0.82);
@@ -189,8 +195,11 @@ body.on-episode {
   letter-spacing: 0.02em;
   transition: color 0.15s;
 }
-#tabbar a .icon { font-size: 22px; line-height: 1; opacity: 0.95; }
+/* 이모지 아이콘은 color 를 무시하므로, 선택 상태를 opacity+scale 로 표현(예전엔 라벨 색만 바뀌어
+   현재 탭이 거의 안 보였다). 미선택은 흐리게, 선택은 또렷+살짝 확대. */
+#tabbar a .icon { font-size: 22px; line-height: 1; opacity: 0.45; transition: opacity 0.15s, transform 0.15s; }
 #tabbar a[aria-current="page"] { color: var(--tint); font-weight: 800; }
+#tabbar a[aria-current="page"] .icon { opacity: 1; transform: scale(1.06); }
 
 /* ========== Layout ========== */
 #app { padding: 14px 16px 0; max-width: 720px; margin: 0 auto; }
@@ -270,7 +279,7 @@ body.on-episode {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   font-family: var(--font); font-weight: 800; font-size: 15px;
   padding: 11px 26px; border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(245, 64, 141, 0.32);
+  box-shadow: var(--glow-brand);
   transition: transform 0.1s;
 }
 .feat-play:active { transform: scale(0.97); }
@@ -310,7 +319,7 @@ body.on-episode {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   font-family: var(--font); font-weight: 800; font-size: 13.5px;
   padding: 9px 18px; border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(245, 64, 141, 0.3);
+  box-shadow: var(--glow-brand);
   transition: transform 0.1s;
 }
 .cont-play:active { transform: scale(0.97); }
@@ -556,16 +565,17 @@ body.on-episode {
   margin-bottom: 16px;
 }
 .np-show {
-  font-size: 12px; color: var(--text-3);
+  /* 오리엔팅 라인(S3·E12·날짜) — 예전엔 12px·uppercase·text-3 로 화면에서 가장 안 읽혔다. text-2 로 승격. */
+  font-size: 12px; color: var(--text-2);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 6px;
 }
 .np-title {
   font-family: var(--font);
   font-weight: 700;
-  font-size: 21px; line-height: 1.28;
+  font-size: 22px; line-height: 1.28;
   margin: 0 auto 5px;
   letter-spacing: -0.022em;
   max-width: 92%;
@@ -588,15 +598,15 @@ body.on-episode {
 }
 .np-scrubber input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; appearance: none;
-  width: 14px; height: 14px;
+  width: 16px; height: 16px;
   border-radius: 50%;
-  background: var(--text);
+  background: var(--tint);   /* 형제 컨트롤(미니플레이어·시트 시크바)처럼 브랜드 색으로 — 회색 점은 미완성 느낌 */
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
 .np-scrubber input[type="range"]::-moz-range-thumb {
-  width: 14px; height: 14px; border: 0;
-  border-radius: 50%; background: var(--text);
+  width: 16px; height: 16px; border: 0;
+  border-radius: 50%; background: var(--tint);
   cursor: pointer;
 }
 .np-times {
@@ -637,7 +647,7 @@ body.on-episode {
   border: 0;
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 18px rgba(245, 64, 141, 0.36);
+  box-shadow: var(--glow-brand);
   transition: transform 0.1s;
 }
 .np-play-btn:active { transform: scale(0.96); }
@@ -670,7 +680,7 @@ body.on-episode {
   letter-spacing: -0.01em;
   cursor: pointer;
   display: inline-flex; align-items: center; gap: 7px;
-  box-shadow: 0 5px 16px rgba(245, 64, 141, 0.3);
+  box-shadow: var(--glow-brand);
   transition: transform 0.1s, filter 0.15s;
 }
 .np-tx-btn:hover { filter: brightness(1.05); }
@@ -809,7 +819,7 @@ body.on-episode {
   color: white;
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 14px rgba(245, 64, 141, 0.32);
+  box-shadow: var(--glow-brand);
   padding: 0;
   transition: transform 0.1s;
 }
@@ -1064,7 +1074,7 @@ body.on-episode {
   position: relative;   /* 반복 카운트다운 배지(.tx-loop-badge)의 기준 */
   font-family: "New York", ui-serif, Charter, "Iowan Old Style", "Apple Garamond", Georgia, "Times New Roman", serif;
   font-size: calc(28px * var(--tx-scale, 1));
-  line-height: 1.4;
+  line-height: 1.5;   /* 28px 대형 세리프 본문 — 1.4 는 빽빽. Apple Books/Podcasts 트랜스크립트 수준으로. */
   letter-spacing: -0.018em;
   color: var(--text-3);
   margin: 0 0 28px;
@@ -1176,7 +1186,7 @@ body.on-episode {
   opacity: 0;
   transition: opacity 0.22s, transform 0.22s;
   z-index: 3;
-  box-shadow: 0 6px 18px rgba(245, 64, 141, 0.36);
+  box-shadow: var(--glow-brand);
   pointer-events: none;
   font-family: var(--font);
   white-space: nowrap;
@@ -1202,7 +1212,7 @@ body.on-episode {
 .btn.primary {
   background: linear-gradient(135deg, var(--grad-1) 0%, var(--grad-3) 100%);
   color: white;
-  box-shadow: 0 4px 14px rgba(245, 64, 141, 0.32);
+  box-shadow: var(--glow-brand);
 }
 .btn.primary:hover { opacity: 0.92; }
 .btn.secondary { background: var(--surface-2); color: var(--text); }
@@ -1341,7 +1351,7 @@ body.on-episode {
   width: 38px; height: 38px;
   font-size: 14px; cursor: pointer;
   flex: 0 0 auto;
-  box-shadow: 0 4px 12px rgba(245, 64, 141, 0.32);
+  box-shadow: var(--glow-brand);
 }
 .srs-hint-mono {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -1549,7 +1559,7 @@ body.logged-out #app-version { display: none; }
 .study-cta {
   display: block; text-decoration: none; margin: 14px 0 4px;
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff;
-  border-radius: 16px; padding: 14px 18px; box-shadow: 0 6px 20px rgba(245,64,141,0.3);
+  border-radius: 16px; padding: 14px 18px; box-shadow: var(--glow-brand-lg);
 }
 .study-cta-t { font-family: var(--font); font-weight: 800; font-size: 16px; }
 .study-cta-m { font-size: 12.5px; opacity: 0.92; margin-top: 2px; }
@@ -1846,7 +1856,7 @@ body.logged-out #app-version { display: none; }
   width: 100%; border: 0; cursor: pointer; color: #fff;
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   font-family: var(--font); font-weight: 800; font-size: 17px;
-  padding: 16px; border-radius: 16px; box-shadow: 0 8px 22px rgba(245, 64, 141, 0.32);
+  padding: 16px; border-radius: 16px; box-shadow: var(--glow-brand-lg);
   transition: transform 0.1s;
 }
 .speak-mic:active { transform: scale(0.98); }
@@ -1893,8 +1903,9 @@ body.logged-out #app-version { display: none; }
   cursor: pointer; text-align: center; transition: background 0.15s, border-color 0.15s, transform 0.08s;
 }
 .quiz-opt:active { transform: scale(0.99); }
-.quiz-opt.right { background: #E8F8EE; border-color: #2BB673; color: #1A7A4A; }
-.quiz-opt.wrong { background: #FDECEF; border-color: #E0245E; color: #C01B4C; }
+/* 정/오답 피드백을 테마 인지 chip 토큰으로(예전 하드코딩 라이트 hex 는 다크에서 창백한 민트/핑크로 떴다). */
+.quiz-opt.right { background: var(--chip-coll-bg);  border-color: var(--chip-coll-tx);  color: var(--chip-coll-tx); }
+.quiz-opt.wrong { background: var(--chip-idiom-bg); border-color: var(--chip-idiom-tx); color: var(--chip-idiom-tx); }
 .quiz-exit {
   display: block; margin: 22px auto 0; padding: 12px 24px; border-radius: 14px;
   border: 1.5px solid var(--separator-thin); background: var(--surface-2);
@@ -2052,7 +2063,7 @@ body.logged-out #app-version { display: none; }
 .quiz-bigspk {
   width: 92px; height: 92px; border-radius: 50%; border: 0; cursor: pointer;
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3)); color: #fff; font-size: 36px;
-  box-shadow: 0 8px 24px rgba(245, 64, 141, 0.34);
+  box-shadow: var(--glow-brand-lg);
   display: inline-flex; align-items: center; justify-content: center;
 }
 .quiz-bigspk:active { transform: scale(0.96); }
@@ -2262,10 +2273,14 @@ a { color: var(--tint); }
   --text-2: rgba(235, 235, 245, 0.82);
   --text-3: rgba(235, 235, 245, 0.55);
   --text-4: rgba(235, 235, 245, 0.32);
+  --border: rgba(235, 235, 245, 0.18);
 
-  --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 6px 18px rgba(0,0,0,0.45);
+  /* 다크: 근-검정 배경에선 순수 검정 그림자가 안 보여 카드가 배경에 녹는다 → 상단 inset 하이라이트로 입체감. */
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 8px 20px rgba(0,0,0,0.5), inset 0 0.5px 0 rgba(255,255,255,0.07);
   --shadow-pop:  0 8px 30px rgba(0,0,0,0.62);
   --shadow-art:  0 12px 34px rgba(0,0,0,0.62);
+  --glow-brand:    0 6px 18px rgba(207, 134, 255, 0.30);
+  --glow-brand-lg: 0 8px 24px rgba(207, 134, 255, 0.32);
 
   --topbar-bg: rgba(16, 16, 22, 0.80);
   --mini-bg:   rgba(28, 28, 36, 0.92);
@@ -2299,10 +2314,14 @@ a { color: var(--tint); }
     --text-2: rgba(235, 235, 245, 0.82);
     --text-3: rgba(235, 235, 245, 0.55);
     --text-4: rgba(235, 235, 245, 0.32);
+    --border: rgba(235, 235, 245, 0.18);
 
-    --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 6px 18px rgba(0,0,0,0.45);
+    /* 다크: 근-검정 배경에선 순수 검정 그림자가 안 보여 카드가 배경에 녹는다 → 상단 inset 하이라이트로 입체감. */
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.5), 0 8px 20px rgba(0,0,0,0.5), inset 0 0.5px 0 rgba(255,255,255,0.07);
     --shadow-pop:  0 8px 30px rgba(0,0,0,0.62);
     --shadow-art:  0 12px 34px rgba(0,0,0,0.62);
+    --glow-brand:    0 6px 18px rgba(207, 134, 255, 0.30);
+    --glow-brand-lg: 0 8px 24px rgba(207, 134, 255, 0.32);
 
     --topbar-bg: rgba(16, 16, 22, 0.80);
     --mini-bg:   rgba(28, 28, 36, 0.92);
