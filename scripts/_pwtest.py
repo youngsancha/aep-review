@@ -256,11 +256,11 @@ def main() -> int:
                 pg.dispatch_event(".tx-sheet-card", "pointerdown")
                 time.sleep(0.05)
                 ctrl_reveal = pg.eval_on_selector(".tx-sheet-card", "el=>!el.classList.contains('controls-hidden')")
-            # 글자 크기(#17): A＋ 클릭 시 .tx-card 의 --tx-scale 증가
+            # 글자 크기(#17): 단일 'A' 칩 탭 시 .tx-card 의 --tx-scale 증가(기본 1.0 → 다음 단계 1.15)
             fs_ok = None
-            if pg.query_selector("#tx-fs-up"):
+            if pg.query_selector("#tx-fs"):
                 _b = pg.eval_on_selector(".tx-card", "el=>parseFloat(getComputedStyle(el).getPropertyValue('--tx-scale'))||1")
-                pg.click("#tx-fs-up"); time.sleep(0.1)
+                pg.click("#tx-fs"); time.sleep(0.1)
                 _a = pg.eval_on_selector(".tx-card", "el=>parseFloat(getComputedStyle(el).getPropertyValue('--tx-scale'))||1")
                 fs_ok = _a > _b
             # 한글 번역 고정 크기(#): A＋ 로 본문(--tx-scale)이 커져도 .tx-trans-ko 폰트는 그대로여야(사용자 요청).
@@ -268,7 +268,7 @@ def main() -> int:
             pg.evaluate("window.__player.seek(71)"); time.sleep(0.3)  # 번역 패널 다시 노출
             if pg.query_selector(".tx-trans-ko"):
                 _tb = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)")
-                if pg.query_selector("#tx-fs-up"): pg.click("#tx-fs-up"); time.sleep(0.1)
+                if pg.query_selector("#tx-fs"): pg.click("#tx-fs"); time.sleep(0.1)
                 _ta = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)")
                 trans_fixed = (_tb is not None and _ta is not None and abs(_ta - _tb) < 0.5)
             # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지

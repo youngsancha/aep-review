@@ -771,12 +771,22 @@ export async function renderEpisode(root, idStr, tStr) {
 
   // 글자 크기 조절 (#17) — 읽기 영역 스케일을 localStorage 에 저장
   const FS_KEY = 'aep-tx-scale';
-  let txScale = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
-  // --tx-scale 은 시트 카드(.tx-card 와 .tx-notes 의 공통 조상)에 둔다 → 본문(영어 transcript)만
-  // A−/A＋ 로 스케일된다. 한글 번역(.tx-trans-ko)은 고정 크기라 --tx-scale 영향을 받지 않는다(사용자 요청).
+  // 본문(영어 transcript) 글자 크기 — A−/A＋ 두 버튼을 '가' 칩과 동일한 '단일 A 칩 순환'으로 통합
+  // (사용자 요청 2026-07-12). 탭마다 작게→보통→크게→더크게→아주크게 순환, 기본(1.0)이 아니면 .on 표시.
+  // --tx-scale 은 시트 카드(.tx-card 와 .tx-notes 의 공통 조상)에 둔다 → 본문만 스케일되고
+  // 한글 번역(.tx-trans-ko)은 고정 크기라 영향을 안 받는다(별도 '가' 칩으로 조절).
+  const FS_STEPS = [0.85, 1.0, 1.15, 1.3, 1.5];
+  let fsIdx = (() => {                          // 기존 연속 스케일 저장값 → 가장 가까운 단계(하위호환)
+    const saved = parseFloat(localStorage.getItem(FS_KEY) || '1') || 1;
+    let best = 1, bd = Infinity;
+    FS_STEPS.forEach((s, i) => { const d = Math.abs(s - saved); if (d < bd) { bd = d; best = i; } });
+    return best;
+  })();
+  let txScale = FS_STEPS[fsIdx];
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
+  const $fs = document.getElementById('tx-fs');
   function applyTxScale() {
-    txScale = Math.max(0.8, Math.min(1.6, Math.round(txScale * 100) / 100));
+    txScale = FS_STEPS[fsIdx];
     // 글자 크기 변경 시 '보던 문장 그대로'. 핵심: 자동 따라가기(easeScroll rAF 루프)가 변경 전 목표로
     // scrollTop 을 계속 끌어당겨 내 보정과 싸웠다(그래서 몇 문단씩 밀림). → ease 취소 + 자동추적 잠시
     // 보류 후, 레이아웃 정착(rAF)되면 앵커를 원래 화면 위치로 '딱 한 번' 되돌린다.
@@ -791,6 +801,7 @@ export async function renderEpisode(root, idStr, tStr) {
     cancelEase();                          // 진행 중인 자동 스크롤 ease 중단(경쟁 제거)
     userScrolledUntil = Date.now() + 1200; // 자동추적이 보정을 덮어쓰지 않게 잠시 보류
     if ($scaleEl) $scaleEl.style.setProperty('--tx-scale', String(txScale));
+    if ($fs) $fs.classList.toggle('on', txScale !== 1);   // 기본 크기가 아닐 때만 활성 표시
     try { localStorage.setItem(FS_KEY, String(txScale)); } catch (e) {}
     if (sc && anchor) {
       requestAnimationFrame(() => {
@@ -801,8 +812,7 @@ export async function renderEpisode(root, idStr, tStr) {
     }
   }
   applyTxScale();
-  document.getElementById('tx-fs-up')?.addEventListener('click', (e) => { e.stopPropagation(); txScale += 0.1; applyTxScale(); });
-  document.getElementById('tx-fs-dn')?.addEventListener('click', (e) => { e.stopPropagation(); txScale -= 0.1; applyTxScale(); });
+  $fs?.addEventListener('click', (e) => { e.stopPropagation(); fsIdx = (fsIdx + 1) % FS_STEPS.length; applyTxScale(); });
 
   // 한국어 번역 글자 크기 ('가' 칩) — A−/A＋(본문 --tx-scale)와 '완전 독립'. 별도 --ko-scale 을
   // 번역카드(.tx-notes; 노드는 유지되고 innerHTML 만 갱신됨)에 둬 문장이 바뀌어도 크기가 유지된다.
@@ -1182,8 +1192,7 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-ko-size" class="tx-toggle tx-ko-size-btn" aria-label="Translation text size">가</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-fs-dn" class="tx-toggle tx-fs-btn" aria-label="Decrease text size">A−</button>
-            <button id="tx-fs-up" class="tx-toggle tx-fs-btn" aria-label="Increase text size">A+</button>
+            <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="글자 크기">A</button>
           </div>
           <div class="tx-scroll">
             ${body}

@@ -143,12 +143,23 @@ export async function getEpisode(id) {
   });
   // audioSrcFor(hostedSet 대기)와 자막·번역 fetch 는 모두 ep 에만 의존하고 서로 독립 → 순차 대신 병렬로
   // (회차 열 때 오디오소스 결정 RTT 를 자막 로딩과 겹쳐 첫 재생·자막 표시가 빨라진다).
-  const [audioUrl, transcript, transcriptKoData] = await Promise.all([
-    audioSrcFor(ep.id, ep.audio_url),      // 호스팅됐으면 R2(자막=오디오), 아니면 megaphone
+  const origUrl = ep.audio_url;            // DB 원본(megaphone) URL — cleanAudioUrl 폴백용
+  const [manifestUrl, transcript, transcriptKoData] = await Promise.all([
+    audioSrcFor(ep.id, ep.audio_url),      // 매니페스트(audio_hosted.json) 기반 결정 — 폴백용
     fetchTranscript(id, ep.transcribed_at),
     transcriptKo(id, ep.transcribed_at),   // 문맥 인지 사전번역(있으면 직역 대체)
   ]);
-  ep.audio_url = audioUrl;
+  // ★ SYNC 안전장치 — 재생 오디오는 반드시 '자막이 만들어진 바로 그 오디오'여야 한다. 진실원은
+  //   transcript.r2_audio (재STT 가 R2 오디오로 됐는지). 매니페스트가 아니라 이 플래그로 소스를 정하면:
+  //   ① hostedSet()(audio_hosted.json) 이 일시적 네트워크 실패로 빈 집합이 돼도, r2_audio 자막 회차는
+  //      여전히 R2 를 재생 → 'hosted 회차가 megaphone 으로 떨어져 완전히 desync' 경로가 사라진다.
+  //   ② 매니페스트↔자막이 어긋나도(둘 중 하나만 갱신) 항상 자막과 일치하는 오디오를 고른다.
+  //   자막이 없거나 플래그가 없으면 기존 매니페스트 결정을 그대로 쓴다(회귀 없음).
+  if (transcript && typeof transcript.r2_audio === 'boolean') {
+    ep.audio_url = transcript.r2_audio ? hostedAudioUrl(ep.id) : cleanAudioUrl(origUrl);
+  } else {
+    ep.audio_url = manifestUrl;
+  }
   ep.transcript = transcript;
   ep.transcript_ko = transcriptKoData;
   return ep;
