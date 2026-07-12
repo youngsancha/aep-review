@@ -76,6 +76,17 @@ export async function getEpisode(id){
            duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01',
            description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
 }
+export async function episodeNav(id){ return { prevId:null, nextId:null }; }
+export async function retentionStats() { return { learned:12, strong:4, mature:8, retentionFrac:0.33 }; }
+export async function allExpressions() { return expressionsByKind('idiom'); }
+export async function srsQueue() {
+  return [{ id:1, vocab_id:1, term:'fill in the gap', kind:'idiom',
+    definition:'to provide a missing piece of information (빈칸을 채우다)',
+    episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
+    example_sentence:'fill in the gap', example_ko:'빈칸을 채우다', sentence_start_sec:100, sentence_end_sec:105,
+    ease:2.5, interval_days:0, reps:0, due_date:'2026-01-01', vkind:'idiom' }];
+}
+export async function srsReview(cardId, grade) { (window.__reviews=window.__reviews||[]).push([cardId,grade]); return {}; }
 export async function studyOverview() {
   return { total:1905, learned:12, due:50, known:240, byKind:[
     {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };

@@ -28,7 +28,14 @@ const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
 
 export async function renderEpisode(root, idStr, tStr) {
   const id = parseInt(idStr, 10);
+  // 스테일 렌더 방지: 느린 네트워크에서 getEpisode 를 기다리는 사이 사용자가 다른 화면으로
+  // 이동(뒤로가기·다른 회차)했다면, 이 늦은 렌더가 현재 화면을 덮어쓰지 않게 즉시 중단한다.
+  // 진입 시점 해시를 저장했다 await 후 바뀌었으면 중단(router 는 빠른 해시 변경 시 핸들러를 동시
+  // 실행할 수 있음 — 열린 시트/미니플레이어가 어긋나던 문제). 해시 없이 직접 호출하는 하니스는
+  // 해시가 안 바뀌므로 정상 진행된다.
+  const _startHash = location.hash;
   const ep = await getEpisode(id);
+  if (location.hash !== _startHash) return;
   document.body.classList.add('on-episode');
   // Safeguard: even if we early-return below, ensure the class is removed on nav away.
   // 단, 다른 '회차'로 이동 중이면 on-episode 를 유지(미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지).
@@ -165,6 +172,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
+  let followTimer = 0;     // 일시정지 중 자동추적 복귀 예약 타이머 — cleanup 에서 지우려 상위 선언(누수 방지)
 
   // 이전/다음 '에피소드' id 미리 조회 — ⏮/⏭ 버튼이 즉시 쓰도록(비동기, 실패해도 재생엔 영향 없음).
   episodeNav(ep.id).then((n) => { navPrevId = n.prevId; navNextId = n.nextId; }).catch(() => {});
@@ -212,8 +220,20 @@ export async function renderEpisode(root, idStr, tStr) {
     //  smart = 문단 길이 비례 5~15회(loopTarget, setLoopPara 가 산정) 후 다음 문단으로.
     //  auto5/auto10 = 고정 5·10회 반복 후 '다음 문단'으로 자동 이동(문단 사이 광고는 시크로 건너뜀).
     //          마지막 문단까지 끝나면 쉐도잉을 끄고 그대로 계속 재생.
+    // 반복 모드가 켜졌지만 아직 대상 문단이 없을 때(에피소드 맨 앞 t=0, 또는 프리롤 광고 중 켜서
+    // confirmLoopBoundary 가 문장을 못 찾은 경우): 본편 문장이 재생되기 시작하면 그 문단을 자동으로
+    // 반복 대상으로 확정한다. (이게 없으면 앞부분에서 Smart·Repeat 를 켜도 끝까지 한 번도 반복 안 됨.)
+    if (inRepeatMode() && loopPara < 0 && !player.paused) {
+      const si0 = findActiveSentIdx(txTime());
+      if (si0 >= 0 && sentRanges[si0]) setLoopPara(paraEls.indexOf(sentRanges[si0].paraEl));
+    }
     if ((inRepeatMode()) && loopPara >= 0 && !player.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
+        // 사용자가 반복 문단을 한참 지나쳐 '앞으로' 시크(드래그·+30s·잠금화면)한 경우: 되감지 말고
+        // 지금 위치의 문단으로 반복 대상을 옮긴다. 가짜 반복 횟수(addShadowReps)도 기록하지 않는다.
+        // (자연스러운 문단 끝 도달은 loopEnd 를 한 틱(≤~0.4s@1.5×)만 넘으므로 임계값 1.5s 로 구분.
+        //  뒤로 시크는 되감기 자체가 뒤로 시크라 여기서 relocate 하면 안 됨 → '앞으로'만 처리.)
+        if (txTime() > loopEnd + 1.5) { loopCount = 0; confirmLoopBoundary(); return; }
         addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
         if (shadowMode === 'loop') {
           player.seek(toAudio(loopStart) + 0.01);
@@ -510,7 +530,7 @@ export async function renderEpisode(root, idStr, tStr) {
   if ($txScroll) {
     // cancel=true 인 실제 스크롤 제스처(휠/드래그/스크롤키)에선 진행 중인 auto-ease 를 즉시 멈춤.
     // 단순 탭(touchstart)은 cancel 하지 않음 → 단어 탭→가운데 정렬 ease 가 살아있게.
-    let followTimer = 0;
+    // (followTimer 는 renderEpisode 스코프에 선언 — cleanup 에서 clearTimeout 으로 지운다)
     const markUser = (cancel) => {
       userScrolledUntil = Date.now() + 4000;
       if (cancel) { cancelEase(); followResume = true; }  // 실스크롤(휠/드래그/키)만 복귀 예약 — 단순 탭 제외
@@ -616,7 +636,7 @@ export async function renderEpisode(root, idStr, tStr) {
   document.getElementById('np-tx-btn')?.addEventListener('click', openSheet);
   $sheet?.querySelector('.tx-sheet-close')?.addEventListener('click', closeSheet);
   $sheet?.querySelector('.tx-sheet-backdrop')?.addEventListener('click', closeSheet);
-  if ($sheet) bindSheetDrag($sheet, closeSheet);
+  const destroySheetDrag = $sheet ? bindSheetDrag($sheet, closeSheet) : null;
   // Mini-controls inside sheet
   document.getElementById('tx-mini-play')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -908,9 +928,11 @@ export async function renderEpisode(root, idStr, tStr) {
     releaseWake();
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
+    clearTimeout(followTimer);   // 자동추적 복귀 예약 — 다음 회차 시트를 건드리지 않게 취소
     cancelEase();
     stopRaf();
     txScrub?.destroy();
+    destroySheetDrag?.();        // 시트 드래그의 document 마우스 리스너 제거(누수 방지)
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
     // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
@@ -992,7 +1014,7 @@ export async function renderEpisode(root, idStr, tStr) {
 function bindSheetDrag($sheet, closeSheet) {
   const card = $sheet.querySelector('.tx-sheet-card');
   const header = $sheet.querySelector('.tx-sheet-header');
-  if (!card || !header) return;
+  if (!card || !header) return () => {};
 
   let dragging = false;
   let startY = 0;
@@ -1028,8 +1050,15 @@ function bindSheetDrag($sheet, closeSheet) {
   header.addEventListener('touchcancel', end);
 
   header.addEventListener('mousedown', (e) => { e.preventDefault(); start(e.clientY); });
-  document.addEventListener('mousemove', (e) => { if (dragging) move(e.clientY); });
+  // document 레벨 마우스 리스너는 렌더마다 쌓이면 누수(회차를 옮길수록 죽은 리스너 누적) →
+  // 이름 있는 핸들러로 등록하고 destroy 를 반환해 cleanup 에서 제거한다.
+  const onDocMove = (e) => { if (dragging) move(e.clientY); };
+  document.addEventListener('mousemove', onDocMove);
   document.addEventListener('mouseup', end);
+  return () => {
+    document.removeEventListener('mousemove', onDocMove);
+    document.removeEventListener('mouseup', end);
+  };
 }
 
 // === 프리롤 광고(DAI) 구간 감지 (#) ===
