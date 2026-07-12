@@ -141,11 +141,16 @@ export async function getEpisode(id) {
     if (bn == null) return -1;
     return an - bn || a.id - b.id;
   });
-  ep.audio_url = await audioSrcFor(ep.id, ep.audio_url);  // 호스팅됐으면 R2(자막=오디오), 아니면 megaphone
-  [ep.transcript, ep.transcript_ko] = await Promise.all([
+  // audioSrcFor(hostedSet 대기)와 자막·번역 fetch 는 모두 ep 에만 의존하고 서로 독립 → 순차 대신 병렬로
+  // (회차 열 때 오디오소스 결정 RTT 를 자막 로딩과 겹쳐 첫 재생·자막 표시가 빨라진다).
+  const [audioUrl, transcript, transcriptKoData] = await Promise.all([
+    audioSrcFor(ep.id, ep.audio_url),      // 호스팅됐으면 R2(자막=오디오), 아니면 megaphone
     fetchTranscript(id, ep.transcribed_at),
     transcriptKo(id, ep.transcribed_at),   // 문맥 인지 사전번역(있으면 직역 대체)
   ]);
+  ep.audio_url = audioUrl;
+  ep.transcript = transcript;
+  ep.transcript_ko = transcriptKoData;
   return ep;
 }
 

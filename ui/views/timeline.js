@@ -19,7 +19,11 @@ function refreshCovers() {
 export async function renderTimeline(root) {
   refreshCovers();
   root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
+  const _startHash = location.hash;
   const items = await listEpisodes();
+  // 스테일 렌더 방지: listEpisodes 를 기다리는 사이 다른 화면(에피소드 등)으로 이동했으면 중단
+  // (느린 초기 로드 중 회차 탭 → 열린 에피소드를 라이브러리가 덮어쓰던 경우). 해시 없는 하니스는 무영향.
+  if (location.hash !== _startHash) return;
   _prog = getProgressMap();
   _done = getCompleted();
 
