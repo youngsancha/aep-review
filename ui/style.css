@@ -458,7 +458,10 @@ body.on-episode {
   font-size: 11px; color: var(--text);
   cursor: pointer; padding: 0;
   flex: 0 0 auto;
+  position: relative;
 }
+/* 시각 크기(28px)는 유지하되 탭 영역을 ~46px 로 넓혀 라이브러리에서 가장 많이 누르는 버튼을 안정적으로. */
+.ep-row .ep-play::after { content: ''; position: absolute; inset: -9px; }
 .ep-row .ep-play:hover { background: var(--tint-soft); color: var(--tint-hover); }
 .ep-row .ep-meta {
   font-size: 12px; color: var(--text-3);
@@ -538,6 +541,14 @@ body.on-episode {
   box-shadow: var(--shadow-art);
   background: var(--surface-2);
   object-fit: cover;
+  /* Apple Music식: 일시정지하면 앨범아트가 살짝 줄고 글로우가 옅어진다(재생=풀사이즈). */
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2), box-shadow 0.45s ease;
+}
+.np-wrap.is-paused .np-cover { transform: scale(0.94); }
+.np-wrap.is-paused .np-glow { opacity: 0.28; }
+@media (prefers-reduced-motion: reduce) {
+  .np-cover { transition: none; }
+  .np-wrap.is-paused .np-cover { transform: none; }
 }
 .np-meta {
   text-align: center;
@@ -1660,6 +1671,9 @@ body.logged-out #app-version { display: none; }
   100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
 }
 .study-x-ep { font-size: 11.5px; color: var(--text-4); margin-top: 6px; }
+.study-x-ep.tappable { cursor: pointer; color: var(--tint); display: inline-flex; align-items: center; gap: 3px; padding: 3px 0; -webkit-tap-highlight-color: transparent; }
+.study-x-ep.tappable:active { opacity: 0.6; }
+.study-x-ep-go { font-size: 14px; opacity: 0.7; }
 /* 문장 속 표현 강조 (Study/Review 공통) */
 .term-hl {
   background: linear-gradient(transparent 55%, var(--tint-soft-2) 55%);

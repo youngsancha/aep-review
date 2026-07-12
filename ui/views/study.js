@@ -100,6 +100,8 @@ export async function renderStudy(root) {
     <div class="skel-hero" style="height:84px"></div>
     <div class="study-kinds">${'<span class="skel-chip"></span>'.repeat(4)}</div>
     ${'<div class="skel-x"></div>'.repeat(5)}`;
+  // 보존력(retentionStats)은 studyOverview 와 독립 → 미리 병렬로 띄워 Study 홈 로딩 RTT 를 줄인다.
+  const retP = retentionStats().catch(() => ({ retentionFrac: 0 }));
   let ov;
   try {
     ov = await studyOverview();
@@ -125,9 +127,8 @@ export async function renderStudy(root) {
     }
   }
 
-  // 5축 수치화 — 보존력은 Supabase 분포(실패해도 0 으로 graceful), 나머지는 localStorage 측정 로그.
-  let ret = { retentionFrac: 0 };
-  try { ret = await retentionStats(); } catch (e) { /* graceful: retention 0 */ }
+  // 5축 수치화 — 보존력은 위에서 병렬로 띄운 retP(실패해도 0 으로 graceful), 나머지는 localStorage 측정 로그.
+  const ret = await retP;
   const prof = readProficiency({ known: ov.known, corpusTotal: ov.total, retentionFrac: ret.retentionFrac });
   recordSnapshot(prof.index, prof.scores);   // 주간 1건(추세) — Phase 2 에서 시각화
 
@@ -343,7 +344,7 @@ export async function renderStudy(root) {
             <span class="study-x-ex-q">“${highlightTerm(v.example_sentence, v.term)}”</span>
           </div>
           <div class="study-x-tr-out" hidden></div>` : ''}
-        ${epTitle ? `<div class="study-x-ep">🎧 ${escapeHtml(epTitle)}</div>` : ''}
+        ${epTitle ? `<div class="study-x-ep${v.episode_id != null ? ' tappable' : ''}"${v.episode_id != null ? ` data-ep="${v.episode_id}" data-t="${Math.floor(v.sentence_start_sec || 0)}" role="button" tabindex="0" aria-label="에피소드에서 이 표현 듣기"` : ''}>🎧 ${escapeHtml(epTitle)}${v.episode_id != null ? ' <span class="study-x-ep-go" aria-hidden="true">›</span>' : ''}</div>` : ''}
       </li>`;
   }
 
@@ -447,11 +448,18 @@ export async function renderStudy(root) {
           out.dataset.loaded = '1';
         }
       }));
-    // 카드 탭 → 발음(term) 재생 (#38). 예문/KR 버튼은 stopPropagation 으로 제외. 스와이프 직후면 무시.
+    // 에피소드 제목 탭 → 그 표현이 나온 회차의 정확한 지점부터 재생(문맥 딥링크 #/episode/:id/:t 복원 —
+    // v39 에서 만든 라우트가 그동안 아무 데서도 안 쓰였다). Study↔Player 를 잇는 핵심 학습 루프.
+    root.querySelectorAll('.study-x-ep.tappable').forEach((el) => {
+      const go = (e) => { e.stopPropagation(); if (el.dataset.ep) location.hash = `#/episode/${el.dataset.ep}/${el.dataset.t || 0}`; };
+      el.addEventListener('click', go);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
+    });
+    // 카드 탭 → 발음(term) 재생 (#38). 예문/KR/에피소드 버튼은 stopPropagation 으로 제외. 스와이프 직후면 무시.
     root.querySelectorAll('.study-x').forEach((li) => {
       li.addEventListener('click', (e) => {
         if (li.dataset.swiped === '1') return;
-        if (e.target.closest('.study-x-ex') || e.target.closest('.study-x-tr')) return;
+        if (e.target.closest('.study-x-ex') || e.target.closest('.study-x-tr') || e.target.closest('.study-x-ep')) return;
         speak(li.dataset.term);
       });
       wireSwipeKnown(li);

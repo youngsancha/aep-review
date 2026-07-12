@@ -217,6 +217,7 @@ export async function renderEpisode(root, idStr, tStr) {
       $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
       const $miniPlay = document.getElementById('tx-mini-play');
       if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
+      document.querySelector('.np-wrap')?.classList.toggle('is-paused', player.paused);  // 커버 축소 모션
     }
     highlightActiveSegment();
 
@@ -739,18 +740,19 @@ export async function renderEpisode(root, idStr, tStr) {
     if (player.paused) player.play();  // 모드 전환 즉시 이어 재생
   });
 
-  // 쉐도잉용 속도 조절 (시트 안에서 느리게 따라 말하기)
-  const SHEET_SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];  // 1×→1.25→1.5→0.5→0.75→… (사용자 지정 순서)
-  let sheetSpeedIdx = 0;
+  // 쉐도잉용 속도 조절 — 메인 화면(np-speed)과 시트(tx-speed)가 같은 speedIdx 를 공유한다. 하나에서
+  // 바꾸면 다른 하나도 즉시 같은 값으로 반영(예전엔 speedIdx/sheetSpeedIdx 가 따로 놀아, 시트에서
+  // 0.75× 로 바꾸고 닫으면 메인 칩은 1× 로 남고 다음 탭이 엉뚱한 기준에서 시작했다).
   const $txSpeed = document.getElementById('tx-speed');
-  $txSpeed?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    sheetSpeedIdx = (sheetSpeedIdx + 1) % SHEET_SPEEDS.length;
-    const r = SHEET_SPEEDS[sheetSpeedIdx];
+  function setSpeed(idx) {
+    speedIdx = ((idx % SPEEDS.length) + SPEEDS.length) % SPEEDS.length;
+    const r = SPEEDS[speedIdx];
     player.rate(r);
-    $txSpeed.textContent = (r === 1 ? '1×' : r + '×');
-    $txSpeed.classList.toggle('on', r !== 1);
-  });
+    const lbl = r === 1 ? '1×' : r + '×';
+    if ($speed) $speed.textContent = lbl;
+    if ($txSpeed) { $txSpeed.textContent = lbl; $txSpeed.classList.toggle('on', r !== 1); }
+  }
+  $txSpeed?.addEventListener('click', (e) => { e.stopPropagation(); setSpeed(speedIdx + 1); });
 
   // 한국어 번역 표시 토글 (#8) — 기본 ON. 초기 버튼 상태도 showTrans 에 맞춘다.
   const $trans = document.getElementById('tx-trans');
@@ -953,12 +955,7 @@ export async function renderEpisode(root, idStr, tStr) {
     const dur = player.duration;
     if (dur) player.seek(dur * parseFloat($scrub.value) / 100);
   });
-  $speed.addEventListener('click', () => {
-    speedIdx = (speedIdx + 1) % SPEEDS.length;
-    const r = SPEEDS[speedIdx];
-    player.rate(r);
-    $speed.textContent = (r === 1 ? '1×' : r + '×');
-  });
+  $speed.addEventListener('click', () => setSpeed(speedIdx + 1));
 
   // Transcript click → seek
   document.querySelectorAll('#transcript-list li').forEach((li) => {

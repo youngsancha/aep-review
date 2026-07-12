@@ -287,21 +287,20 @@ function flattenCard(r, hosted) {
 // GET /api/srs/queue 대체
 export async function srsQueue() {
   const today = todayStr();
-  const review = await withShow(
-    supabase.from('srs_cards').select(QUEUE_SELECT)
+  // review·fresh·hostedSet 은 서로 독립 → 순차 3 RTT 대신 병렬 1회분으로(Review 탭 열림 지연 단축).
+  const [review, fresh, hosted] = await Promise.all([
+    withShow(supabase.from('srs_cards').select(QUEUE_SELECT)
       .lte('due_date', today).gt('reps', 0))
-    .order('due_date', { ascending: true }).order('id', { ascending: true })
-    .limit(REVIEW_LIMIT);
-  if (review.error) throw new Error(review.error.message);
-
-  const fresh = await withShow(
-    supabase.from('srs_cards').select(QUEUE_SELECT)
+      .order('due_date', { ascending: true }).order('id', { ascending: true })
+      .limit(REVIEW_LIMIT),
+    withShow(supabase.from('srs_cards').select(QUEUE_SELECT)
       .lte('due_date', today).eq('reps', 0))
-    .order('id', { ascending: true })
-    .limit(NEW_LIMIT);
+      .order('id', { ascending: true })
+      .limit(NEW_LIMIT),
+    hostedSet(),
+  ]);
+  if (review.error) throw new Error(review.error.message);
   if (fresh.error) throw new Error(fresh.error.message);
-
-  const hosted = await hostedSet();
   return [...review.data, ...fresh.data].map((r) => flattenCard(r, hosted));
 }
 
