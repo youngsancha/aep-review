@@ -29,13 +29,22 @@ export async function listEpisodes() {
 // 이전/다음 '에피소드'(곡) id — ⏮/⏭ 트랙 이동용. 라이브러리와 같은 쇼 안에서 시간순(pub_date asc)
 // 으로 줄세워, 더 나중에 나온 화가 '다음'(다음 회차), 더 예전 화가 '이전'(이전 곡)이 된다.
 // id+pub_date 만 가볍게 받아 메모리에서 인접 회차를 찾는다(수백 행이라 단일 쿼리로 충분).
+// 회차 순서 id 목록은 세션 중 거의 안 바뀌므로 쇼별로 1회만 받아 메모(회차 열 때마다·오프라인
+// 프리페치마다 전체 목록을 다시 받던 낭비 제거). 쇼 전환 시 키가 바뀌어 자동 갱신, 새 회차는 다음
+// 부팅에 반영(prev/next 네비 용도라 세션 내 staleness 무해).
+let _navIds = null, _navIdsShow = null;
 export async function episodeNav(id) {
-  const { data, error } = await withShow(
-    supabase.from('episodes_list').select('id, pub_date'))
-    .order('pub_date', { ascending: true, nullsFirst: true })
-    .order('id', { ascending: true });
-  if (error) throw new Error(error.message);
-  const ids = (data || []).map((e) => e.id);
+  const show = MULTISHOW ? currentShow() : '_';
+  if (!_navIds || _navIdsShow !== show) {
+    const { data, error } = await withShow(
+      supabase.from('episodes_list').select('id, pub_date'))
+      .order('pub_date', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true });
+    if (error) throw new Error(error.message);
+    _navIds = (data || []).map((e) => e.id);
+    _navIdsShow = show;
+  }
+  const ids = _navIds;
   const i = ids.indexOf(Number(id));
   if (i < 0) return { prevId: null, nextId: null };
   return {
