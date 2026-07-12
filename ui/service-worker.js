@@ -7,7 +7,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.19.2';
+const VERSION = '1.20.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -190,19 +190,31 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
-      try {
-        // req 를 그대로 재구성하면 navigate 모드라 TypeError — URL 문자열로 새 요청.
-        const res = await fetch(req.url, { cache: 'no-store' });
-        if (res && res.status === 200) {
-          cache.put('/index.html', res.clone()).catch(() => {});
-          cache.put('/', res.clone()).catch(() => {});
-        }
-        return res;
-      } catch (err) {
-        return (await caches.match(req.url, { ignoreVary: true, ignoreSearch: true }))
-            || (await caches.match('/index.html'))
-            || (await caches.match('/'));
-      }
+      const cachedShell = () => caches.match(req.url, { ignoreVary: true, ignoreSearch: true })
+          .then((r) => r || caches.match('/index.html'))
+          .then((r) => r || caches.match('/'));
+      // 네트워크 요청은 절대 reject 하지 않게 감싼다(실패=null) — 레이스에서 unhandledrejection 방지.
+      const netFetch = (async () => {
+        try {
+          // req 를 그대로 재구성하면 navigate 모드라 TypeError — URL 문자열로 새 요청.
+          const res = await fetch(req.url, { cache: 'no-store' });
+          if (res && res.status === 200) {
+            cache.put('/index.html', res.clone()).catch(() => {});
+            cache.put('/', res.clone()).catch(() => {});
+          }
+          return res;
+        } catch (err) { return null; }
+      })();
+      // 타임아웃 후 캐시 셸을 먼저 반환하면 respondWith 가 곧 settle 된다 → 백그라운드 네트워크
+      // fetch+캐시 저장이 SW 종료로 중단될 수 있으니 waitUntil 로 끝까지 살려 둔다(다음 로드용 셸 갱신).
+      try { e.waitUntil(netFetch); } catch (_) { /* 이미 settle 된 이벤트 — 무시 */ }
+      // 약한/불안정 신호에서 network-first 가 흰 화면으로 수 초 매달리지 않게: 2.5s 안에 응답이 없으면
+      // 캐시된 셸을 즉시 띄운다. 버전이 갱신됐다면 healStaleShell/controllerchange 가 뒤이어 재조정하므로
+      // 업데이트 유실은 없다. 최초 로드(캐시 없음)면 셸이 null 이라 네트워크 완료를 계속 기다린다.
+      const timeout = new Promise((r) => setTimeout(() => r('__timeout__'), 2500));
+      const winner = await Promise.race([netFetch, timeout]);
+      if (winner && winner !== '__timeout__') return winner;
+      return (await cachedShell()) || (await netFetch) || Response.error();
     })());
     return;
   }

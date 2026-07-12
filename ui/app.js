@@ -106,7 +106,14 @@ function kickOfflineCache() {
   }, 4000);
 }
 
+// boot 은 두 경로로 호출된다(load 리스너 + 즉시 호출). 동적 주입 모듈은 DOM 파싱 후(readyState
+// 'interactive') 실행되지만 dynamic script 는 load 를 지연시켜 둘 다 발화 → 재진입 가드로 1회만.
+// (가드 없으면 route()·listEpisodes 가 이중 실행되고, 에피소드 딥링크 리로드 시 트랜스크립트 시트가
+//  두 개 생겨 탭-시크·자동추종이 깨졌다.)
+let _booted = false;
 async function boot() {
+  if (_booted) return;
+  _booted = true;
   // Google OAuth 리다이렉트(?code=)로 돌아온 경우: supabase-js 가 비동기로 세션을 교환 중 →
   // 로그인 화면 깜빡임 없이 onAuthStateChange(SIGNED_IN)을 기다린다.
   const pendingOAuth = location.search.includes('code=') || location.hash.includes('access_token');
@@ -131,6 +138,10 @@ async function boot() {
   } else if (pendingOAuth) {
     document.body.classList.add('logged-out');
     $app.innerHTML = '<div class="login-wrap"><p class="login-sub">Signing in…</p></div>';
+    // PKCE 코드 교환이 만료(사용자가 동의창에 머묾)·유실(불안정 모바일망)되면 supabase-js 는 아무
+    // 이벤트도 안 보낸다 → 영구 "Signing in…" 고착. 10s 안에 세션이 안 열리면 죽은 ?code= 를 지우고
+    // 로그인 화면으로 되돌린다(그 전에 세션이 오면 authed=true 라 no-op).
+    setTimeout(() => { if (!authed) { cleanAuthUrl(); showLogin(); } }, 10000);
   } else {
     showLogin();
   }

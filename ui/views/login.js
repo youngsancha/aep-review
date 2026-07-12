@@ -5,6 +5,16 @@ import { supabase } from '/supabase.js';
 import { escapeHtml } from '/app.js';
 import { SHOW_COVER } from '/config.js';
 
+// Google 버튼은 리다이렉트 직전 disabled 로 잠근다. 사용자가 Google 페이지에서 '뒤로가기' 하면
+// iOS Safari/Chrome 은 이 페이지를 bfcache 에서 '있는 그대로'(disabled·에러없음) 복원 → 버튼이
+// 영구 무반응이 됐다. pageshow(persisted) 에서 현재 DOM 의 버튼을 다시 활성화한다(모듈 1회 등록,
+// 이벤트 시점에 DOM 조회하므로 항상 최신 버튼을 대상으로 함).
+window.addEventListener('pageshow', (e) => {
+  if (!e.persisted) return;
+  const g = document.getElementById('login-google');
+  if (g) g.disabled = false;
+});
+
 export function renderLogin(root, onSuccess) {
   root.innerHTML = `
     <div class="login-wrap">
