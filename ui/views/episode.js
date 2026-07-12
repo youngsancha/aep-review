@@ -173,6 +173,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
   let followTimer = 0;     // 일시정지 중 자동추적 복귀 예약 타이머 — cleanup 에서 지우려 상위 선언(누수 방지)
+  let _lastPaused = null;  // 재생/일시정지 아이콘을 '상태 변화 시에만' 재파싱(매 timeupdate innerHTML 방지)
 
   // 이전/다음 '에피소드' id 미리 조회 — ⏮/⏭ 버튼이 즉시 쓰도록(비동기, 실패해도 재생엔 영향 없음).
   episodeNav(ep.id).then((n) => { navPrevId = n.prevId; navNextId = n.nextId; }).catch(() => {});
@@ -209,10 +210,14 @@ export async function renderEpisode(root, idStr, tStr) {
         if ($txSeekRem)    $txSeekRem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
       }
     }
-    const playIcon = player.paused ? SVG_PLAY : SVG_PAUSE;
-    $play.innerHTML = playIcon;
-    const $miniPlay = document.getElementById('tx-mini-play');
-    if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
+    // 재생/일시정지 아이콘은 상태가 바뀔 때만 innerHTML 재파싱(SVG 파싱+노드 교체가 4Hz로 도는 것 방지).
+    // 재생 중 시트를 열면 다음 timeupdate 에서 미니 아이콘이 즉시(≤250ms) 맞춰진다.
+    if (_lastPaused !== player.paused) {
+      _lastPaused = player.paused;
+      $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
+      const $miniPlay = document.getElementById('tx-mini-play');
+      if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
+    }
     highlightActiveSegment();
 
     // 쉐도잉 반복: 누를 때 확정한 '문단'을 끝(마지막 문장)에서 처음(첫 문장)으로 되돌린다.
@@ -264,8 +269,6 @@ export async function renderEpisode(root, idStr, tStr) {
     paraEl: el.closest('.tx-para'),
   }));
   const paraEls = Array.from(document.querySelectorAll('.tx-para'));
-  // Cache offsetTop now (stable until DOM mutates) — survives scroll animations.
-  const paraTops = paraEls.map((el) => el.offsetTop);
 
   // 광고 바(프리롤 + 미드롤/엔드롤): 각 바는 자기 시간구간[start,end) 동안 강조되고,
   // 탭하면 그 광고가 끝나는 지점(본편 재개)으로 점프한다.

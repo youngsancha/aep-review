@@ -153,6 +153,7 @@ function fmt(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+let _miniTrackId = null, _miniPaused = null;
 function refreshMini() {
   if (!player.current) {
     $mp.classList.add('hidden');
@@ -161,13 +162,21 @@ function refreshMini() {
   }
   $mp.classList.remove('hidden');
   $mp.setAttribute('aria-hidden', 'false');
-  $cover.src = player.current.cover || (showCover(currentShow()) + '&w=160&h=160');
-  $title.textContent = player.current.title || '—';
+  // 커버/제목은 '트랙이 바뀔 때만' 재기록 — 매 timeupdate(4Hz)마다 .src/.textContent 쓰기를 없앤다.
+  if (player.current.id !== _miniTrackId) {
+    _miniTrackId = player.current.id;
+    $cover.src = player.current.cover || (showCover(currentShow()) + '&w=160&h=160');
+    $title.textContent = player.current.title || '—';
+  }
   const dur = player.duration;
   $sub.textContent = dur
     ? `${fmt(player.time)} / ${fmt(dur)}`
     : (player.current.show || '');
-  $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
+  // 재생 아이콘도 상태 변화 시에만 innerHTML 재파싱.
+  if (_miniPaused !== player.paused) {
+    _miniPaused = player.paused;
+    $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
+  }
   // 스크럽(드래그) 중엔 fill/핸들을 player.time 으로 덮어쓰지 않는다 — 미리보기 위치를 유지.
   if (dur && !(mpScrub && mpScrub.isDragging())) {
     const pct = (player.time / dur * 100).toFixed(2);

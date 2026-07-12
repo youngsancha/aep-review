@@ -102,7 +102,10 @@ export async function ensureOfflineCache() {
   try { navigator.storage?.persist?.(); } catch (e) {}                  // 브라우저 임의 축출 방지
 
   if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    await warmVendor('https://esm.sh/@supabase/supabase-js@2');
+    // 벤더 모듈이 이미 캐시돼 있으면 재다운로드하지 않는다(매 부팅 ~100–200KB 재요청 제거).
+    let vkeys = [];
+    try { vkeys = await (await caches.open('aep-review-vendor-v1')).keys(); } catch (e) {}
+    if (!vkeys.length) await warmVendor('https://esm.sh/@supabase/supabase-js@2');
   }
 
   // R2 호스팅(자막=오디오 일치 보장) 회차만 대상 — megaphone(DAI)은 세션마다 광고가 달라 캐시 무의미.
@@ -123,8 +126,17 @@ export async function ensureOfflineCache() {
   setStatus({ phase: 'running', done: 0, total: targets.length, note: '' });
   for (const e of targets) {
     try {
-      const ep = await getEpisode(e.id);      // REST 행+자막+한글번역 → SW DATA_CACHE 워밍
       const url = hostedAudioUrl(e.id);
+      // 정상 상태 최적화: 오디오가 이미 캐시돼 있고 자막 버전(list.transcribed_at)이 지난 다운로드
+      // 때와 같으면, getEpisode(REST 3콜)·다운로드를 건너뛴다 → 매 부팅 ~45콜 재요청 제거(데이터/배터리).
+      const listTa = e.transcribed_at || '';
+      const audioCached = !!(await cache.match(url, { ignoreVary: true }));
+      if (audioCached && meta[e.id] && listTa && meta[e.id] === listTa) {
+        ok++;
+        setStatus({ phase: 'running', done: ok, total: targets.length });
+        continue;
+      }
+      const ep = await getEpisode(e.id);      // REST 행+자막+한글번역 → SW DATA_CACHE 워밍
       if (meta[e.id] && ep.transcribed_at && meta[e.id] !== ep.transcribed_at) {
         await cache.delete(url, { ignoreVary: true });    // 재싱크 → 옛 오디오 폐기
       }

@@ -7,7 +7,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.22.0';
+const VERSION = '1.23.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -54,8 +54,13 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// 데이터 캐시 용량 상한 — 오래된 항목부터 제거(대략 FIFO).
+// 데이터 캐시 용량 상한 — 오래된 항목부터 제거(대략 FIFO). cache.keys() 전체 열거는 비싸서
+// (에피소드 프리페치는 부팅당 ~45 put → 45회 전량 스캔) 매 put 마다 돌리지 않고 20회마다 한 번만
+// 실제 트림한다(상한은 소프트 — 최대 ~20개 초과 후 정리). max 는 넉넉해 초과분은 무해.
+const _trimTick = {};
 async function trimCache(name, max) {
+  _trimTick[name] = (_trimTick[name] || 0) + 1;
+  if (_trimTick[name] % 20 !== 0) return;
   const cache = await caches.open(name);
   const keys = await cache.keys();
   if (keys.length <= max) return;

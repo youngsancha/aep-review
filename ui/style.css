@@ -392,6 +392,10 @@ body.on-episode {
   position: relative;
   cursor: pointer;
   transition: background 0.12s;
+  /* 오프스크린 행의 레이아웃/페인트를 건너뛴다 — ~250개 행 초기 렌더·검색 키입력 재레이아웃 가속.
+     행 높이가 거의 일정해 intrinsic-size 로 스크롤바가 안정적으로 유지된다. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
 }
 .ep-row:active { background: var(--surface-2); }
 .ep-row + .ep-row::before {
