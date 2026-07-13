@@ -1,9 +1,7 @@
 // aep-review router (hash-based) + shared utils.
-import { renderTimeline } from '/views/timeline.js';
-import { renderEpisode } from '/views/episode.js';
-import { renderSrs } from '/views/srs.js';
-import { renderStudy } from '/views/study.js';
-import { renderLogin } from '/views/login.js';
+// 뷰 모듈은 라우트별 '동적 import'(지연 로드)로 불러온다 — 부팅 때 첫 화면(라이브러리)에 필요한
+// 것만 파싱하고 episode/study/srs/login(대형 모듈들)은 진입 시 로드해 초기 JS 파싱/평가를 줄인다.
+// SW SHELL 이 전부 캐시하므로 지연 로드여도 오프라인·재방문은 즉시(네트워크 아닌 파싱만 지연).
 import { supabase } from '/supabase.js';
 
 export const APP_VERSION = String(window.APP_VERSION || 'dev');
@@ -23,13 +21,13 @@ window.addEventListener('error', (e) => { console.error('[uncaught]', e.error ||
 window.addEventListener('unhandledrejection', (e) => { console.error('[unhandledrejection]', e.reason); });
 
 const ROUTES = [
-  { re: /^#?\/$/,                    handler: renderTimeline, title: 'E-Podcast', tab: 'timeline', back: false },
-  { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, handler: renderEpisode, title: 'Episode', tab: 'timeline', back: true },
-  { re: /^#?\/study$/,               handler: renderStudy,    title: 'Study',    tab: 'study',    back: false },
-  { re: /^#?\/srs$/,                 handler: renderSrs,      title: 'Review',   tab: 'srs',      back: false },
+  { re: /^#?\/$/,                    load: () => import('/views/timeline.js').then((m) => m.renderTimeline), title: 'E-Podcast', tab: 'timeline', back: false, key: 'timeline' },
+  { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, load: () => import('/views/episode.js').then((m) => m.renderEpisode), title: 'Episode', tab: 'timeline', back: true, key: 'episode' },
+  { re: /^#?\/study$/,               load: () => import('/views/study.js').then((m) => m.renderStudy), title: 'Study',    tab: 'study',    back: false, key: 'study' },
+  { re: /^#?\/srs$/,                 load: () => import('/views/srs.js').then((m) => m.renderSrs),   title: 'Review',   tab: 'srs',      back: false, key: 'srs' },
 ];
 
-let _prevHandler = null;  // 직전 라우트 핸들러 — 같은 뷰(에피소드↔에피소드) 전환 감지용
+let _prevKey = null;  // 직전 라우트 키 — 같은 뷰(에피소드↔에피소드) 전환 감지용
 async function route() {
   const hash = location.hash || '#/';
   for (const r of ROUTES) {
@@ -45,10 +43,11 @@ async function route() {
       //   · 스피너로 비우지 않고 옛 화면을 유지한 채 데이터를 받아온 뒤 한 번에 교체
       //   · 뷰 페이드인도 재생하지 않음
       //  → 커버(같은 캐시 URL)는 그대로, 메타·스크러버만 조용히 바뀐다. (on-episode 유지는 episode.js)
-      const inPlace = r.handler === renderEpisode && _prevHandler === renderEpisode;
+      const inPlace = r.key === 'episode' && _prevKey === 'episode';
       if (!inPlace) $app.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
       try {
-        await r.handler($app, ...m.slice(1));
+        const handler = await r.load();          // 동적 import(캐시 히트) → 렌더
+        await handler($app, ...m.slice(1));
       } catch (e) {
         console.error('[route] view render failed:', e);
         $app.innerHTML = `<div class="empty error">
@@ -57,7 +56,7 @@ async function route() {
         </div>`;
         document.getElementById('route-retry')?.addEventListener('click', () => route());
       }
-      _prevHandler = r.handler;
+      _prevKey = r.key;
       if (!inPlace) {
         // 뷰 전환 페이드인 (reflow 트릭으로 재시작; reduced-motion 에선 무시됨)
         $app.classList.remove('view-enter');
@@ -106,6 +105,17 @@ function kickOfflineCache() {
   }, 4000);
 }
 
+// 지연 로드의 유일한 트레이드오프(첫 진입 시 파싱 지연)를 없앤다: 부팅 후 유휴 시간에 다음에 열 확률이
+// 높은 뷰(episode → study)를 백그라운드로 미리 파싱해 첫 진입을 즉시로. (SW 캐시 히트라 네트워크 0.)
+let _viewsWarmed = false;
+function prefetchViews() {
+  if (_viewsWarmed) return;
+  _viewsWarmed = true;
+  const warm = () => { import('/views/episode.js').catch(() => {}); import('/views/study.js').catch(() => {}); };
+  if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 3000 });
+  else setTimeout(warm, 1500);
+}
+
 // boot 은 두 경로로 호출된다(load 리스너 + 즉시 호출). 동적 주입 모듈은 DOM 파싱 후(readyState
 // 'interactive') 실행되지만 dynamic script 는 load 를 지연시켜 둘 다 발화 → 재진입 가드로 1회만.
 // (가드 없으면 route()·listEpisodes 가 이중 실행되고, 에피소드 딥링크 리로드 시 트랜스크립트 시트가
@@ -130,6 +140,7 @@ async function boot() {
     document.body.classList.remove('logged-out');
     route();
     kickOfflineCache();
+    prefetchViews();
   } else if (!navigator.onLine && hasStoredSession()) {
     authed = true;
     document.body.classList.remove('logged-out');
@@ -159,12 +170,12 @@ function showLogin() {
   document.body.classList.add('logged-out');
   $back.hidden = true;
   $title.textContent = 'American English Podcast';
-  renderLogin($app, () => {
+  import('/views/login.js').then((m) => m.renderLogin($app, () => {
     authed = true;
     document.body.classList.remove('logged-out');
     location.hash = '#/';
     route();
-  });
+  })).catch((e) => console.error('[login] load failed:', e));
 }
 
 supabase.auth.onAuthStateChange((event, session) => {
@@ -177,6 +188,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     if (!location.hash || location.hash === '#') location.hash = '#/';
     route();
     kickOfflineCache();
+    prefetchViews();
   }
 });
 
