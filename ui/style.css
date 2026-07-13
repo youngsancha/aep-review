@@ -1129,6 +1129,8 @@ body.on-episode {
 .tx-wordpop-spk:active { transform: scale(0.9); }
 .tx-wordpop-w { font-weight: 700; font-size: 16px; color: var(--text); }
 .tx-wordpop-ko { font-size: 14px; color: var(--text-2); min-width: 24px; }
+/* 이미 찾아본 단어 — 은은한 점선 밑줄로 어휘 진도 표시(활성 문장 색은 그대로 두고 밑줄만) */
+.tx-para .w.looked { text-decoration: underline dotted var(--tint); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 
 .tx-para .ts {
   font-size: 10px;

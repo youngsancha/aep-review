@@ -617,12 +617,12 @@ export async function renderEpisode(root, idStr, tStr) {
     document.addEventListener('pointerdown', _wpOutside, true);
     const koEl = _wpEl.querySelector('.tx-wordpop-ko');
     const cache = loadWordKo(), key = word.toLowerCase();
-    if (cache[key]) { koEl.textContent = cache[key]; return; }
+    if (cache[key]) { koEl.textContent = cache[key]; wEl.classList.add('looked'); return; }
     if (!navigator.onLine) { koEl.textContent = '(오프라인 — 발음만)'; return; }
     try {
       const ko = await translateEnKo(word);
       koEl.textContent = ko || '—';
-      if (ko) { cache[key] = ko; try { localStorage.setItem(WORDKO_KEY, JSON.stringify(cache)); } catch (e) {} }
+      if (ko) { cache[key] = ko; wEl.classList.add('looked'); try { localStorage.setItem(WORDKO_KEY, JSON.stringify(cache)); } catch (e) {} }
     } catch { koEl.textContent = '—'; }
   }
 
@@ -973,6 +973,16 @@ export async function renderEpisode(root, idStr, tStr) {
     .map((el) => ({ el, s: parseFloat(el.dataset.s) }))
     .filter((w) => Number.isFinite(w.s));
   let lastWordIdx = -1;
+  // 이미 찾아본 단어(aep-wordko 캐시)는 점선 밑줄로 표시 — 어휘 진도가 한눈에 보이고 다시 찾기 쉽다.
+  (function markLookedWords() {
+    try {
+      const known = loadWordKo();
+      if (!Object.keys(known).length) return;
+      for (const el of document.querySelectorAll('.tx-scroll .w')) {
+        if (known[cleanWord(el.textContent).toLowerCase()]) el.classList.add('looked');
+      }
+    } catch (e) {}
+  })();
   function updateWord() {
     if (!wordTimed.length) return;
     if ($sheet && !$sheet.classList.contains('open')) return;  // 시트 닫힘 → 단어 하이라이트 갱신 불필요(배터리)

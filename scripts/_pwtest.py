@@ -286,7 +286,8 @@ def main() -> int:
                     spk = pg.query_selector(".tx-wordpop-spk") is not None
                     pg.mouse.up(); time.sleep(0.4)
                     ko = pg.eval_on_selector(".tx-wordpop-ko", "el=>el.textContent") if pg.query_selector(".tx-wordpop-ko") else None
-                    wordpop_ok = (pop is not None and bool(wtext) and spk and ko not in (None, "", "…"))
+                    looked = _w.evaluate("el=>el.classList.contains('looked')")   # 찾아본 단어 점선표시
+                    wordpop_ok = (pop is not None and bool(wtext) and spk and ko not in (None, "", "…") and looked is True)
                     pg.mouse.click(5, 5); time.sleep(0.1)     # 바깥 탭 → 닫힘(이어 재생)
             # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지
             pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
