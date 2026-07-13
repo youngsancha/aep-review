@@ -1102,13 +1102,15 @@ body.on-episode {
   top: calc(-15px * var(--tx-scale, 1));
   left: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 11px;
+  /* 글자/패딩도 본문 글자크기(A 칩, --tx-scale)에 비례 — 본문만 커지고 배지는 11px 고정이라
+     큰 글자에서 배지가 상대적으로 너무 작아 보이던 것 수정(사용자 요청 2026-07-13). */
+  font-size: calc(11px * var(--tx-scale, 1));
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1;
   color: var(--tint);
   background: var(--tint-soft-2);
-  padding: 3px 8px;
+  padding: calc(3px * var(--tx-scale, 1)) calc(8px * var(--tx-scale, 1));
   border-radius: 999px;
   pointer-events: none;   /* 문장 탭을 가로채지 않게 */
 }
