@@ -112,11 +112,6 @@ function markCompleted(id) {
   const s = loadDone();
   if (!s.has(id)) { s.add(id); try { localStorage.setItem(DONE_KEY, JSON.stringify([...s])); } catch (e) {} }
 }
-export function getLatestProgress() {
-  const m = loadMap(); let best = null;
-  for (const id in m) { const e = m[id]; if (e && (!best || e.at > best.at)) best = { id: Number(id), ...e }; }
-  return best;
-}
 let _lastSave = 0;
 function saveProgress() {
   const c = player.current; if (!c) return;

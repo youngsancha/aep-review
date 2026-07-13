@@ -13,6 +13,10 @@ import { srsQueue, srsReview } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 
+// 같은 해시 재렌더(헤더 ↻ sync 는 hashchange 없이 route→renderSrs 재실행)로 keydown 리스너가
+// 중첩되지 않게 직전 핸들러를 모듈 스코프에 보관 → 새로 붙이기 전에 제거한다(버그헌트 #4).
+let _srsOnKey = null;
+
 const GRADES = {
   again: { label: 'Again',  cls: 'again', dir: 'left',  arrow: '↺', requeue: true  },
   good:  { label: 'Got it', cls: 'good',  dir: 'right', arrow: '✓', requeue: false },
@@ -279,10 +283,13 @@ export async function renderSrs(root) {
       speak(term);
     }
   }
+  if (_srsOnKey) window.removeEventListener('keydown', _srsOnKey);  // 직전 렌더의 핸들러 제거(중첩 방지 #4)
+  _srsOnKey = onKey;
   window.addEventListener('keydown', onKey);
   // route 변경 시 리스너 정리 — hashchange 1회만 받고 unbind
   const cleanup = () => {
     window.removeEventListener('keydown', onKey);
+    if (_srsOnKey === onKey) _srsOnKey = null;
     window.removeEventListener('hashchange', cleanup);
   };
   window.addEventListener('hashchange', cleanup);

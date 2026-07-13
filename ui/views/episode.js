@@ -145,6 +145,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $back  = document.getElementById('np-back');
   const $fwd   = document.getElementById('np-fwd');
   const $scrub = document.getElementById('np-scrub');
+  let npScrubbing = false;   // 메인 재생바 드래그 중이면 refresh 가 값을 덮어쓰지 않게(#6)
   const $cur   = document.getElementById('np-cur');
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
@@ -198,7 +199,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function refresh() {
     const dur = player.duration;
     if (dur) {
-      $scrub.value = (player.time / dur * 100).toFixed(2);
+      if (!npScrubbing) $scrub.value = (player.time / dur * 100).toFixed(2);  // 드래그 중엔 안 덮어씀(#6)
       $cur.textContent = fmtTime(player.time);
       $rem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
       // 트랜스크립트 시트 시크 바도 동기화 — 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
@@ -298,11 +299,6 @@ export async function renderEpisode(root, idStr, tStr) {
     if (vi >= 0) vNotes[vi].push(v);
   }
   const $notes = $sheet ? $sheet.querySelector('.tx-notes') : null;
-  // 해설 패널의 표현 탭 → 발음 재생 (쉐도잉 중 어려운 표현을 바로 듣고 따라하기)
-  if ($notes) $notes.addEventListener('click', (e) => {
-    const b = e.target.closest('.tx-note-tts');
-    if (b) { e.stopPropagation(); speak(b.dataset.text); }
-  });
   function getSentText(idx) {
     const el = sentRanges[idx] && sentRanges[idx].el;
     return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
@@ -371,7 +367,6 @@ export async function renderEpisode(root, idStr, tStr) {
   let lastAdEl = null;   // 현재 강조 중인 광고 바(중복 스크롤 방지)
   let userScrolledUntil = 0;     // suspend auto-follow until this timestamp
   let followResume = false;      // 실스크롤로 이탈함 → 보류 만료 시 반복 문단으로 1회 복귀 신호
-  let autoScrollUntil = 0;       // (레거시) — 부드러운 ease 로 대체되어 게이트엔 더 안 씀
 
   // === 부드러운 자동 스크롤 (Apple Podcasts 느낌) ===
   // 네이티브 scrollTo({smooth}) 는 매 문장마다 재시작돼 끊긴다. 대신 rAF 로 매 프레임
@@ -550,18 +545,7 @@ export async function renderEpisode(root, idStr, tStr) {
     });
   }
 
-  // Click in transcript → seek + scroll the SENTENCE to viewport center
   const $tx = document.querySelector('.tx-scroll');
-  function scrollSentToCenter(sentEl) {
-    if (!sentEl || !$tx) return;
-    const rect = sentEl.getBoundingClientRect();
-    const cont = $tx.getBoundingClientRect();
-    const elTop = rect.top - cont.top + $tx.scrollTop;
-    const target = elTop - $tx.clientHeight / 2 + rect.height / 2;
-    userScrolledUntil = Date.now() + 3000;  // give user 3s to read before auto-follow resumes
-    followResume = false;                   // 탭 = 명시적 위치 선택 → 반복 문단 강제 복귀는 취소
-    smoothScrollTo(Math.max(0, target));    // 부드러운 ease 로 가운데 정렬
-  }
   // 단어/문장 탭으로 그 지점부터 재생할 때: 이미 화면에 잘 보이면 스크롤하지 않는다(사용자 보고:
   // 탭하면 화면이 '밀리며' 시작되는 위화감 제거 → 탭한 그 자리에서 바로 시작). 머리가 잘리거나
   // 하단 번역·컨트롤에 가리거나 화면 밖일 때만 자동추적과 동일한 22% 줄에 살짝 정렬한다.
@@ -664,7 +648,6 @@ export async function renderEpisode(root, idStr, tStr) {
   }
 
   // "Now playing" badge tap → resume auto-follow
-  const $card = document.querySelector('.tx-card');
   document.querySelector('.tx-live-badge')?.addEventListener('click', () => {
     userScrolledUntil = 0;
     followResume = false;
@@ -691,7 +674,6 @@ export async function renderEpisode(root, idStr, tStr) {
       paraEls.forEach((p) => p.classList.remove('active', 'played'));
       lastActiveSent = -1;
       lastActivePara = -1;
-      autoScrollUntil = 0;
       userScrolledUntil = 0;
       followResume = false;
       highlightActiveSegment();
@@ -822,6 +804,9 @@ export async function renderEpisode(root, idStr, tStr) {
     if ($txSpeed) { $txSpeed.textContent = lbl; $txSpeed.classList.toggle('on', r !== 1); }
   }
   $txSpeed?.addEventListener('click', (e) => { e.stopPropagation(); setSpeed(speedIdx + 1); });
+  // 재생속도는 공유 <audio> 에 유지된다(회차 이동해도 그대로) → 이 회차 칩/인덱스를 실제 속도에 맞춘다.
+  // (버그헌트 #2: 안 맞추면 라벨은 1× 인데 실제로는 1.5× 로 재생되고, 다음 탭이 엉뚱한 값에서 시작.)
+  { const cur = player.audio ? player.audio.playbackRate : 1; const i = SPEEDS.indexOf(cur); if (i > 0) setSpeed(i); }
 
   // 한국어 번역 표시 토글 (#8) — 기본 ON. 초기 버튼 상태도 showTrans 에 맞춘다.
   const $trans = document.getElementById('tx-trans');
@@ -1045,15 +1030,10 @@ export async function renderEpisode(root, idStr, tStr) {
     const dur = player.duration;
     if (dur) player.seek(dur * parseFloat($scrub.value) / 100);
   });
+  // 드래그 중 표시 — 이 사이엔 refresh 가 $scrub.value 를 안 덮어써 썸이 튀지 않는다(#6).
+  ['pointerdown', 'touchstart'].forEach((ev) => $scrub.addEventListener(ev, () => { npScrubbing = true; }, { passive: true }));
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'change', 'blur'].forEach((ev) => $scrub.addEventListener(ev, () => { npScrubbing = false; }));
   $speed.addEventListener('click', () => setSpeed(speedIdx + 1));
-
-  // Transcript click → seek
-  document.querySelectorAll('#transcript-list li').forEach((li) => {
-    li.addEventListener('click', () => {
-      player.seek(parseFloat(li.dataset.start || '0'));
-      player.play();
-    });
-  });
 
   // Vocab interactions
   document.querySelectorAll('.vocab-card .tts').forEach((btn) => {

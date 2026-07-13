@@ -135,6 +135,10 @@ async function boot() {
   } catch (e) {
     console.error('auth getSession failed', e);
   }
+  // 딥링크 콜드스타트 레이스(버그헌트 #5): getSession 을 기다리는 사이 onAuthStateChange 의
+  // INITIAL_SESSION 이 이미 게이트를 열고 route() 했을 수 있다 → 여기서 또 route() 하면 이중 렌더
+  // (에피소드면 시트 2개). 이미 입장했으면 boot 은 아무것도 하지 않는다.
+  if (authed) return;
   if (session) {
     authed = true;
     document.body.classList.remove('logged-out');
@@ -205,13 +209,16 @@ let _syncHold = null;
 function refreshData() {
   $sync.disabled = true;
   $sync.classList.add('syncing');
-  Promise.resolve(route()).finally(() => {
-    setTimeout(() => {
-      $sync.disabled = false;
-      $sync.classList.remove('syncing');
-      toast('Synced to latest');
-    }, 350);
-  });
+  const done = () => setTimeout(() => {
+    $sync.disabled = false;
+    $sync.classList.remove('syncing');
+    toast('Synced to latest');
+  }, 350);
+  // 에피소드 화면에선 재라우팅 금지 — 같은 해시라 hashchange 없이 route()→renderEpisode 가 재실행되면
+  // teardown(시트 제거·리스너 해제)이 안 돼 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다
+  // (버그헌트 #1). 에피소드 데이터는 이미 로드돼 있어 새로고침 불필요 → 스핀 애니메이션만.
+  if (/^#\/episode\//.test(location.hash || '')) { done(); return; }
+  Promise.resolve(route()).finally(done);
 }
 async function signOut() {
   if (!confirm('Log out?')) return;
@@ -272,11 +279,6 @@ export function toast(msg) {
   _toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
 }
 
-export async function api(path, opts) {
-  const r = await fetch(path, opts);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-}
 
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({

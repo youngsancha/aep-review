@@ -79,4 +79,4 @@ export function showOptions() {
 // 기존 뷰 호환(다수 뷰가 import) — 현재 쇼 커버의 사이즈 변형. 단일쇼(flag off)면 aep 커버 그대로라
 // 기존 픽셀과 100% 동일. 쇼 전환 시 앱이 재라우팅/리로드되어 모듈 재평가 → 새 커버 반영.
 export const SHOW_COVER = showCover() + '&w=720&h=720';
-export const SHOW_COVER_SM = showCover() + '&w=160&h=160';
+export const SHOW_COVER_SM = showCover() + '&w=160&h=160';  // 앱 UI 는 각 뷰가 자체 계산본을 쓰지만 config 계약(테스트)이 이 export 를 검증

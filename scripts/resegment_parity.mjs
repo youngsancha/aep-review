@@ -30,7 +30,6 @@ const body =
   extractTopLevelFn(epSrc, 'resegment') + '\n' +
   extractTopLevelFn(epSrc, 'trKey') + '\n' +
   'return { resegment, trKey };';
-// eslint-disable-next-line no-new-func
 const { resegment, trKey } = new Function(body)();
 
 // --ids 파싱

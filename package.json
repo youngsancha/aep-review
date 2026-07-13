@@ -1,0 +1,13 @@
+{
+  "name": "aep-review",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint ui scripts tests",
+    "check": "node scripts/jscheck.mjs",
+    "test": "node --test tests/*.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^10.7.0"
+  }
+}
