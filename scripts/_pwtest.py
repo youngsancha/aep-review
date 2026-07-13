@@ -271,6 +271,23 @@ def main() -> int:
                 if pg.query_selector("#tx-fs"): pg.click("#tx-fs"); time.sleep(0.1)
                 _ta = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)")
                 trans_fixed = (_tb is not None and _ta is not None and abs(_ta - _tb) < 0.5)
+            # 단어 롱프레스 사전(신규 필수모드): .w 를 ~500ms 길게 누르면 팝오버(발음 버튼+단어+뜻)가 뜬다.
+            wordpop_ok = None
+            _w = pg.query_selector(".tx-scroll .w")
+            if _w:
+                try: _w.scroll_into_view_if_needed(); time.sleep(0.2)   # 앞선 시크/폰트변경으로 밀렸을 수 있어 뷰로
+                except Exception: pass
+                bb = _w.bounding_box()
+                if bb:
+                    pg.mouse.move(bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2)
+                    pg.mouse.down(); time.sleep(0.62)         # 450ms 임계 초과 유지 → 사전
+                    pop = pg.query_selector(".tx-wordpop.show")
+                    wtext = pg.eval_on_selector(".tx-wordpop-w", "el=>el.textContent") if pg.query_selector(".tx-wordpop-w") else None
+                    spk = pg.query_selector(".tx-wordpop-spk") is not None
+                    pg.mouse.up(); time.sleep(0.4)
+                    ko = pg.eval_on_selector(".tx-wordpop-ko", "el=>el.textContent") if pg.query_selector(".tx-wordpop-ko") else None
+                    wordpop_ok = (pop is not None and bool(wtext) and spk and ko not in (None, "", "…"))
+                    pg.mouse.click(5, 5); time.sleep(0.1)     # 바깥 탭 → 닫힘(이어 재생)
             # 다크 테마(#12): data-theme=dark 시 배경이 실제로 어두워지는지
             pg.evaluate("document.documentElement.setAttribute('data-theme','dark')")
             time.sleep(0.1)
@@ -292,6 +309,7 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_btn_gone=", sync_btn_gone)
+            print("wordpop_ok=", wordpop_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -303,7 +321,8 @@ def main() -> int:
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
-                     and ad_mid_ok is True and sync_btn_gone is True)
+                     and ad_mid_ok is True and sync_btn_gone is True
+                     and wordpop_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

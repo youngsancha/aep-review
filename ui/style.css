@@ -1105,6 +1105,31 @@ body.on-episode {
   pointer-events: none;   /* 문장 탭을 가로채지 않게 */
 }
 
+/* 단어 롱프레스 사전 팝오버 (신규 필수모드) — 단어 위에 뜨는 발음+뜻 미니 카드 */
+.tx-wordpop {
+  position: fixed; z-index: 200;
+  display: flex; align-items: center; gap: 9px;
+  max-width: min(82vw, 340px);
+  padding: 8px 12px 8px 8px;
+  background: var(--glass-panel);
+  backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 0.5px solid var(--separator);
+  border-radius: 15px;
+  box-shadow: var(--shadow-pop);
+  opacity: 0; transform: translateY(5px) scale(0.95);
+  transition: opacity 0.14s ease, transform 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  pointer-events: none;
+}
+.tx-wordpop.show { opacity: 1; transform: none; pointer-events: auto; }
+.tx-wordpop-spk {
+  border: 0; background: var(--tint-soft-2); color: var(--tint);
+  width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+  font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.tx-wordpop-spk:active { transform: scale(0.9); }
+.tx-wordpop-w { font-weight: 700; font-size: 16px; color: var(--text); }
+.tx-wordpop-ko { font-size: 14px; color: var(--text-2); min-width: 24px; }
+
 .tx-para .ts {
   font-size: 10px;
   font-weight: 700;

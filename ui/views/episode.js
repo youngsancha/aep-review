@@ -1,5 +1,5 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
-import { escapeHtml, fmtTime, fmtDate, fmtDuration } from '/app.js';
+import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast } from '/app.js';
 import { getEpisode, episodeNav } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
@@ -579,8 +579,56 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   // (수동 싱크 보정 UI 제거됨 — 모든 회차가 R2 재STT 로 자동 싱크(offset 0))
 
+  // ─── 단어 롱프레스 → 즉석 사전 (신규 필수모드) ────────────────────────────────────────────
+  // 탭 = 그 지점 재생(기존), 길게 누름(≈450ms) = 그 단어의 발음(🔊)+한국어 뜻 팝오버. 쉐도잉 중
+  // 모르는 단어를 화면을 안 떠나고 바로 확인. 열리면 재생을 잠시 멈춰 읽을 시간을 주고 닫으면 이어 재생.
+  // 번역은 per-word localStorage 캐시(aep-wordko)로 재조회 최소화, 오프라인이면 발음만.
+  let _wpEl = null, _lpTimer = 0, _lpSuppress = false, _lpStart = null, _lpWasPlaying = false;
+  const WORDKO_KEY = 'aep-wordko';
+  const loadWordKo = () => { try { return JSON.parse(localStorage.getItem(WORDKO_KEY) || '{}') || {}; } catch { return {}; } };
+  const cleanWord = (s) => (s || '').replace(/^[^A-Za-z'’-]+/, '').replace(/[^A-Za-z'’-]+$/, '');
+  function _wpOutside(ev) { if (_wpEl && !_wpEl.contains(ev.target)) hideWordPop(); }
+  function hideWordPop() {
+    if (_wpEl) _wpEl.classList.remove('show');
+    document.removeEventListener('pointerdown', _wpOutside, true);
+    if (_lpWasPlaying) { _lpWasPlaying = false; player.play(); }   // 열 때 재생 중이었으면 이어 재생
+  }
+  async function showWordPop(wEl) {
+    const word = cleanWord(wEl.textContent);
+    if (!word) return;
+    _lpWasPlaying = !player.paused;
+    if (_lpWasPlaying) player.pause();     // 읽는 동안 정지(자동스크롤도 멈춰 팝오버가 안 밀린다)
+    if (!_wpEl) { _wpEl = document.createElement('div'); _wpEl.className = 'tx-wordpop'; document.body.appendChild(_wpEl); }
+    _wpEl.innerHTML =
+      `<button class="tx-wordpop-spk" aria-label="Pronounce">🔊</button>` +
+      `<span class="tx-wordpop-w">${escapeHtml(word)}</span>` +
+      `<span class="tx-wordpop-ko">…</span>`;
+    _wpEl.querySelector('.tx-wordpop-spk').addEventListener('click', (e) => { e.stopPropagation(); speak(word); });
+    _wpEl.classList.add('show');
+    // 위치: 단어 바로 위 중앙(화면 밖이면 클램프, 위 공간 없으면 아래로)
+    const r = wEl.getBoundingClientRect();
+    const pw = _wpEl.offsetWidth, ph = _wpEl.offsetHeight;
+    let left = Math.max(8, Math.min(r.left + r.width / 2 - pw / 2, window.innerWidth - pw - 8));
+    let top = r.top - ph - 10;
+    if (top < 8) top = r.bottom + 10;
+    _wpEl.style.left = left + 'px';
+    _wpEl.style.top = top + 'px';
+    speak(word);                            // 길게 누르는 즉시 발음도 들려준다
+    document.addEventListener('pointerdown', _wpOutside, true);
+    const koEl = _wpEl.querySelector('.tx-wordpop-ko');
+    const cache = loadWordKo(), key = word.toLowerCase();
+    if (cache[key]) { koEl.textContent = cache[key]; return; }
+    if (!navigator.onLine) { koEl.textContent = '(오프라인 — 발음만)'; return; }
+    try {
+      const ko = await translateEnKo(word);
+      koEl.textContent = ko || '—';
+      if (ko) { cache[key] = ko; try { localStorage.setItem(WORDKO_KEY, JSON.stringify(cache)); } catch (e) {} }
+    } catch { koEl.textContent = '—'; }
+  }
+
   if ($tx) {
     $tx.addEventListener('click', (e) => {
+      if (_lpSuppress) { _lpSuppress = false; return; }   // 방금 롱프레스였음 → 시크하지 않음
       const w = e.target.closest('.w');
       const sent = e.target.closest('.tx-sent');
       const para = e.target.closest('.tx-para');
@@ -599,6 +647,20 @@ export async function renderEpisode(root, idStr, tStr) {
       player.play();
       scrollSentIntoViewIfNeeded(sent || para);   // 이미 보이면 안 움직임(탭 그 자리서 시작)
     });
+    // 롱프레스 판정: .w 위에서 pointerdown 후 450ms 안 움직이고 유지 → 사전. 움직이면(스크롤) 취소.
+    const _lpCancel = () => { if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = 0; } };
+    $tx.addEventListener('pointerdown', (e) => {
+      const w = e.target.closest('.w');
+      if (!w) return;
+      _lpStart = { x: e.clientX, y: e.clientY };
+      _lpCancel();
+      _lpTimer = setTimeout(() => { _lpTimer = 0; _lpSuppress = true; showWordPop(w); }, 450);
+    });
+    $tx.addEventListener('pointermove', (e) => {
+      if (_lpTimer && _lpStart && (Math.abs(e.clientX - _lpStart.x) > 10 || Math.abs(e.clientY - _lpStart.y) > 10)) _lpCancel();
+    });
+    $tx.addEventListener('pointerup', _lpCancel);
+    $tx.addEventListener('pointercancel', _lpCancel);
   }
 
   // "Now playing" badge tap → resume auto-follow
@@ -616,6 +678,13 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet.classList.add('open');
     $sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    // 신규 필수모드 발견성 — 트랜스크립트를 처음 열 때 1회만 롱프레스 사전 안내(숨은 제스처라 힌트 필요).
+    try {
+      if (!localStorage.getItem('aep-hint-wordpop')) {
+        localStorage.setItem('aep-hint-wordpop', '1');
+        setTimeout(() => toast('💡 단어를 길게 누르면 뜻·발음이 나와요'), 1200);
+      }
+    } catch (e) {}
     // Wipe ALL state and stale classes, then re-evaluate from current player time.
     setTimeout(() => {
       sentRanges.forEach((s) => s.el.classList.remove('active'));
@@ -944,6 +1013,7 @@ export async function renderEpisode(root, idStr, tStr) {
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
     clearTimeout(followTimer);   // 자동추적 복귀 예약 — 다음 회차 시트를 건드리지 않게 취소
+    clearTimeout(_lpTimer); document.removeEventListener('pointerdown', _wpOutside, true); _wpEl?.remove();  // 단어 사전 팝오버 정리
     cancelEase();
     stopRaf();
     txScrub?.destroy();
