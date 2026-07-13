@@ -508,10 +508,14 @@ export async function renderEpisode(root, idStr, tStr) {
       // 문단 진입 시(paraChanged) 한 번만 위치를 잡고, 끝→처음 되감기 때 '아래로 흔들렸다 되돌아오던'
       // 스크롤을 없앤다. (auto5 가 '다음 문단'으로 넘어갈 때는 paraChanged 라 정상 재배치된다.)
       const inLoopPara = (inRepeatMode()) && loopPara >= 0 && newPara === loopPara;
+      // 반환 보장(사용자 보고 2026-07-13 "현재문단 못찾아감"): inLoopPara 게이트는 '보이는 문단 안'의
+      // 흔들림만 막아야 한다. 활성 문장이 화면에서 '완전히' 사라졌다면(위/아래 밖) followResume 신호가
+      // 탭 등으로 지워졌어도 아래 out-of-band 당김이 복귀시킨다 — 보이는 동안엔 기존과 100% 동일.
+      const sentOffscreen = sRelBot <= 0 || sRelTop >= h;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
-      } else if (!inLoopPara && (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04)) {
+      } else if ((!inLoopPara || sentOffscreen) && (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04)) {
         // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(≈13%)로 올려 카드와 안 겹치고 위쪽에 자리잡게.
         target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.13 : 0.22));
       }
@@ -652,6 +656,7 @@ export async function renderEpisode(root, idStr, tStr) {
     userScrolledUntil = 0;
     followResume = false;
     lastActivePara = -1;  // force re-trigger of scroll on next update
+    lastActiveSent = -1;  // 이게 없으면 'idx 불변' 조기 return 에 걸려 탭이 무반응(활성 문장이 안 바뀐 동안)
     highlightActiveSegment();
   });
 

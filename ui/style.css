@@ -1062,6 +1062,11 @@ body.on-episode {
 .tx-scroll {
   max-height: 70vh;
   overflow-y: auto;
+  /* 화면밀림 방지(사용자 보고 2026-07-13): overflow-y:auto 만 지정하면 overflow-x 가 auto 로
+     계산돼, 1px 라도 가로로 넘치면 손가락/텍스트 선택 드래그로 본문이 옆으로 밀린 채 고정됐다.
+     가로 스크롤을 원천 차단하고 터치는 세로 팬만 허용한다. */
+  overflow-x: hidden;
+  touch-action: pan-y;
   overflow-anchor: none;  /* 글자크기 변경 시 브라우저 자동앵커링과 우리 보정이 겹쳐 두 번 밀리던 것 방지 */
   padding: 18px 20px 24px;
   -webkit-overflow-scrolling: touch;
@@ -1072,6 +1077,9 @@ body.on-episode {
 
 .tx-para {
   position: relative;   /* 반복 카운트다운 배지(.tx-loop-badge)의 기준 */
+  /* 길게 누름 = 단어 사전(전용 제스처). 네이티브 텍스트 선택이 동시에 뜨면 선택 핸들+드래그 팬으로
+     본문이 밀리고 지저분해진다 → 본문은 선택 비활성(Apple Podcasts 트랜스크립트와 동일). */
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   font-family: "New York", ui-serif, Charter, "Iowan Old Style", "Apple Garamond", Georgia, "Times New Roman", serif;
   font-size: calc(28px * var(--tx-scale, 1));
   line-height: 1.5;   /* 28px 대형 세리프 본문 — 1.4 는 빽빽. Apple Books/Podcasts 트랜스크립트 수준으로. */
