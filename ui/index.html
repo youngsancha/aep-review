@@ -9,8 +9,8 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon-192.png" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-  <meta name="apple-mobile-web-app-title" content="ENG Podcast" />
-  <title>ENG Podcast</title>
+  <meta name="apple-mobile-web-app-title" content="E-Podcast" />
+  <title>E-Podcast</title>
 
   <!-- 콜드 스타트 단축: 모듈/데이터/오디오/커버 오리진의 DNS+TLS 를 미리 연다. CSS·importmap·app.js
        는 인라인 스크립트가 주입해 프리로드 스캐너에 안 보이므로(워터폴 3홉), 여기서 정적으로 힌트를
@@ -24,7 +24,7 @@
   <script>
     // 버전 표기: 유의적 버전(major.minor.patch) — 기능 추가→minor, 버그·미세수정→patch.
     // (과거 정수 표기 144 = 1.4.4 기준; 이후 점 표기로 전환)
-    window.APP_VERSION = '1.26.0';
+    window.APP_VERSION = '1.26.1';
     // 페인트 전에 저장된 테마를 적용해 깜빡임 방지 (auto 면 시스템 설정에 맡김)
     (function () { try {
       var t = localStorage.getItem('aep-theme');
@@ -61,7 +61,7 @@
     <button id="back-btn" hidden aria-label="Back">‹</button>
     <div id="brand">
       <img id="brand-icon" src="/icons/icon-192.png" alt="" />
-      <h1 id="page-title">ENG Podcast</h1>
+      <h1 id="page-title">E-Podcast</h1>
     </div>
     <span id="app-version">v?</span>
     <button id="theme-btn" class="theme-switch" role="switch" aria-checked="false" aria-label="Toggle light/dark theme">
