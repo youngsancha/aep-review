@@ -51,6 +51,11 @@ function splitBack(back) {
 // history 항목을 하나 쌓고(pushState), popstate(뒤로가기)에서 '서브화면 닫고 Study 홈 복귀'로 처리.
 // 실제 라우트 이동(hashchange)이면 핸들러를 비워 일반 라우팅에 양보한다. (cnpod 검증 패턴)
 let _studyBack = null;   // 열린 서브화면을 닫는 함수(열려 있으면 non-null)
+// 렌더 세대 — renderStudy 진입/라우트 이탈마다 +1. 퀴즈의 지연 타이머(정답 후 750~1600ms 뒤
+// 다음 문제 paint)가 그 사이 사용자가 이탈(뒤로가기·탭 이동)했는데도 root 를 덮어쓰던 문제 방지.
+// 타이머 콜백은 진입 시 세대를 캡처했다가 현재 세대와 다르면 그린 것을 폐기한다.
+let _studyGen = 0;
+export function _studyGenNow() { return _studyGen; }
 let _popWired = false;
 function wireStudyPop() {
   if (_popWired) return;
@@ -61,7 +66,7 @@ function wireStudyPop() {
     // 탭 이동으로 서브화면을 떠나면 밀어둔 {studySub} 항목이 고아로 남는다 → 한 번 더 되돌려 스킵.
     if (e.state && e.state.studySub) history.back();
   });
-  window.addEventListener('hashchange', () => { _studyBack = null; });
+  window.addEventListener('hashchange', () => { _studyBack = null; _studyGen++; });
 }
 
 // 세션 드릴 완료 훅 — 설정돼 있으면 드릴 finish 가 자체 요약 대신 이걸 호출(세션이 다음 단계로).
@@ -137,6 +142,7 @@ export async function renderStudy(root) {
   _sessNext = null;   // 스테일 세션 훅 무효화(드릴을 세션 밖에서 열 때 가로채기 방지)
   wireStudyPop();     // 뒤로가기(popstate) 핸들러 1회 등록
   _studyBack = null;  // Study 홈 = 열린 서브화면 없음
+  _studyGen++;        // 이 렌더의 세대 — 이전 화면의 지연 타이머를 무효화
   // 스트릭(markStudyDay)은 '세션 완료'에서만 — 탭을 연 것만으로 오르던 것을 정직하게(sessSummary)
   root.innerHTML = `
     <div class="library-head"><h1 class="library-title">Study</h1></div>
@@ -822,6 +828,7 @@ export async function renderStudy(root) {
   function startQuiz(mode = 'read', source = null, unseen = false) {
     stopClip();
     openSub();
+    const gen = _studyGen;   // 이 퀴즈 인스턴스의 세대(이탈 감지용)
     const pool = (source || items).filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
@@ -874,7 +881,7 @@ export async function renderStudy(root) {
         const pr = root.querySelector('.quiz-prompt');
         if (pr) pr.insertAdjacentHTML('beforeend', `<div class="quiz-reveal">${escapeHtml(c.term)}</div>`);
       }
-      setTimeout(() => { idx++; answered = false; paintQ(); }, ok ? 750 : 1600);
+      setTimeout(() => { if (gen !== _studyGen) return; idx++; answered = false; paintQ(); }, ok ? 750 : 1600);
     }
     function finishQ() {
       recordQuiz(score, qs.length);
