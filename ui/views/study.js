@@ -1,7 +1,7 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml, highlightTerm } from '/app.js';
-import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats } from '/db.js';
+import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
@@ -27,6 +27,28 @@ const AXIS_HELP = {
   production:   { how: '또박또박 <b>말해서</b> 인식 정확도 ↑', where: '🎤Speak · 🗣️KR→EN (마이크 필요)', goal: '평균 단어일치 85%' },
   automaticity: { how: '퀴즈를 <b>빨리 답</b> + 에피소드 <b>쉐도잉 반복</b>', where: 'Quiz/Listen 속도 · 플레이어 🔁Repeat·5×·10×', goal: '응답 ≤2.2초 + 쉐도잉 400회' },
 };
+
+// ── 오늘 세션 상태 (localStorage) — 원버튼 데일리 플로우: 복습 → 새 표현 → 약점 드릴 ──
+const SESS_KEY = 'aep-session';
+const SESS_SIZE_KEY = 'aep-session-size';
+// 단계별 분량 — S/M/L ≈ 5/10/20분 (복습 ~8s/장 · 새 표현 ~15s/장 · 드릴은 모드별 소요로 산정)
+const SESS_CAPS = {
+  S: { review: 10, fresh: 2, drills: 1, read: 6, dictation: 3, cloze: 4, prod: 3, min: 5 },
+  M: { review: 20, fresh: 3, drills: 1, read: 10, dictation: 5, cloze: 7, prod: 5, min: 10 },
+  L: { review: 40, fresh: 5, drills: 2, read: 12, dictation: 7, cloze: 9, prod: 6, min: 20 },
+};
+const DRILL_LABEL = { dictation: '✍️ 받아쓰기', read: '🎯 스피드 퀴즈', prod: '🗣️ KR→EN', cloze: '🧩 빈칸' };
+function sessSize() { try { const v = localStorage.getItem(SESS_SIZE_KEY); return SESS_CAPS[v] ? v : 'M'; } catch (e) { return 'M'; } }
+function loadSess() { try { return JSON.parse(localStorage.getItem(SESS_KEY) || 'null'); } catch (e) { return null; } }
+function saveSess(st) { try { localStorage.setItem(SESS_KEY, JSON.stringify(st)); } catch (e) { /* quota */ } }
+// "definition (한글)\n\n— example" → def/example 분리 (srs.js 와 동일 규칙 — 미수출이라 사본)
+function splitBack(back) {
+  const parts = String(back || '').split(/\n\s*—\s*/);
+  return { def: (parts[0] || '').trim(), example: (parts[1] || '').trim() };
+}
+// 세션 드릴 완료 훅 — 설정돼 있으면 드릴 finish 가 자체 요약 대신 이걸 호출(세션이 다음 단계로).
+// renderStudy 진입 시 항상 초기화(스테일 훅이 다른 화면 흐름을 가로채지 않게).
+let _sessNext = null;
 
 // 데일리 학습 스트릭 — 매일 꾸준함이 유창성의 핵심. Study 를 연 날을 기록해 연속일을 센다(추가형).
 const _dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -94,7 +116,8 @@ function playExample(c, rate, loop) {
 
 export async function renderStudy(root) {
   stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
-  markStudyDay();  // 오늘 학습 기록(스트릭)
+  _sessNext = null;   // 스테일 세션 훅 무효화(드릴을 세션 밖에서 열 때 가로채기 방지)
+  // 스트릭(markStudyDay)은 '세션 완료'에서만 — 탭을 연 것만으로 오르던 것을 정직하게(sessSummary)
   root.innerHTML = `
     <div class="library-head"><h1 class="library-title">Study</h1></div>
     <div class="skel-hero" style="height:84px"></div>
@@ -215,23 +238,12 @@ export async function renderStudy(root) {
       </div>`;
   }
 
-  // 적응형 '오늘의 플랜' — 가장 약한 축으로 학습을 민다(점수가 가장 빨리 오르는 곳). due 복습은 항상 병기.
-  const PLAN_ACTION = {
-    breadth:      { emoji: '📚', label: '새 표현 마스터', sub: '복습 큐의 신규 카드부터', act: 'srs' },
-    retention:    { emoji: '🧠', label: '복습 (간격반복)', sub: '오늘 due — 장기기억 고정', act: 'srs' },
-    listening:    { emoji: '👂', label: '레벨 체크 (받아쓰기)', sub: 'unseen 문장 청해', act: 'level' },
-    production:   { emoji: '🗣️', label: 'KR→EN 말하기', sub: '뜻 보고 영어로 산출', act: 'prod' },
-    automaticity: { emoji: '⚡', label: '스피드 퀴즈', sub: '빠른 인식으로 자동화', act: 'weak' },
-  };
   // ── Study 홈 = Library 리듬 (v1.31.0) ──
   // 헤더 한 줄(유일한 숫자 요약) → Today 카드(유일한 주 CTA) → Practice(접힘) → Essentials 행
   // → Expressions(본문 리스트) → 맨 아래 My stats(접힘). 예전엔 콘텐츠 앞에 8개 블록·진행지표
   // 17개·탭 가능 컨트롤 21개가 쌓여 '지금 무엇을 할지'가 없었다(UX 감사 2026-07-16).
   function heroHtml() {
     const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
-    const weakKey = weakestAxis(prof.scores) || 'retention';
-    const a = PLAN_ACTION[weakKey] || PLAN_ACTION.retention;
-    const weakLabel = (PROF_AXES.find((x) => x[0] === weakKey) || [])[1] || '';
     const streak = getStreak();
     return `
       <div class="library-head">
@@ -241,13 +253,33 @@ export async function renderStudy(root) {
       <div class="section-h"><h2>Today</h2></div>
       <div class="cont-card study-today">
         <div class="cont-body">
-          <div class="cont-title">${a.emoji} ${a.label}</div>
+          <div class="cont-title" id="sess-title">${(() => {
+            const st = loadSess(); const t = _dayKey(new Date());
+            if (st && st.d === t && st.completedAt) return '✓ 오늘 세션 완료';
+            if (st && st.d === t && st.stage !== 'done') return '오늘 세션 — 진행 중';
+            return '오늘 세션';
+          })()}</div>
           <div class="cont-bar"><span id="study-known-bar" style="width:${pct}%"></span></div>
-          <div class="cont-meta">${a.sub}${weakLabel ? ` · 약점 «${weakLabel}»` : ''}${ov.due > 0 ? ` · 복습 ${ov.due} 대기` : ''}</div>
+          <div class="cont-meta" id="sess-preview">${(() => {
+            const caps = SESS_CAPS[sessSize()];
+            const st = loadSess(); const t = _dayKey(new Date());
+            const drills = (st && st.d === t && !st.completedAt && st.drillModes) ? st.drillModes : pickDrills(caps.drills);
+            const nRev = Math.min(ov.dueReview ?? ov.due ?? 0, caps.review);
+            const nNew = Math.min(ov.dueNew ?? 0, caps.fresh);
+            return `복습 ${nRev} · 새 표현 ${nNew} · ${drills.map((m) => DRILL_LABEL[m] || m).join(' · ')}`;
+          })()}</div>
           <div class="cont-actions">
-            <button class="cont-play" id="plan-go" data-act="${a.act}">▶ Start</button>
+            <button class="cont-play" id="sess-go">${(() => {
+              const st = loadSess(); const t = _dayKey(new Date());
+              if (st && st.d === t && st.completedAt) return '한 세션 더';
+              if (st && st.d === t && st.stage !== 'done') return '▶ 이어서 하기';
+              return '▶ Start';
+            })()}</button>
             <a class="cont-script" id="plan-level" role="button" tabindex="0">Level check ›</a>
             <a class="cont-script" href="#/srs">Review${ov.due > 0 ? ` ${ov.due}` : ''} ›</a>
+          </div>
+          <div class="sess-size" role="group" aria-label="세션 크기">
+            ${['S', 'M', 'L'].map((z) => `<button data-size="${z}" class="${z === sessSize() ? 'on' : ''}">${z} · ${SESS_CAPS[z].min}분</button>`).join('')}
           </div>
         </div>
       </div>
@@ -495,13 +527,220 @@ export async function renderStudy(root) {
       el.addEventListener('click', open);
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     });
-    // 오늘의 플랜 — 약점 축에 맞는 드릴로 직행.
-    root.querySelector('#plan-go')?.addEventListener('click', (e) => {
-      const act = e.currentTarget.dataset.act;
-      if (act === 'level') startLevelCheck();
-      else if (act === 'prod') startWeakProduction();
-      else if (act === 'weak') startWeakQuiz();
-      else location.hash = '#/srs';   // breadth/retention → SRS
+    // 오늘 세션 — 복습→새 표현→약점 드릴 체이닝(원버튼). 크기 노브는 저장 후 카드만 다시 그림.
+    root.querySelector('#sess-go')?.addEventListener('click', () => startSession());
+    root.querySelectorAll('.sess-size button').forEach((b) => b.addEventListener('click', () => {
+      try { localStorage.setItem(SESS_SIZE_KEY, b.dataset.size); } catch (e) { /* quota */ }
+      paintShell();
+      const listEl = root.querySelector('#study-list');
+      if (listEl) { listEl.innerHTML = listHtml(); wireList(); }
+    }));
+  }
+
+  // ── 오늘 세션 — 복습(SRS) → 새 표현 소개 → 약점 드릴을 한 버튼으로 체이닝 (v1.32.0) ──
+  // 항목 선택: srsQueue(복습 due + 신규) 그대로 → 채점된 카드는 다음 조회에서 자연히 빠지므로
+  // 같은 날 재진입(이어서 하기)이 별도 카드 상태 저장 없이 정확하다. 드릴은 prof.scores 의
+  // 최약축을 모드로 매핑(콜드스타트 = 받아쓰기). 완료 시에만 markStudyDay(정직한 스트릭).
+  const AXIS_DRILL = { listening: 'dictation', production: 'prod', automaticity: 'read' };
+  function pickDrills(n) {
+    const ranked = ['listening', 'production', 'automaticity']
+      .filter((k) => prof.scores[k] != null)
+      .sort((a, b) => prof.scores[a] - prof.scores[b])
+      .map((k) => AXIS_DRILL[k]);
+    const out = ranked.length ? ranked : ['dictation', 'read'];   // 미측정 콜드스타트 기본
+    if (n > out.length && !out.includes('cloze')) out.push('cloze');
+    return out.slice(0, n);
+  }
+
+  async function startSession() {
+    stopClip();
+    const size = sessSize();
+    const caps = SESS_CAPS[size];
+    const today = _dayKey(new Date());
+    let st = loadSess();
+    const resumable = st && st.d === today && !st.completedAt && st.stage !== 'done';
+    if (!resumable) {
+      st = { v: 1, d: today, size, stage: 'review', drillIdx: 0,
+             drillModes: pickDrills(caps.drills),
+             stats: { reviewDone: 0, reviewAgain: 0, newDone: 0, newKnown: 0, drills: [] },
+             completedAt: null };
+    }
+    saveSess(st);
+    root.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    let queue = [];
+    try { queue = await srsQueue(); } catch (e) { queue = []; }   // 오프라인 → 복습/새표현 자동 스킵
+    runSessStage(st, queue);
+  }
+
+  function sessHeaderHtml(st, label, i, n) {
+    const segs = ['복습', '새 표현', ...st.drillModes.map(() => '드릴')];
+    const cur = st.stage === 'review' ? 0 : st.stage === 'new' ? 1 : 2 + st.drillIdx;
+    return `
+      <div class="quiz-bar sess-bar">
+        <span class="quiz-count">${label} ${i} / ${n}</span>
+        <span class="sess-segs">${segs.map((sg, k) => `<i class="${k < cur ? 'done' : k === cur ? 'on' : ''}">${sg}</i>`).join('')}</span>
+      </div>`;
+  }
+
+  function runSessStage(st, queue) {
+    saveSess(st);
+    if (st.stage === 'review') return sessReview(st, queue);
+    if (st.stage === 'new') return sessNew(st, queue);
+    if (st.stage === 'drill') return sessDrill(st);
+    return sessSummary(st);
+  }
+
+  // 1단계 복습 — 간이 플래시카드(뜻 → 정답 공개 → Again/알았어요). Again 은 덱 맨 뒤로 재투입.
+  function sessReview(st, queue) {
+    const caps = SESS_CAPS[st.size] || SESS_CAPS.M;
+    const cards = queue.filter((c) => (c.reps || 0) > 0).slice(0, caps.review);
+    if (!cards.length) { st.stage = 'new'; return runSessStage(st, queue); }
+    const total = cards.length;
+    let done = 0;
+    prefetch(cards.slice(0, 4).map((c) => c.front || c.term).filter(Boolean));
+    function paint() {
+      const c = cards[0];
+      if (!c) { st.stage = 'new'; return runSessStage(st, queue); }
+      const term = c.front || c.term || '';
+      const definition = splitBack(c.back).def || c.definition || '';
+      root.innerHTML = `
+        ${sessHeaderHtml(st, '복습', Math.min(done + 1, total), total)}
+        <div class="sent-card sess-flash" id="sess-flash">
+          <div class="quiz-def">${escapeHtml(definition)}</div>
+          <div class="sent-reveal" id="sess-rev" hidden>
+            <div class="sent-term">${escapeHtml(term)} <span class="sent-spk">🔊</span></div>
+            ${c.example_sentence ? `<div class="sent-def">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
+          </div>
+        </div>
+        <button class="study-cta-btn" id="sess-reveal">정답 보기</button>
+        <div class="dict-actions" id="sess-grades" hidden>
+          <button class="study-cta-btn secondary" id="sess-again">↺ Again</button>
+          <button class="study-cta-btn" id="sess-good">알았어요 ✓</button>
+        </div>
+        <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
+      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); renderStudy(root); });
+      root.querySelector('#sess-flash').addEventListener('click', () => speak(term));
+      root.querySelector('#sess-reveal').addEventListener('click', (e) => {
+        e.currentTarget.hidden = true;
+        root.querySelector('#sess-rev').hidden = false;
+        root.querySelector('#sess-grades').hidden = false;
+        speak(term);
+      });
+      const grade = (g) => {
+        srsReview(c.id, g).catch(() => {});   // fire-and-forget(오프라인이어도 흐름 유지)
+        if (g === 'again') { st.stats.reviewAgain++; cards.push(cards.shift()); }
+        else { st.stats.reviewDone++; done++; cards.shift(); }
+        saveSess(st);
+        paint();
+      };
+      root.querySelector('#sess-again').addEventListener('click', () => grade('again'));
+      root.querySelector('#sess-good').addEventListener('click', () => grade('good'));
+    }
+    paint();
+  }
+
+  // 2단계 새 표현 — 오디오 퍼스트 소개 카드. 이미 알아요=markKnown / 학습 시작=SM-2 진입(내일 due).
+  function sessNew(st, queue) {
+    const caps = SESS_CAPS[st.size] || SESS_CAPS.M;
+    const cards = queue.filter((c) => (c.reps || 0) === 0).slice(0, caps.fresh);
+    if (!cards.length) { st.stage = 'drill'; return runSessStage(st, queue); }
+    let i = 0;
+    function paint() {
+      const c = cards[i];
+      if (!c) { st.stage = 'drill'; return runSessStage(st, queue); }
+      const term = c.front || c.term || '';
+      const definition = splitBack(c.back).def || c.definition || '';
+      root.innerHTML = `
+        ${sessHeaderHtml(st, '새 표현', i + 1, cards.length)}
+        <div class="sent-card sess-flash" id="sess-flash">
+          <div class="sent-term">${escapeHtml(term)} <span class="sent-spk">🔊</span></div>
+          ${definition ? `<div class="sent-def">${escapeHtml(definition)}</div>` : ''}
+          ${c.example_sentence ? `<div class="sent-def sess-ex">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
+        </div>
+        <div class="dict-actions">
+          <button class="study-cta-btn secondary" id="sess-know">이미 알아요 ✓</button>
+          <button class="study-cta-btn" id="sess-learn">학습 시작 ▸</button>
+        </div>
+        <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
+      requestAnimationFrame(() => playExample(c));   // 뜻을 읽기 전에 실제 음성부터(오디오 퍼스트)
+      root.querySelector('#sess-flash').addEventListener('click', () => playExample(c));
+      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); stopClip(); renderStudy(root); });
+      root.querySelector('#sess-know').addEventListener('click', () => {
+        if (c.vocab_id != null) markKnown(c.vocab_id).catch(() => {});
+        st.stats.newKnown++; applyKnown(1); advance();
+      });
+      root.querySelector('#sess-learn').addEventListener('click', () => {
+        srsReview(c.id, 'good').catch(() => {});
+        st.stats.newDone++; advance();
+      });
+      function advance() { stopClip(); saveSess(st); i++; paint(); }
+    }
+    paint();
+  }
+
+  // 3단계 드릴 — 최약축 모드에 기존 드릴 엔진을 풀만 잘라 넘긴다. 완료는 _sessNext 훅으로 돌아온다.
+  async function sessDrill(st) {
+    const caps = SESS_CAPS[st.size] || SESS_CAPS.M;
+    const mode = st.drillModes[st.drillIdx];
+    if (!mode) return sessSummary(st);
+    root.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    let all = [];
+    try { all = await allExpressions(); } catch (e) { all = []; }
+    const valid = {
+      read: (v) => v.term && v.definition,
+      cloze: (v) => v.example_sentence && v.term && v.example_sentence.toLowerCase().includes(v.term.toLowerCase()),
+      dictation: (v) => v.example_sentence && v.example_sentence.trim(),
+      prod: (v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3,
+    }[mode] || (() => true);
+    let pool = all.filter((v) => !v.known && valid(v));   // 미마스터 우선(startWeakQuiz 와 동일)
+    if (pool.length < 4) pool = all.filter(valid);
+    if (pool.length < (mode === 'read' || mode === 'cloze' ? 4 : 1)) return sessSummary(st);  // 풀 부족/오프라인
+    const sliced = _shuffle(pool).slice(0, caps[mode] || 5);
+    _sessNext = (res) => {
+      _sessNext = null;
+      st.stats.drills.push(res);
+      st.drillIdx++;
+      saveSess(st);
+      if (st.drillIdx < st.drillModes.length) sessDrill(st);
+      else sessSummary(st);
+    };
+    if (mode === 'read') startQuiz('read', sliced);
+    else if (mode === 'cloze') startCloze(sliced);
+    else if (mode === 'prod') startProduction(sliced);
+    else startDictation(sliced);
+  }
+
+  // 요약 — 여기서만 스트릭이 오른다(세션 완료 = 학습한 날). '한 세션 더'는 새 풀로 재시작.
+  function sessSummary(st) {
+    _sessNext = null;
+    stopClip();
+    st.stage = 'done';
+    st.completedAt = Date.now();
+    saveSess(st);
+    markStudyDay();
+    const drills = st.stats.drills.map((d) => {
+      const lbl = DRILL_LABEL[d.mode] || d.mode;
+      return d.total ? `${lbl} · ${d.correct}/${d.total}` : lbl;
+    });
+    root.innerHTML = `
+      <div class="quiz-summary">
+        <div class="quiz-sum-msg">오늘 세션 완료! ✅</div>
+        <div class="quiz-sum-score">🔥 ${getStreak()}</div>
+        <div class="quiz-sum-pct">일 연속 학습</div>
+        <div class="sess-sum-lines">
+          <div>복습 ${st.stats.reviewDone}장${st.stats.reviewAgain ? ` (↺ ${st.stats.reviewAgain})` : ''}</div>
+          <div>새 표현 ${st.stats.newDone + st.stats.newKnown}개${st.stats.newKnown ? ` (이미 앎 ${st.stats.newKnown})` : ''}</div>
+          ${drills.map((d) => `<div>${d}</div>`).join('')}
+        </div>
+        <div class="quiz-sum-actions">
+          <button class="study-cta-btn" id="sess-home">홈으로</button>
+          <button class="study-cta-btn secondary" id="sess-more">한 세션 더</button>
+        </div>
+      </div>`;
+    root.querySelector('#sess-home').addEventListener('click', () => renderStudy(root));
+    root.querySelector('#sess-more').addEventListener('click', () => {
+      try { localStorage.removeItem(SESS_KEY); } catch (e) { /* quota */ }
+      startSession();
     });
   }
 
@@ -601,6 +840,7 @@ export async function renderStudy(root) {
       recordQuiz(score, qs.length);
       const med = lats.length ? [...lats].sort((a, b) => a - b)[lats.length >> 1] : 0;
       recordMeasure(mode, score / qs.length, qs.length, { ms: med, unseen });
+      if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode, correct: score, total: qs.length }); }
       const pct = Math.round((score / qs.length) * 100);
       const msg = pct >= 80 ? 'Excellent! 🎉' : pct >= 50 ? 'Well done! 💪' : 'Try again! 🔥';
       root.innerHTML = `
@@ -633,20 +873,6 @@ export async function renderStudy(root) {
       return;
     }
     startQuiz('read', pool);   // 4지선다 회상 — startQuiz 가 셔플·슬라이스
-  }
-
-  // ── 약점 산출(KR→EN) — 전 kind 통합·미마스터 우선. 오늘의 플랜이 production 약점일 때 진입. ──
-  async function startWeakProduction() {
-    stopClip();
-    const listEl = root.querySelector('#study-list');
-    if (listEl) listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
-    let all = [];
-    try { all = await allExpressions(); } catch (e) { all = []; }
-    const ok = (v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3;
-    const weak = all.filter((v) => !v.known && ok(v));
-    const pool = weak.length >= 3 ? weak : all.filter(ok);
-    if (!pool.length) { if (listEl) listEl.innerHTML = '<div class="empty">No examples to practice yet.</div>'; return; }
-    startProduction(pool);
   }
 
   // ── 문장 학습 덱 (예문을 듣고/읽고 → 뜻·표현 공개, 문장 단위 이해) ──
@@ -841,6 +1067,7 @@ export async function renderStudy(root) {
     function finishD() {
       recordQuiz(correct, cards.length);
       recordMeasure('dictation', correct / cards.length, cards.length, { unseen });
+      if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'dictation', correct, total: cards.length }); }
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Great ears! 👂' : pct >= 50 ? 'Getting there! 💪' : 'Keep at it! 🔁';
       root.innerHTML = `
@@ -1102,6 +1329,7 @@ export async function renderStudy(root) {
     function finishPr() {
       const avg = scored ? Math.round(scoreSum / scored) : 0;
       if (scored) recordMeasure('prod', avg / 100, scored);   // 산출(KR→EN) 축
+      if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'prod', correct: scored ? avg : 0, total: scored ? 100 : 0 }); }
       const msg = !scored ? 'Practice done! 🗣️' : avg >= 80 ? 'Native-like! 🌟' : avg >= 55 ? 'Good — more natural! 💪' : 'Translate slowly 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
@@ -1266,6 +1494,7 @@ export async function renderStudy(root) {
     function finishC() {
       recordQuiz(correct, cards.length);
       recordMeasure('cloze', correct / cards.length, cards.length, { unseen });
+      if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'cloze', correct, total: cards.length }); }
       const pct = Math.round((correct / cards.length) * 100);
       const msg = pct >= 80 ? 'Got it down! 🧩' : pct >= 50 ? 'Nice! 💪' : 'Keep practicing 🔁';
       root.innerHTML = `

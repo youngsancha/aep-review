@@ -81,15 +81,23 @@ export async function episodeNav(id){ return { prevId:null, nextId:null }; }
 export async function retentionStats() { return { learned:12, strong:4, mature:8, retentionFrac:0.33 }; }
 export async function allExpressions() { return expressionsByKind('idiom'); }
 export async function srsQueue() {
-  return [{ id:1, vocab_id:1, term:'fill in the gap', kind:'idiom',
-    definition:'to provide a missing piece of information (빈칸을 채우다)',
-    episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
-    example_sentence:'fill in the gap', example_ko:'빈칸을 채우다', sentence_start_sec:100, sentence_end_sec:105,
-    ease:2.5, interval_days:0, reps:0, due_date:'2026-01-01', vkind:'idiom' }];
+  // 실제 flattenCard 형태(front/back = srs_cards 컬럼) — 세션 1단계(복습 reps>0) + 2단계(신규 reps=0) 겸용
+  return [
+    { id:2, vocab_id:2, front:'put up with', back:'to tolerate (참고 견디다)\n\n— I had to put up with all day long.',
+      episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
+      example_sentence:'I had to put up with all day long.', sentence_start_sec:100, sentence_end_sec:105,
+      ease:2.5, interval_days:6, reps:2, due_date:'2026-01-01', vkind:'idiom' },
+    { id:1, vocab_id:1, front:'fill in the gap', back:'to provide a missing piece of information (빈칸을 채우다)',
+      term:'fill in the gap', kind:'idiom',
+      definition:'to provide a missing piece of information (빈칸을 채우다)',
+      episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
+      example_sentence:'fill in the gap', example_ko:'빈칸을 채우다', sentence_start_sec:100, sentence_end_sec:105,
+      ease:2.5, interval_days:0, reps:0, due_date:'2026-01-01', vkind:'idiom' },
+  ];
 }
 export async function srsReview(cardId, grade) { (window.__reviews=window.__reviews||[]).push([cardId,grade]); return {}; }
 export async function studyOverview() {
-  return { total:1905, learned:12, due:50, known:240, byKind:[
+  return { total:1905, learned:12, due:50, dueReview:40, dueNew:10, known:240, byKind:[
     {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };
 }
 export async function expressionsByKind(kind) {
@@ -466,6 +474,32 @@ def main() -> int:
                 pg.click("#study-quiz-read")
                 time.sleep(0.3)
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
+            # 오늘 세션(v1.32.0): 시작 → 복습 채점 → 새 표현 학습시작 → 드릴(콜드스타트=받아쓰기) 진입
+            #                     → 드릴 중도이탈 시 상태 저장(stage=drill, 홈 카드가 '이어서 하기')
+            sess_ok = None
+            if pg.query_selector("#q-exit"):   # 직전 quiz_opts 블록이 read 퀴즈에 진입한 상태 → 홈 복귀
+                pg.click("#q-exit"); time.sleep(0.5)
+            if pg.query_selector("#sess-go"):
+                pg.evaluate("localStorage.removeItem('aep-session'); localStorage.removeItem('aep-study-days'); localStorage.removeItem('aep-measure-log')")
+                sizes = pg.eval_on_selector_all(".sess-size button", "els=>els.length")
+                pg.click("#sess-go"); time.sleep(0.5)
+                has_rev = bool(pg.query_selector("#sess-reveal"))
+                if has_rev:
+                    pg.click("#sess-reveal"); time.sleep(0.1)
+                    pg.click("#sess-good"); time.sleep(0.3)
+                graded = pg.evaluate("(window.__reviews||[]).length") >= 1
+                has_new = bool(pg.query_selector("#sess-learn"))
+                if has_new:
+                    pg.click("#sess-learn"); time.sleep(0.5)
+                in_drill = bool(pg.query_selector("#d-in"))   # 미측정 콜드스타트 → 받아쓰기 결정적
+                streak_before_done = pg.evaluate("JSON.parse(localStorage.getItem('aep-study-days')||'[]').length") == 0
+                if pg.query_selector("#d-exit"):
+                    pg.click("#d-exit"); time.sleep(0.5)
+                st = pg.evaluate("JSON.parse(localStorage.getItem('aep-session')||'null')")
+                resume_saved = bool(st and st.get('stage') == 'drill' and not st.get('completedAt'))
+                resume_label = pg.eval_on_selector("#sess-go", "el=>el.textContent") if pg.query_selector("#sess-go") else ''
+                sess_ok = bool(sizes == 3 and has_rev and graded and has_new and in_drill
+                               and streak_before_done and resume_saved and ('이어서' in (resume_label or '')))
             study_err = pg.evaluate("window.__err||[]")
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
                   " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
@@ -474,7 +508,7 @@ def main() -> int:
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
                   " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
-                  " ess=", ess_ok, " ess_prod=", ess_prod, " err=", study_err)
+                  " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and today_ok is True and know_marked is True
@@ -483,7 +517,8 @@ def main() -> int:
                         and sent_ko_ok is True and sent_game_ok is True and ess_ok is True
                         and qb_ico == 8 and qb_txt == 8 and qb_uniform is True
                         and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
-                        and study_tr >= 4)
+                        and study_tr >= 4
+                        and sess_ok is True)
 
             # === Timeline(Library) 회귀 ===
             pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건

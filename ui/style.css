@@ -2311,3 +2311,23 @@ a { color: var(--tint); }
 .study-today .cont-actions { flex-wrap: wrap; }
 .study-stats { margin-top: 18px; }
 .study-statpills { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 2px 16px; }
+
+
+/* ── 오늘 세션 (v1.32.0) — 크기 노브·단계 세그먼트·플래시카드·요약 ── */
+.sess-size { display: flex; gap: 6px; margin-top: 10px; }
+.sess-size button {
+  flex: 1; padding: 7px 0; border-radius: 10px; border: 1px solid var(--border, #8884);
+  background: transparent; color: var(--text-2); font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.sess-size button.on { background: var(--tint-soft); color: var(--tint); border-color: transparent; }
+.sess-bar .sess-segs { display: flex; gap: 5px; }
+.sess-bar .sess-segs i {
+  font-style: normal; font-size: 10.5px; font-weight: 700; color: var(--text-3);
+  padding: 3px 8px; border-radius: 999px; background: var(--surface-2);
+}
+.sess-bar .sess-segs i.on { color: var(--tint); background: var(--tint-soft); }
+.sess-bar .sess-segs i.done { opacity: 0.5; }
+.sess-flash { cursor: pointer; }
+.sess-flash .quiz-def { font-size: 17px; line-height: 1.55; }
+.sess-flash .sess-ex { margin-top: 10px; font-style: italic; }
+.sess-sum-lines { margin: 18px auto 0; font-size: 14px; color: var(--text-2); line-height: 1.9; }
