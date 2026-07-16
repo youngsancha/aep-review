@@ -929,11 +929,13 @@ export async function renderEpisode(root, idStr, tStr) {
   // 탭마다 순환, 선택은 localStorage 로 유지. 쉐도잉(문단 반복)은 끝에 도달하기 전에 처리되므로
   // 여기 오는 'ended' 는 항상 자연 종료다.
   const END_KEY = 'aep-endmode';
-  // 라벨은 이모지 단독 — 영문 텍스트·안내 토스트 없음(사용자 요청 2026-07-15). ⏭️ 다음 / 🔁 반복 / 1️⃣ 한 번만.
+  // 라벨 = 텍스트색(currentColor) 글리프 단독 — 컬러 이모지의 사각 박스 없이 1× 칩과 같은
+  // 회색 칩/흰 아이콘 조합, 글리프가 칩 안을 크게 채운다(사용자 요청 2026-07-15).
+  // 다음 회차(스킵) / 반복(루프 화살표) / 1(한 번만). 영문 텍스트·안내 토스트 없음.
   const END_MODES = [
-    { mode: 'next',   label: '⏭️' },
-    { mode: 'repeat', label: '🔁' },
-    { mode: 'once',   label: '1️⃣' },
+    { mode: 'next',   label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>' },
+    { mode: 'repeat', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' },
+    { mode: 'once',   label: '<span class="np-end-one">1</span>' },
   ];
   let endIdx = (() => {
     let s = null; try { s = localStorage.getItem(END_KEY); } catch (e) {}
@@ -943,7 +945,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $endMode = document.getElementById('np-endmode');
   function applyEndMode() {
     const m = END_MODES[endIdx];
-    if ($endMode) { $endMode.textContent = m.label; $endMode.classList.toggle('on', m.mode !== 'next'); }
+    if ($endMode) $endMode.innerHTML = m.label;   // 강조색 없음 — 항상 1× 칩과 동일한 회색 유지
     try { localStorage.setItem(END_KEY, m.mode); } catch (e) {}
   }
   applyEndMode();

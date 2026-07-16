@@ -671,9 +671,9 @@ body.on-episode {
   letter-spacing: -0.01em;
 }
 .np-extras .speed:hover { background: var(--tint-soft); color: var(--tint-hover); }
-/* 종료 동작 칩(np-endmode): 기본값(다음 회차)이 아닐 때만 강조 — 실루엣은 1× 속도 칩과 동일 고정 */
-.np-extras .speed.on { background: var(--tint-soft); color: var(--tint); }
-.np-end-btn { font-size: 15px; }   /* 이모지 단독 라벨(⏭️/🔁/1️⃣) 가독성 — 높이는 고정이라 커지지 않음 */
+/* 종료 동작 칩(np-endmode): 항상 1× 속도 칩과 동일한 회색 칩 + 텍스트색 글리프(회색/흰 조합) */
+.np-end-btn svg { display: block; }
+.np-end-btn .np-end-one { font-size: 16px; font-weight: 800; line-height: 1; }
 .np-tx-btn {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   color: #fff;
