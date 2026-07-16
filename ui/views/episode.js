@@ -78,7 +78,7 @@ export async function renderEpisode(root, idStr, tStr) {
         </div>
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
-          <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends" title="재생이 끝나면: 다음 회차 / 반복 / 정지"></button>
+          <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends"></button>
           ${sentences.length ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
@@ -929,10 +929,11 @@ export async function renderEpisode(root, idStr, tStr) {
   // 탭마다 순환, 선택은 localStorage 로 유지. 쉐도잉(문단 반복)은 끝에 도달하기 전에 처리되므로
   // 여기 오는 'ended' 는 항상 자연 종료다.
   const END_KEY = 'aep-endmode';
+  // 라벨은 이모지 단독 — 영문 텍스트·안내 토스트 없음(사용자 요청 2026-07-15). ⏭️ 다음 / 🔁 반복 / 1️⃣ 한 번만.
   const END_MODES = [
-    { mode: 'next',   label: '⏭ Next',   msg: '끝나면 다음 회차를 이어서 재생해요' },
-    { mode: 'repeat', label: '↻ Repeat', msg: '끝나면 이 회차를 처음부터 다시 재생해요' },
-    { mode: 'once',   label: '⏹ Once',   msg: '이 회차만 재생하고 멈춰요' },
+    { mode: 'next',   label: '⏭️' },
+    { mode: 'repeat', label: '🔁' },
+    { mode: 'once',   label: '1️⃣' },
   ];
   let endIdx = (() => {
     let s = null; try { s = localStorage.getItem(END_KEY); } catch (e) {}
@@ -940,14 +941,13 @@ export async function renderEpisode(root, idStr, tStr) {
     return i >= 0 ? i : 0;                        // 기본 = 다음 회차 재생
   })();
   const $endMode = document.getElementById('np-endmode');
-  function applyEndMode(announce) {
+  function applyEndMode() {
     const m = END_MODES[endIdx];
     if ($endMode) { $endMode.textContent = m.label; $endMode.classList.toggle('on', m.mode !== 'next'); }
     try { localStorage.setItem(END_KEY, m.mode); } catch (e) {}
-    if (announce) toast(m.msg);
   }
-  applyEndMode(false);
-  $endMode?.addEventListener('click', () => { endIdx = (endIdx + 1) % END_MODES.length; applyEndMode(true); });
+  applyEndMode();
+  $endMode?.addEventListener('click', () => { endIdx = (endIdx + 1) % END_MODES.length; applyEndMode(); });
   // 자연 종료 시 선택대로 처리. Transcript 시트를 연 채 끝났다면 다음 회차도 시트를 연 채 이어간다(⏭ 과 동일).
   const offEnded = player.on((ev) => {
     if (ev !== 'ended') return;

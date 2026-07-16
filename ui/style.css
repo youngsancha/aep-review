@@ -662,15 +662,18 @@ body.on-episode {
   background: var(--surface-2); border: 0;
   color: var(--text);
   font-size: 12px; font-weight: 700;
-  cursor: pointer; padding: 7px 14px;
+  cursor: pointer; padding: 0 14px;
   border-radius: 999px;
-  /* 가장 넓은 라벨(1.25×)에 맞춰 고정폭 → 속도 바뀌어도 버튼 크기 안 변함 */
-  min-width: 66px; text-align: center; font-variant-numeric: tabular-nums;
+  /* 가장 넓은 라벨(1.25×)에 맞춘 고정폭 + 고정높이 → 라벨이 바뀌어도(속도·종료모드) 칩 크기 불변 */
+  min-width: 66px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  text-align: center; font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 .np-extras .speed:hover { background: var(--tint-soft); color: var(--tint-hover); }
-/* 종료 동작 칩(np-endmode): 기본값(다음 회차)이 아닐 때만 강조 — 속도 칩과 동일한 실루엣 */
+/* 종료 동작 칩(np-endmode): 기본값(다음 회차)이 아닐 때만 강조 — 실루엣은 1× 속도 칩과 동일 고정 */
 .np-extras .speed.on { background: var(--tint-soft); color: var(--tint); }
+.np-end-btn { font-size: 15px; }   /* 이모지 단독 라벨(⏭️/🔁/1️⃣) 가독성 — 높이는 고정이라 커지지 않음 */
 .np-tx-btn {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   color: #fff;
