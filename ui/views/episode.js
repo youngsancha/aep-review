@@ -931,11 +931,12 @@ export async function renderEpisode(root, idStr, tStr) {
   const END_KEY = 'aep-endmode';
   // 라벨 = 텍스트색(currentColor) 글리프 단독 — 컬러 이모지의 사각 박스 없이 1× 칩과 같은
   // 회색 칩/흰 아이콘 조합, 글리프가 칩 안을 크게 채운다(사용자 요청 2026-07-15).
-  // 다음 회차(스킵) / 반복(루프 화살표) / 1(한 번만). 영문 텍스트·안내 토스트 없음.
+  // 다음 회차(스킵) / 반복(루프 화살표) / 한 번만(루프 화살표+중앙 1 — cnpod-review 와 동일 글리프).
+  // 영문 텍스트·안내 토스트 없음.
   const END_MODES = [
     { mode: 'next',   label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>' },
     { mode: 'repeat', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' },
-    { mode: 'once',   label: '<span class="np-end-one">1</span>' },
+    { mode: 'once',   label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15.5" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor" stroke="none">1</text></svg>' },
   ];
   let endIdx = (() => {
     let s = null; try { s = localStorage.getItem(END_KEY); } catch (e) {}
@@ -950,6 +951,12 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   applyEndMode();
   $endMode?.addEventListener('click', () => { endIdx = (endIdx + 1) % END_MODES.length; applyEndMode(); });
+  // 탭 하이라이트: 속도 칩은 탭 후에도 하이라이트(모바일 끈적 hover)가 남지만, 이 칩은 탭마다
+  // 글리프를 innerHTML 로 갈아끼우며 즉시 회색으로 꺼졌다(사용자 보고 2026-07-15). 속도 칩과
+  // 같은 느낌을 결정적으로 재현 — 누르면 켜고, 칩 '밖'을 터치할 때 끈다.
+  $endMode?.addEventListener('pointerdown', () => $endMode.classList.add('pressed'));
+  const onEndModeOutside = (e) => { if ($endMode && !$endMode.contains(e.target)) $endMode.classList.remove('pressed'); };
+  document.addEventListener('pointerdown', onEndModeOutside, true);
   // 자연 종료 시 선택대로 처리. Transcript 시트를 연 채 끝났다면 다음 회차도 시트를 연 채 이어간다(⏭ 과 동일).
   const offEnded = player.on((ev) => {
     if (ev !== 'ended') return;
@@ -1064,6 +1071,7 @@ export async function renderEpisode(root, idStr, tStr) {
     offEnded();
     clearTimeout(wakeIdleTimer);
     document.removeEventListener('pointerdown', onAnyPointer, { capture: true });
+    document.removeEventListener('pointerdown', onEndModeOutside, true);
     releaseWake();
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);

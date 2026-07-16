@@ -670,10 +670,10 @@ body.on-episode {
   text-align: center; font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
-.np-extras .speed:hover { background: var(--tint-soft); color: var(--tint-hover); }
+/* .pressed = 종료모드 칩의 탭 하이라이트 유지(속도 칩의 모바일 끈적 hover 와 동일한 느낌) */
+.np-extras .speed:hover, .np-extras .speed.pressed { background: var(--tint-soft); color: var(--tint-hover); }
 /* 종료 동작 칩(np-endmode): 항상 1× 속도 칩과 동일한 회색 칩 + 텍스트색 글리프(회색/흰 조합) */
 .np-end-btn svg { display: block; }
-.np-end-btn .np-end-one { font-size: 16px; font-weight: 800; line-height: 1; }
 .np-tx-btn {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   color: #fff;
