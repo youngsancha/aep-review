@@ -329,6 +329,10 @@ def main() -> int:
             pg.goto("http://localhost:8123/_harness_study.html")
             pg.wait_for_function("window.__ready===true", timeout=10000)
             time.sleep(0.3)
+            # v1.31.0 IA: Practice/My stats 가 <details> 접힘 → 모드 클릭 전 열어준다(재렌더마다 다시 접힘)
+            def open_disclosures():
+                pg.evaluate("document.querySelectorAll('details.study-practice,details.study-stats').forEach(d=>d.open=true)")
+            open_disclosures()
             study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
             # 각 표현에 Shana 예문(+term 강조)이 함께 표시되는지 (학습 맥락)
             study_ex = pg.eval_on_selector_all(".study-x-ex", "els=>els.length")
@@ -379,7 +383,9 @@ def main() -> int:
                 time.sleep(0.1)
                 ctx_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
-            ring_pct = pg.eval_on_selector("#study-ring-pct", "el=>el.textContent") if pg.query_selector("#study-ring-pct") else None
+            # v1.31.0: 링 카드 → 헤더 서브라인 + Today 카드(.cont-bar + ▶ Start)가 유일한 진행 신호
+            today_ok = bool(pg.query_selector(".study-today .cont-play") and pg.query_selector("#study-known-bar")
+                            and pg.query_selector("#study-pct"))
             # KR 번역 버튼 존재(#36) + 오른쪽 스와이프 → Known(#39): 버튼 대신 제스처로 마킹
             study_tr = pg.eval_on_selector_all(".study-x-tr", "els=>els.length")
             known_before = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
@@ -397,6 +403,7 @@ def main() -> int:
             # 받아쓰기(#13): 모드 진입 시 입력칸/채점 버튼이 뜨는지
             dict_ok = None
             if pg.query_selector("#study-quiz-dict"):
+                open_disclosures()
                 pg.click("#study-quiz-dict")
                 time.sleep(0.3)
                 dict_ok = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check") and pg.query_selector("#d-spk"))
@@ -405,6 +412,7 @@ def main() -> int:
             # 빈칸 채우기(#16): 모드 진입 시 빈칸/입력/확인이 뜨는지
             cloze_ok = None
             if pg.query_selector("#study-quiz-cloze"):
+                open_disclosures()
                 pg.click("#study-quiz-cloze")
                 time.sleep(0.3)
                 cloze_ok = bool(pg.query_selector(".cloze-blank") and pg.query_selector("#cz-in") and pg.query_selector("#cz-check"))
@@ -413,6 +421,7 @@ def main() -> int:
             # 스피킹(#13): 모드 진입 시 타깃문장/마이크 버튼이 뜨는지 (마이크는 누르지 않음)
             speak_ok = None
             if pg.query_selector("#study-quiz-speak"):
+                open_disclosures()
                 pg.click("#study-quiz-speak")
                 time.sleep(0.3)
                 speak_ok = bool(pg.query_selector(".speak-card") and pg.query_selector("#sp-mic")
@@ -424,6 +433,7 @@ def main() -> int:
             sent_ko_ok = None
             sent_game_ok = None
             if pg.query_selector("#study-quiz-sent"):
+                open_disclosures()
                 pg.click("#study-quiz-sent")
                 time.sleep(0.3)
                 has_card = bool(pg.query_selector("#sent-card.sent-swipe")
@@ -443,6 +453,7 @@ def main() -> int:
                 pg.click("#sent-exit") if pg.query_selector("#sent-exit") else None
                 time.sleep(0.2)
             # 드릴 버튼 줄 균일성: 8개 모두 qb-ico+qb-txt, 높이 동일(들쭉날쭉 2줄/1줄 혼재 없음)
+            open_disclosures()
             qb_ico = pg.eval_on_selector_all(".study-quiz-row .qb-ico", "els=>els.length")
             qb_txt = pg.eval_on_selector_all(".study-quiz-row .qb-txt", "els=>els.length")
             qb_uniform = pg.eval_on_selector_all(
@@ -451,6 +462,7 @@ def main() -> int:
             study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
             quiz_opts = 0
             if pg.query_selector("#study-quiz-read"):
+                open_disclosures()
                 pg.click("#study-quiz-read")
                 time.sleep(0.3)
                 quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
@@ -458,14 +470,14 @@ def main() -> int:
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
                   " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
                   " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
-                  " ring=", ring_pct, " known", known_before, "->", known_after, " marked=", know_marked, " tr_btns=", study_tr,
+                  " today=", today_ok, " known", known_before, "->", known_after, " marked=", know_marked, " tr_btns=", study_tr,
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
                   " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
                   " ess=", ess_ok, " ess_prod=", ess_prod, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
-                        and ring_pct is not None and know_marked is True
+                        and today_ok is True and know_marked is True
                         and known_before != known_after and dict_ok is True
                         and cloze_ok is True and speak_ok is True
                         and sent_ko_ok is True and sent_game_ok is True and ess_ok is True

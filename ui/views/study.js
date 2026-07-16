@@ -96,7 +96,7 @@ export async function renderStudy(root) {
   stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
   markStudyDay();  // 오늘 학습 기록(스트릭)
   root.innerHTML = `
-    <div class="study-greet"><h2>Study</h2></div>
+    <div class="library-head"><h1 class="library-title">Study</h1></div>
     <div class="skel-hero" style="height:84px"></div>
     <div class="study-kinds">${'<span class="skel-chip"></span>'.repeat(4)}</div>
     ${'<div class="skel-x"></div>'.repeat(5)}`;
@@ -121,7 +121,7 @@ export async function renderStudy(root) {
         <button class="btn primary" id="study-ess-cta">✨ Essentials 열기</button>
         <button class="btn" id="study-retry">다시 시도</button>
       </div>`;
-      document.getElementById('study-ess-cta')?.addEventListener('click', () => renderEssentials(root));
+      document.getElementById('study-ess-cta')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
       document.getElementById('study-retry')?.addEventListener('click', () => renderStudy(root));
       return;
     }
@@ -137,9 +137,6 @@ export async function renderStudy(root) {
   let items = [];
   let q = '';
   let knownCount = ov.known || 0;          // "알아요" 누적 (낙관적 갱신)
-  const RING_C = 2 * Math.PI * 34;          // 진도 링 둘레 (r=34)
-
-  function ringDash(pct) { return `${((pct / 100) * RING_C).toFixed(1)} ${RING_C.toFixed(1)}`; }
 
   // Proficiency 패널 — Fluency Index(목표 밴드 대비 0~100) + 5축 막대 + CEFR ≈밴드 + 정직성 주석.
   // 미측정 축(드릴 기록 없음)은 '—'·회색으로 표시해 "아직 모름"을 솔직히 드러낸다.
@@ -156,11 +153,6 @@ export async function renderStudy(root) {
           <span class="prof-axis-v">${has ? v : '—'}</span>
         </div>`;
     }).join('');
-    const weakKey = weakestAxis(prof.scores);
-    const weakLabel = weakKey ? (PROF_AXES.find((a) => a[0] === weakKey) || [])[1] : null;
-    const weakHtml = weakLabel
-      ? `<div class="prof-weak">⚡ 가장 약한 축 <b>${weakLabel} ${prof.scores[weakKey]}</b> — 오늘 여기 집중하면 점수가 가장 빨리 오릅니다</div>`
-      : '';
     return `
       <div class="prof-card">
         <div class="prof-head">
@@ -169,8 +161,6 @@ export async function renderStudy(root) {
         </div>
         <div class="prof-axes">${axes}</div>
         ${profSpark()}
-        ${weakHtml}
-        <button class="prof-levelcheck" id="prof-levelcheck"><span>🎯 레벨 체크</span><i>처음 보는 문장 받아쓰기 — 외운 게 아닌 실제 청해를 비편향 측정</i></button>
         <button class="prof-help" id="prof-info">ⓘ 점수 올리는 법 — 무엇을 공부하면 오르나</button>
         <div class="prof-note">이 앱이 보여준 표현·드릴 기록 기준 · unseen(레벨체크) 우선 · ASR은 ‘알아들힘’(발음 정확도 아님)</div>
       </div>`;
@@ -233,59 +223,54 @@ export async function renderStudy(root) {
     production:   { emoji: '🗣️', label: 'KR→EN 말하기', sub: '뜻 보고 영어로 산출', act: 'prod' },
     automaticity: { emoji: '⚡', label: '스피드 퀴즈', sub: '빠른 인식으로 자동화', act: 'weak' },
   };
-  function planCardHtml() {
+  // ── Study 홈 = Library 리듬 (v1.31.0) ──
+  // 헤더 한 줄(유일한 숫자 요약) → Today 카드(유일한 주 CTA) → Practice(접힘) → Essentials 행
+  // → Expressions(본문 리스트) → 맨 아래 My stats(접힘). 예전엔 콘텐츠 앞에 8개 블록·진행지표
+  // 17개·탭 가능 컨트롤 21개가 쌓여 '지금 무엇을 할지'가 없었다(UX 감사 2026-07-16).
+  function heroHtml() {
+    const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
     const weakKey = weakestAxis(prof.scores) || 'retention';
     const a = PLAN_ACTION[weakKey] || PLAN_ACTION.retention;
     const weakLabel = (PROF_AXES.find((x) => x[0] === weakKey) || [])[1] || '';
-    const dueRow = ov.due > 0
-      ? `<a class="plan-due" href="#/srs"><span>🔥 ${ov.due} 복습 대기</span><i>›</i></a>` : '';
+    const streak = getStreak();
     return `
-      <div class="study-plan">
-        <div class="plan-head">🎯 오늘의 플랜 <span>약점 «${weakLabel}» 우선</span></div>
-        <button class="plan-primary" id="plan-go" data-act="${a.act}">
-          <span class="plan-emoji">${a.emoji}</span>
-          <span class="plan-txt"><b>${a.label}</b><span>${a.sub}</span></span>
-          <span class="plan-arrow">›</span>
-        </button>
-        ${dueRow}
-      </div>`;
-  }
-
-  function heroHtml() {
-    const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
-    return `
-      <div class="study-greet">
-        <h2>Study</h2>
-        <div class="study-greet-sub">${ov.total.toLocaleString()} real-life expressions to master</div>
+      <div class="library-head">
+        <h1 class="library-title">Study</h1>
+        <div class="library-sub"><b id="study-known-n">${knownCount.toLocaleString()}</b> known · <span id="study-pct">${pct}</span>% of ${ov.total.toLocaleString()}${streak > 0 ? ` · 🔥 ${streak}-day` : ''}</div>
       </div>
-      <div class="study-progress-card">
-        <svg class="study-ring" viewBox="0 0 80 80" width="96" height="96" aria-hidden="true">
-          <circle class="study-ring-bg" cx="40" cy="40" r="34"></circle>
-          <circle class="study-ring-fg" id="study-ring-fg" cx="40" cy="40" r="34"
-                  stroke-dasharray="${ringDash(pct)}" transform="rotate(-90 40 40)"></circle>
-          <text x="40" y="38" class="study-ring-pct" id="study-ring-pct">${pct}%</text>
-          <text x="40" y="53" class="study-ring-sub">Known</text>
-        </svg>
-        <div class="study-progress-meta">
-          <div class="study-progress-big"><b id="study-known-n">${knownCount.toLocaleString()}</b><span> / ${ov.total.toLocaleString()} mastered</span></div>
-          <div class="study-progress-pills">
-            ${getStreak() > 0 ? `<span class="study-pill streak">🔥 ${getStreak()}-day streak</span>` : ''}
-            <span class="study-pill">📚 Learned ${ov.learned.toLocaleString()}</span>
-            ${(() => { const qs = quizStats(); return qs.total ? `<span class="study-pill">🎯 ${Math.round(qs.correct / qs.total * 100)}% quiz</span>` : ''; })()}
+      <div class="section-h"><h2>Today</h2></div>
+      <div class="cont-card study-today">
+        <div class="cont-body">
+          <div class="cont-title">${a.emoji} ${a.label}</div>
+          <div class="cont-bar"><span id="study-known-bar" style="width:${pct}%"></span></div>
+          <div class="cont-meta">${a.sub}${weakLabel ? ` · 약점 «${weakLabel}»` : ''}${ov.due > 0 ? ` · 복습 ${ov.due} 대기` : ''}</div>
+          <div class="cont-actions">
+            <button class="cont-play" id="plan-go" data-act="${a.act}">▶ Start</button>
+            <a class="cont-script" id="plan-level" role="button" tabindex="0">Level check ›</a>
+            <a class="cont-script" href="#/srs">Review${ov.due > 0 ? ` ${ov.due}` : ''} ›</a>
           </div>
-          <div class="study-ovbar"><span id="study-known-bar" style="width:${pct}%"></span></div>
         </div>
       </div>
-      ${profCardHtml()}
-      <div class="study-week">
-        ${weekActivity().map((d) => `<span class="study-week-d${d.on ? ' on' : ''}${d.today ? ' today' : ''}"><i>${d.label}</i><b></b></span>`).join('')}
-      </div>
-      ${planCardHtml()}
-      <button class="study-ess-cta" id="study-essentials">
+      <details class="season-group study-practice">
+        <summary class="section-h season-head"><h2>Practice</h2><span class="season-right"><span class="count">8 modes</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
+        <div class="study-quiz-row">
+          <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span><span class="qb-sub">뜻 보고 표현 고르기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span><span class="qb-sub">듣고 뜻 고르기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-weak"><span class="qb-ico">⚡</span><span class="qb-txt">Weak</span><span class="qb-sub">미마스터 집중 퀴즈</span></button>
+          <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span><span class="qb-sub">듣고 받아쓰기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span><span class="qb-sub">빈칸에 표현 채우기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span><span class="qb-sub">듣고 따라 말하기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-prod"><span class="qb-ico">🗣️</span><span class="qb-txt">KR→EN</span><span class="qb-sub">한국어 보고 영어로</span></button>
+          <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span><span class="qb-sub">문장 카드 반복</span></button>
+        </div>
+        <div class="study-scope-note">연습 대상: 아래 Expressions 에서 선택한 종류</div>
+      </details>
+      <button class="study-ess-row" id="study-essentials">
         <span class="study-ess-ico">✨</span>
-        <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현 — 빠르게 네이티브로</span></span>
+        <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현</span></span>
         <span class="study-ess-go">›</span>
       </button>
+      <div class="section-h"><h2>Expressions</h2><span class="count">${ov.total.toLocaleString()}</span></div>
       <div class="study-kinds">
         ${kinds.map((k) => `
           <button class="study-kind-chip${k.kind === selected ? ' on' : ''}" data-kind="${k.kind}">
@@ -294,27 +279,35 @@ export async function renderStudy(root) {
             <span class="study-kind-n">${k.total}</span>
           </button>`).join('')}
       </div>
-      <div class="study-quiz-row">
-        <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span></button>
-        <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span></button>
-        <button class="study-quiz-btn" id="study-quiz-weak"><span class="qb-ico">⚡</span><span class="qb-txt">Weak</span></button>
-        <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span></button>
-        <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span></button>
-        <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span></button>
-        <button class="study-quiz-btn" id="study-quiz-prod"><span class="qb-ico">🗣️</span><span class="qb-txt">KR→EN</span></button>
-        <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span></button>
-      </div>
     `;
   }
 
-  // "알아요" 누적을 헤더 링/막대/숫자에 즉시 반영
+  // 맨 아래 'My stats'(접힘) — 실력 대시보드 전체(지수·CEFR·5축·스파크라인·주간 띠·보조 필)를
+  // 리스트 뒤로 강등. 데이터를 버리지 않고 '원할 때만' 펼쳐 보게 한다.
+  function statsHtml() {
+    const qs = quizStats();
+    return `
+      <details class="season-group study-stats">
+        <summary class="section-h season-head"><h2>My stats</h2><span class="season-right"><span class="count">Fluency ${prof.index}</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
+        ${profCardHtml()}
+        <div class="study-week">
+          ${weekActivity().map((d) => `<span class="study-week-d${d.on ? ' on' : ''}${d.today ? ' today' : ''}"><i>${d.label}</i><b></b></span>`).join('')}
+        </div>
+        <div class="study-statpills">
+          <span class="study-pill">📚 Learned ${ov.learned.toLocaleString()}</span>
+          ${qs.total ? `<span class="study-pill">🎯 ${Math.round(qs.correct / qs.total * 100)}% quiz</span>` : ''}
+        </div>
+      </details>
+    `;
+  }
+
+  // "알아요" 누적을 헤더 서브라인 + Today 카드 진행바에 즉시 반영
   function applyKnown(delta) {
     knownCount = Math.max(0, Math.min(ov.total, knownCount + delta));
     const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
     const n = root.querySelector('#study-known-n'); if (n) n.textContent = knownCount.toLocaleString();
     const bar = root.querySelector('#study-known-bar'); if (bar) bar.style.width = pct + '%';
-    const ring = root.querySelector('#study-ring-fg'); if (ring) ring.setAttribute('stroke-dasharray', ringDash(pct));
-    const pctEl = root.querySelector('#study-ring-pct'); if (pctEl) pctEl.textContent = pct + '%';
+    const pctEl = root.querySelector('#study-pct'); if (pctEl) pctEl.textContent = pct;
   }
 
   // 정의 끝의 (한글 뜻) 을 다음 줄로 분리 — 영어 정의에 한글이 이어붙지 않게.
@@ -479,7 +472,7 @@ export async function renderStudy(root) {
   }
 
   function paintShell() {
-    root.innerHTML = heroHtml() + '<div id="study-list"></div>';
+    root.innerHTML = heroHtml() + '<div id="study-list"></div>' + statsHtml();
     root.querySelectorAll('.study-kind-chip').forEach((b) =>
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));
@@ -494,7 +487,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-prod')?.addEventListener('click', () => startProduction());
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
-    root.querySelector('#prof-levelcheck')?.addEventListener('click', startLevelCheck);
+    root.querySelector('#plan-level')?.addEventListener('click', startLevelCheck);
     // ⓘ 안내: 약점 축을 강조해 열기. 각 축 행을 탭하면 그 축으로 포커스.
     root.querySelector('#prof-info')?.addEventListener('click', () => openProfInfo(weakestAxis(prof.scores)));
     root.querySelectorAll('.prof-axis[data-axis]').forEach((el) => {
@@ -584,7 +577,6 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="q-exit">← Study Home</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
       requestAnimationFrame(() => speak(c.term));  // 진입/다음 카드 시 발음 자동재생
-      if (mode === 'listen') requestAnimationFrame(() => speak(c.term));
       root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
       tShown = performance.now();   // 표시 시각 기록(다음 클릭까지가 응답 지연)
@@ -1339,7 +1331,7 @@ export async function renderStudy(root) {
   }
 
   if (!selected) {
-    root.innerHTML = heroHtml() + '<div class="empty">No expression data yet.</div>';
+    root.innerHTML = heroHtml() + '<div class="empty">No expression data yet.</div>' + statsHtml();
     return;
   }
   await loadKind(selected);
