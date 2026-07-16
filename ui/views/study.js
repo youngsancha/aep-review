@@ -717,7 +717,9 @@ export async function renderStudy(root) {
     st.stage = 'done';
     st.completedAt = Date.now();
     saveSess(st);
-    markStudyDay();
+    // 스트릭은 실제로 뭔가 학습했을 때만 — 오프라인/빈 큐로 즉시 요약에 도달한 세션은 안 오른다.
+    const worked = st.stats.reviewDone + st.stats.reviewAgain + st.stats.newDone + st.stats.newKnown + st.stats.drills.length > 0;
+    if (worked) markStudyDay();
     const drills = st.stats.drills.map((d) => {
       const lbl = DRILL_LABEL[d.mode] || d.mode;
       return d.total ? `${lbl} · ${d.correct}/${d.total}` : lbl;
@@ -728,6 +730,7 @@ export async function renderStudy(root) {
         <div class="quiz-sum-score">🔥 ${getStreak()}</div>
         <div class="quiz-sum-pct">일 연속 학습</div>
         <div class="sess-sum-lines">
+          ${worked ? '' : '<div>오늘 할 항목이 없거나 오프라인이에요 — 큐가 차면 다시 시작해 보세요</div>'}
           <div>복습 ${st.stats.reviewDone}장${st.stats.reviewAgain ? ` (↺ ${st.stats.reviewAgain})` : ''}</div>
           <div>새 표현 ${st.stats.newDone + st.stats.newKnown}개${st.stats.newKnown ? ` (이미 앎 ${st.stats.newKnown})` : ''}</div>
           ${drills.map((d) => `<div>${d}</div>`).join('')}
