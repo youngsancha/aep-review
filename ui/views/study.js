@@ -403,12 +403,12 @@ export async function renderStudy(root) {
   }
   function xlistHtml() {
     const list = items.filter(matchQ);
-    if (!list.length) return '<div class="empty">No matches.</div>';
+    if (!list.length) return '<div class="empty">검색 결과가 없어요.</div>';
     return `<ul class="study-xlist">${list.map(rowHtml).join('')}</ul>`;
   }
   function listHtml() {
-    if (!items.length) return '<div class="empty">No expressions.</div>';
-    return `<div class="study-swipe-tip"><b>Swipe →</b> to mark <b>Known</b> · <b>←</b> to undo · tap card for audio</div>`
+    if (!items.length) return '<div class="empty">표현이 아직 없어요.</div>';
+    return `<div class="study-swipe-tip"><b>밀기 →</b> <b>알아요</b> · <b>←</b> 되돌리기 · 카드 탭 = 발음</div>`
       + `<input class="study-search" id="study-search" type="search" inputmode="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Search expressions…" value="${escapeHtml(q)}" />`
       + `<div id="study-xlist-host">${xlistHtml()}</div>`;
   }
@@ -622,6 +622,7 @@ export async function renderStudy(root) {
     function paint() {
       const c = cards[0];
       if (!c) { st.stage = 'new'; return runSessStage(st, queue); }
+      if (cards[1]) prefetch([cards[1].front || cards[1].term].filter(Boolean));  // 다음 카드 발음 미리
       const term = c.front || c.term || '';
       const definition = splitBack(c.back).def || c.definition || '';
       root.innerHTML = `
@@ -684,6 +685,7 @@ export async function renderStudy(root) {
         </div>
         <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
       requestAnimationFrame(() => playExample(c));   // 뜻을 읽기 전에 실제 음성부터(오디오 퍼스트)
+      if (cards[i + 1] && cards[i + 1].example_sentence) prefetch([cards[i + 1].example_sentence]);  // 다음 카드 미리
       root.querySelector('#sess-flash').addEventListener('click', () => playExample(c));
       root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); exitToStudyHome(); });
       root.querySelector('#sess-know').addEventListener('click', () => {
@@ -823,7 +825,7 @@ export async function renderStudy(root) {
     const pool = (source || items).filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">Not enough expressions for a quiz (need 4+).</div>';
+      if (el) el.innerHTML = '<div class="empty">퀴즈를 만들 표현이 부족해요 (4개 이상 필요).</div>';
       return;
     }
     const N = Math.min(20, pool.length);
@@ -841,17 +843,17 @@ export async function renderStudy(root) {
       const optLabel = (o) => (mode === 'listen' ? (o.definition || '') : (o.term || ''));
       const promptHtml = mode === 'listen'
         ? `<button class="quiz-bigspk" id="q-spk" aria-label="Replay">🔊</button>
-           <div class="quiz-q">Listen and pick the meaning</div>`
+           <div class="quiz-q">듣고 뜻을 고르세요</div>`
         : `<div class="quiz-def">${escapeHtml(c.definition)}</div>
-           <button class="quiz-spk" id="q-spk" aria-label="Play pronunciation">🔊 Hint</button>
-           <div class="quiz-q">Pick the right expression</div>`;
+           <button class="quiz-spk" id="q-spk" aria-label="Play pronunciation">🔊 힌트</button>
+           <div class="quiz-q">알맞은 표현을 고르세요</div>`;
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${qs.length}</span><span class="quiz-score">${score} pts</span></div>
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${qs.length}</span><span class="quiz-score">${score}점</span></div>
         <div class="quiz-prompt">${promptHtml}</div>
         <div class="quiz-opts">
           ${qs[idx].options.map((o) => `<button class="quiz-opt${mode === 'listen' ? ' quiz-opt-def' : ''}" data-ok="${o.id === c.id ? '1' : '0'}">${escapeHtml(optLabel(o))}</button>`).join('')}
         </div>
-        <button class="quiz-exit" id="q-exit">← Study Home</button>`;
+        <button class="quiz-exit" id="q-exit">← Study 홈</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
       requestAnimationFrame(() => speak(c.term));  // 진입/다음 카드 시 발음 자동재생
       root.querySelector('#q-exit').addEventListener('click', exitToStudyHome);
@@ -880,15 +882,15 @@ export async function renderStudy(root) {
       recordMeasure(mode, score / qs.length, qs.length, { ms: med, unseen });
       if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode, correct: score, total: qs.length }); }
       const pct = Math.round((score / qs.length) * 100);
-      const msg = pct >= 80 ? 'Excellent! 🎉' : pct >= 50 ? 'Well done! 💪' : 'Try again! 🔥';
+      const msg = pct >= 80 ? '훌륭해요! 🎉' : pct >= 50 ? '잘했어요! 💪' : '다시 도전! 🔥';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${score}/${qs.length}</div>
-          <div class="quiz-sum-pct">Accuracy ${pct}%</div>
+          <div class="quiz-sum-pct">정확도 ${pct}%</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="q-again">Retry</button>
-            <button class="study-cta-btn secondary" id="q-home">Study Home</button>
+            <button class="study-cta-btn" id="q-again">다시</button>
+            <button class="study-cta-btn secondary" id="q-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#q-again').addEventListener('click', () => startQuiz(mode, source, unseen));
@@ -922,7 +924,7 @@ export async function renderStudy(root) {
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">No expressions with examples yet.</div>';
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
       return;
     }
     let deck = _shuffle(pool).slice(0, Math.min(20, pool.length));
@@ -933,15 +935,15 @@ export async function renderStudy(root) {
 
     function finishS() {
       stopClip();
-      const msg = againCnt === 0 ? 'Flawless deck! 🌟' : 'Deck cleared! 🃏';
+      const msg = againCnt === 0 ? '완벽했어요! 🌟' : '덱 완료! 🃏';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${total}</div>
-          <div class="quiz-sum-pct">mastered${againCnt ? ` · ${againCnt} repeats` : ''}</div>
+          <div class="quiz-sum-pct">마스터${againCnt ? ` · ${againCnt}회 반복` : ''}</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="s-again">Play again</button>
-            <button class="study-cta-btn secondary" id="s-home">Study Home</button>
+            <button class="study-cta-btn" id="s-again">다시 하기</button>
+            <button class="study-cta-btn secondary" id="s-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#s-again').addEventListener('click', startSentences);
@@ -968,7 +970,7 @@ export async function renderStudy(root) {
       if (!deck.length) return finishS();
       const c = deck[0];
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${mastered} / ${total} mastered</span><span class="quiz-score">💬 Sentences</span></div>
+        <div class="quiz-bar"><span class="quiz-count">${mastered} / ${total} 완료</span><span class="quiz-score">💬 Sentences</span></div>
         <div class="sent-card sent-swipe" id="sent-card" data-id="${c.id}">
           <div class="sent-swipe-badge" id="sent-badge"></div>
           <div class="sent-en">${escapeHtml(c.example_sentence)} <span class="sent-spk">🔊</span></div>
@@ -976,16 +978,16 @@ export async function renderStudy(root) {
             ${c.example_ko ? `<div class="sent-ko">${escapeHtml(c.example_ko)}</div>` : ''}
             <div class="sent-term">${escapeHtml(c.term)}</div>
             <div class="sent-def">${escapeHtml(c.definition || '')}</div>
-            ${(c.sentence_start_sec != null && c.audio_url) ? `<button class="srs-context-btn" id="sent-ctx" data-url="${escapeHtml(c.audio_url)}" data-s="${c.sentence_start_sec}" data-e="${c.sentence_end_sec ?? ''}">🎧 Hear in context</button>` : ''}
+            ${(c.sentence_start_sec != null && c.audio_url) ? `<button class="srs-context-btn" id="sent-ctx" data-url="${escapeHtml(c.audio_url)}" data-s="${c.sentence_start_sec}" data-e="${c.sentence_end_sec ?? ''}">🎧 맥락에서 듣기</button>` : ''}
           </div>
         </div>
         <div class="sent-game-row">
-          <button class="sent-game-btn again" id="sent-again">↺ Again</button>
-          <button class="study-cta-btn" id="sent-action">Show meaning</button>
-          <button class="sent-game-btn known" id="sent-known">✓ Known</button>
+          <button class="sent-game-btn again" id="sent-again">↺ 다시</button>
+          <button class="study-cta-btn" id="sent-action">뜻 보기</button>
+          <button class="sent-game-btn known" id="sent-known">✓ 알아요</button>
         </div>
-        <div class="study-swipe-tip">Swipe → Known · ← Again (repeats)</div>
-        <button class="quiz-exit" id="sent-exit">← Study Home</button>`;
+        <div class="study-swipe-tip">밀기 → 알아요 · ← 다시(반복)</div>
+        <button class="quiz-exit" id="sent-exit">← Study 홈</button>`;
       const card = root.querySelector('#sent-card');
       card.addEventListener('click', () => { if (!card.dataset.swiped) playExample(c); });
       requestAnimationFrame(() => playExample(c, undefined, true));  // 문장 음성 자동 반복
@@ -1014,7 +1016,7 @@ export async function renderStudy(root) {
         const dx = e.clientX - x0, dy = e.clientY - y0;
         if (!sw && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) + 4) sw = true;
         if (!sw) return;
-        if (badge) badge.textContent = dx < 0 ? '↺ Again' : '✓ Known';
+        if (badge) badge.textContent = dx < 0 ? '↺ 다시' : '✓ 알아요';
         card.style.transition = 'none';
         card.style.transform = `translateX(${Math.max(-150, Math.min(dx, 150))}px) rotate(${Math.max(-8, Math.min(dx / 18, 8))}deg)`;
         card.classList.toggle('swipe-armed', Math.abs(dx) > 78);
@@ -1096,7 +1098,7 @@ export async function renderStudy(root) {
     const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">No expressions with examples yet.</div>';
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
@@ -1109,15 +1111,15 @@ export async function renderStudy(root) {
       recordMeasure('dictation', correct / cards.length, cards.length, { unseen });
       if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'dictation', correct, total: cards.length }); }
       const pct = Math.round((correct / cards.length) * 100);
-      const msg = pct >= 80 ? 'Great ears! 👂' : pct >= 50 ? 'Getting there! 💪' : 'Keep at it! 🔁';
+      const msg = pct >= 80 ? '귀가 트였어요! 👂' : pct >= 50 ? '거의 다 왔어요! 💪' : '반복이 답이에요! 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${correct}/${cards.length}</div>
-          <div class="quiz-sum-pct">Dictation accuracy ${pct}%</div>
+          <div class="quiz-sum-pct">받아쓰기 정확도 ${pct}%</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="d-again">Again</button>
-            <button class="study-cta-btn secondary" id="d-home">Study Home</button>
+            <button class="study-cta-btn" id="d-again">다시</button>
+            <button class="study-cta-btn secondary" id="d-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#d-again').addEventListener('click', () => startDictation(source, unseen));
@@ -1127,19 +1129,19 @@ export async function renderStudy(root) {
       if (idx >= cards.length) return finishD();
       const c = cards[idx];
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} correct</span></div>
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} 정답</span></div>
         <div class="dict-card">
-          <div class="dict-label">🎧 Listen & type</div>
+          <div class="dict-label">🎧 듣고 입력하세요</div>
           <button class="quiz-bigspk" id="d-spk" aria-label="Replay">🔊</button>
-          <div class="dict-slow"><button class="dict-slow-btn" id="d-slow">🐢 Slow</button></div>
+          <div class="dict-slow"><button class="dict-slow-btn" id="d-slow">🐢 천천히</button></div>
         </div>
-        <textarea class="dict-input" id="d-in" rows="2" placeholder="Type what you hear" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done"></textarea>
+        <textarea class="dict-input" id="d-in" rows="2" placeholder="들은 대로 입력" autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="false" enterkeyhint="done"></textarea>
         <div class="dict-actions">
-          <button class="study-cta-btn secondary" id="d-skip">Don&#39;t know</button>
-          <button class="study-cta-btn" id="d-check">Check</button>
+          <button class="study-cta-btn secondary" id="d-skip">모르겠어요</button>
+          <button class="study-cta-btn" id="d-check">확인</button>
         </div>
         <div id="d-result"></div>
-        <button class="quiz-exit" id="d-exit">← Study Home</button>`;
+        <button class="quiz-exit" id="d-exit">← Study 홈</button>`;
       const input = root.querySelector('#d-in');
       input.focus();
       const replay = (pb, loop) => playExample(c, pb, loop);  // Shana 실제 음성(없으면 TTS), 천천히=속도인자
@@ -1158,7 +1160,7 @@ export async function renderStudy(root) {
         stopClip();  // 답 제출 → 자동반복 정지
         if (score >= 0.9) correct++;
         const cls = score >= 0.9 ? 'correct' : score >= 0.6 ? 'partial' : 'wrong';
-        const label = score >= 0.9 ? 'Correct! 🎉' : score >= 0.6 ? 'Almost!' : 'Listen again';
+        const label = score >= 0.9 ? '정확해요! 🎉' : score >= 0.6 ? '거의!' : '다시 들어보세요';
         root.querySelector('#d-check').disabled = true;
         root.querySelector('#d-skip').disabled = true;
         input.disabled = true;
@@ -1167,7 +1169,7 @@ export async function renderStudy(root) {
             <div class="dict-score">${Math.round(score * 100)} pts · ${label}</div>
             <div class="dict-answer">${diffHtml(input.value, c.example_sentence)}</div>
             ${c.definition ? `<div class="dict-def">${escapeHtml(c.term)} — ${escapeHtml(c.definition)}</div>` : ''}
-            <button class="study-cta-btn" id="d-next">Next →</button>
+            <button class="study-cta-btn" id="d-next">다음 →</button>
           </div>`;
         root.querySelector('#d-next').addEventListener('click', () => { idx++; paintD(); });
       }
@@ -1182,7 +1184,7 @@ export async function renderStudy(root) {
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">No expressions with examples yet.</div>';
+      if (el) el.innerHTML = '<div class="empty">예문이 있는 표현이 아직 없어요.</div>';
       return;
     }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1194,15 +1196,15 @@ export async function renderStudy(root) {
     function finishSp() {
       const avg = scored ? Math.round(scoreSum / scored) : 0;
       if (scored) recordMeasure('speak', avg / 100, scored);   // 산출(Production) 축 — 이전엔 버려지던 점수
-      const msg = !scored ? 'Practice done! 🎤' : avg >= 80 ? 'Native-level! 🌟' : avg >= 55 ? 'Good — clearer! 💪' : 'Repeat slowly 🔁';
+      const msg = !scored ? '연습 완료! 🎤' : avg >= 80 ? '네이티브급! 🌟' : avg >= 55 ? '좋아요 — 더 또렷하게! 💪' : '천천히 반복해요 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${scored ? avg + ' pts' : cards.length}</div>
-          <div class="quiz-sum-pct">${scored ? 'Avg pronunciation' : 'Shadowing complete'}</div>
+          <div class="quiz-sum-pct">${scored ? '평균 발음' : '쉐도잉 완료'}</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="sp-again">Again</button>
-            <button class="study-cta-btn secondary" id="sp-home">Study Home</button>
+            <button class="study-cta-btn" id="sp-again">다시</button>
+            <button class="study-cta-btn secondary" id="sp-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#sp-again').addEventListener('click', startSpeaking);
@@ -1215,15 +1217,15 @@ export async function renderStudy(root) {
       root.innerHTML = `
         <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">🎤 Speak</span></div>
         <div class="speak-card">
-          <div class="speak-label">🎯 Listen & repeat</div>
+          <div class="speak-label">🎯 듣고 따라 말하기</div>
           <div class="speak-target" id="sp-target">${escapeHtml(c.example_sentence)} <span class="speak-spk">🔊</span></div>
           ${c.definition ? `<div class="speak-def">${escapeHtml(c.definition)}</div>` : ''}
         </div>
-        <button class="speak-mic" id="sp-mic"><span class="speak-mic-ico">🎤</span><span id="sp-mic-label">Speak</span></button>
-        <div class="speak-hint" id="sp-hint">${SR ? 'Tap the button and speak clearly' : '⚠️ Speech recognition not supported — record & compare (Chrome/Android)'}</div>
+        <button class="speak-mic" id="sp-mic"><span class="speak-mic-ico">🎤</span><span id="sp-mic-label">말하기</span></button>
+        <div class="speak-hint" id="sp-hint">${SR ? '버튼을 누르고 또렷이 말해보세요' : '⚠️ 음성인식 미지원 — 녹음 후 비교 (Chrome/Android)'}</div>
         <div id="sp-result"></div>
-        <div class="dict-actions"><button class="study-cta-btn secondary" id="sp-skip">Skip</button></div>
-        <button class="quiz-exit" id="sp-exit">← Study Home</button>`;
+        <div class="dict-actions"><button class="study-cta-btn secondary" id="sp-skip">건너뛰기</button></div>
+        <button class="quiz-exit" id="sp-exit">← Study 홈</button>`;
       root.querySelector('#sp-target').addEventListener('click', () => playExample(c));
       requestAnimationFrame(() => playExample(c));
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
@@ -1239,11 +1241,11 @@ export async function renderStudy(root) {
       const cls = sc >= 80 ? 'correct' : sc >= 55 ? 'partial' : 'wrong';
       root.querySelector('#sp-result').innerHTML = `
         <div class="dict-result ${cls}">
-          <div class="dict-score">Pronunciation ${sc} pts</div>
+          <div class="dict-score">발음 ${sc}점</div>
           <div class="dict-answer">${diffHtml(said, c.example_sentence)}</div>
-          <div class="speak-heard">Heard: “${escapeHtml(said || '—')}”</div>
+          <div class="speak-heard">인식: “${escapeHtml(said || '—')}”</div>
           <div id="sp-compare" class="speak-compare"></div>
-          <button class="study-cta-btn" id="sp-next">Next →</button>
+          <button class="study-cta-btn" id="sp-next">다음 →</button>
         </div>`;
       root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
     }
@@ -1254,9 +1256,9 @@ export async function renderStudy(root) {
       const box = root.querySelector('#sp-compare');
       if (!box) return;
       box.innerHTML = `
-        <div class="speak-ab-label">🎧 Replay my voice · compare</div>
+        <div class="speak-ab-label">🎧 내 목소리 다시 듣기 · 비교</div>
         <div class="speak-ab-row">
-          <button class="study-cta-btn secondary" id="sp-orig2">🔊 Original</button>
+          <button class="study-cta-btn secondary" id="sp-orig2">🔊 원음</button>
           <audio class="speak-audio" controls src="${url}"></audio>
         </div>`;
       box.querySelector('#sp-orig2').addEventListener('click', () => playExample(c));
@@ -1287,7 +1289,7 @@ export async function renderStudy(root) {
         rec = new SR();
         rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = true;
         listening = true; mic.classList.add('listening');
-        const l = label(); if (l) l.textContent = 'Listening… (tap to finish)';
+        const l = label(); if (l) l.textContent = '듣는 중… (탭하면 종료)';
         let finalText = '';
         rec.onresult = (e) => {
           let interim = '';
@@ -1299,8 +1301,8 @@ export async function renderStudy(root) {
         };
         rec.onerror = (e) => {
           const h = root.querySelector('#sp-hint');
-          if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ Please allow mic access'
-            : (e.error === 'no-speech') ? '🎙️ No speech heard — tap and speak' : 'Recognition error — try again';
+          if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해 주세요'
+            : (e.error === 'no-speech') ? '🎙️ 음성이 안 들려요 — 탭하고 말해보세요' : '인식 오류 — 다시 시도';
         };
         rec.onend = () => {
           reset(); stopMyRec();
@@ -1317,7 +1319,7 @@ export async function renderStudy(root) {
       mic.addEventListener('click', async () => {
         if (recording) { try { recorder && recorder.stop(); } catch (e) {} return; }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          const h = root.querySelector('#sp-hint'); if (h) h.textContent = 'This browser does not support recording.';
+          const h = root.querySelector('#sp-hint'); if (h) h.textContent = '이 브라우저는 녹음을 지원하지 않아요.';
           mic.disabled = true; return;
         }
         try {
@@ -1328,23 +1330,23 @@ export async function renderStudy(root) {
             stream.getTracks().forEach((t) => t.stop());
             const url = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
             recording = false; mic.classList.remove('listening');
-            const l = label(); if (l) l.textContent = 'Record again';
+            const l = label(); if (l) l.textContent = '다시 녹음';
             root.querySelector('#sp-result').innerHTML = `
               <div class="dict-result partial">
-                <div class="dict-score">My voice vs original</div>
+                <div class="dict-score">내 목소리 vs 원음</div>
                 <audio class="speak-audio" controls src="${url}"></audio>
                 <div class="dict-actions">
-                  <button class="study-cta-btn secondary" id="sp-orig">🔊 Original</button>
-                  <button class="study-cta-btn" id="sp-next">Next →</button>
+                  <button class="study-cta-btn secondary" id="sp-orig">🔊 원음</button>
+                  <button class="study-cta-btn" id="sp-next">다음 →</button>
                 </div>
               </div>`;
             root.querySelector('#sp-orig').addEventListener('click', () => playExample(c));
             root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
           };
           recorder.start(); recording = true; mic.classList.add('listening');
-          const l = label(); if (l) l.textContent = 'Recording… (tap to stop)';
+          const l = label(); if (l) l.textContent = '녹음 중… (탭하면 정지)';
         } catch (e) {
-          const h = root.querySelector('#sp-hint'); if (h) h.textContent = '🎙️ Mic access needed.';
+          const h = root.querySelector('#sp-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
         }
       });
     }
@@ -1361,7 +1363,7 @@ export async function renderStudy(root) {
     const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3);
     if (!pool.length) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">No examples to practice yet.</div>';
+      if (el) el.innerHTML = '<div class="empty">연습할 예문이 아직 없어요.</div>';
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
@@ -1372,15 +1374,15 @@ export async function renderStudy(root) {
       const avg = scored ? Math.round(scoreSum / scored) : 0;
       if (scored) recordMeasure('prod', avg / 100, scored);   // 산출(KR→EN) 축
       if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'prod', correct: scored ? avg : 0, total: scored ? 100 : 0 }); }
-      const msg = !scored ? 'Practice done! 🗣️' : avg >= 80 ? 'Native-like! 🌟' : avg >= 55 ? 'Good — more natural! 💪' : 'Translate slowly 🔁';
+      const msg = !scored ? '연습 완료! 🗣️' : avg >= 80 ? '네이티브 같아요! 🌟' : avg >= 55 ? '좋아요 — 더 자연스럽게! 💪' : '천천히 번역해요 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${scored ? avg + ' pts' : cards.length}</div>
-          <div class="quiz-sum-pct">${scored ? 'Avg production' : 'KR→EN complete'}</div>
+          <div class="quiz-sum-pct">${scored ? '평균 산출' : 'KR→EN 완료'}</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="pr-again">Again</button>
-            <button class="study-cta-btn secondary" id="pr-home">Study Home</button>
+            <button class="study-cta-btn" id="pr-again">다시</button>
+            <button class="study-cta-btn secondary" id="pr-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#pr-again').addEventListener('click', () => startProduction(source));
@@ -1393,15 +1395,15 @@ export async function renderStudy(root) {
       root.innerHTML = `
         <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">🗣️ KR→EN</span></div>
         <div class="speak-card">
-          <div class="speak-label">🇰🇷 See the Korean, say it in English</div>
-          <div class="prod-ko" id="pr-ko">Loading translation…</div>
-          ${c.term ? `<div class="speak-def">Hint: <b>${escapeHtml(c.term)}</b></div>` : ''}
+          <div class="speak-label">🇰🇷 한국어를 보고 영어로 말하세요</div>
+          <div class="prod-ko" id="pr-ko">번역 불러오는 중…</div>
+          ${c.term ? `<div class="speak-def">힌트: <b>${escapeHtml(c.term)}</b></div>` : ''}
         </div>
-        <button class="speak-mic" id="pr-mic"><span class="speak-mic-ico">🎤</span><span id="pr-mic-label">${SR ? 'Speak' : 'Record'}</span></button>
-        <div class="speak-hint" id="pr-hint">${SR ? 'Speak in English, then compare with the answer' : '⚠️ Speech recognition not supported — record & compare (Chrome/Android)'}</div>
+        <button class="speak-mic" id="pr-mic"><span class="speak-mic-ico">🎤</span><span id="pr-mic-label">${SR ? '말하기' : '녹음'}</span></button>
+        <div class="speak-hint" id="pr-hint">${SR ? '영어로 말한 뒤 정답과 비교하세요' : '⚠️ 음성인식 미지원 — 녹음 후 비교 (Chrome/Android)'}</div>
         <div id="pr-result"></div>
-        <div class="dict-actions"><button class="study-cta-btn secondary" id="pr-reveal">Don&#39;t know (show answer)</button></div>
-        <button class="quiz-exit" id="pr-exit">← Study Home</button>`;
+        <div class="dict-actions"><button class="study-cta-btn secondary" id="pr-reveal">모르겠어요 (정답 보기)</button></div>
+        <button class="quiz-exit" id="pr-exit">← Study 홈</button>`;
       root.querySelector('#pr-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#pr-reveal').addEventListener('click', () => revealPr('', c));
       // 한국어 프롬프트: 사전번역(claude·고품질) 우선 → 즉시 표시(await 생략, 깜빡임 제거).
@@ -1420,11 +1422,11 @@ export async function renderStudy(root) {
       const cls = !said ? 'partial' : sc >= 80 ? 'correct' : sc >= 55 ? 'partial' : 'wrong';
       root.querySelector('#pr-result').innerHTML = `
         <div class="dict-result ${cls}">
-          <div class="dict-score">${said ? `Production ${sc} pts` : 'Answer'}</div>
+          <div class="dict-score">${said ? `산출 ${sc}점` : '정답'}</div>
           <div class="dict-answer">${said ? diffHtml(said, c.example_sentence) : escapeHtml(c.example_sentence)}</div>
-          ${said ? `<div class="speak-heard">I said: “${escapeHtml(said)}”</div>` : ''}
+          ${said ? `<div class="speak-heard">내 말: “${escapeHtml(said)}”</div>` : ''}
           <div id="pr-compare" class="speak-compare"></div>
-          <button class="study-cta-btn" id="pr-next">Next →</button>
+          <button class="study-cta-btn" id="pr-next">다음 →</button>
         </div>`;
       root.querySelector('#pr-next').addEventListener('click', () => { idx++; paintPr(); });
       requestAnimationFrame(() => playExample(c));  // 정답 원어민 음성 자동 재생(귀로 확인)
@@ -1432,8 +1434,8 @@ export async function renderStudy(root) {
         const box = root.querySelector('#pr-compare');
         if (box) {
           box.innerHTML = `
-            <div class="speak-ab-label">🎧 Replay my voice · compare</div>
-            <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig2">🔊 Original</button><audio class="speak-audio" controls src="${recUrl}"></audio></div>`;
+            <div class="speak-ab-label">🎧 내 목소리 다시 듣기 · 비교</div>
+            <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig2">🔊 원음</button><audio class="speak-audio" controls src="${recUrl}"></audio></div>`;
           box.querySelector('#pr-orig2').addEventListener('click', () => playExample(c));
         }
       }
@@ -1464,7 +1466,7 @@ export async function renderStudy(root) {
         listening = true; mic.classList.add('listening');
         const l = label(); if (l) l.textContent = 'Listening…';
         rec.onresult = (e) => { reset(); revealPr((e.results[0][0].transcript || '').trim(), c); stopMyRec(); };
-        rec.onerror = (e) => { reset(); stopMyRec(); const h = root.querySelector('#pr-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ Please allow mic access' : 'Recognition failed — try again'; };
+        rec.onerror = (e) => { reset(); stopMyRec(); const h = root.querySelector('#pr-hint'); if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해 주세요' : '인식 실패 — 다시 시도'; };
         rec.onend = () => { if (listening) { reset(); stopMyRec(); } };
         try { rec.start(); } catch (e) { reset(); stopMyRec(); }
       });
@@ -1472,8 +1474,8 @@ export async function renderStudy(root) {
     // revealPr 가 먼저 #pr-compare 를 만들고, 녹음 blob 이 준비되면 그 안에 A/B 를 채운다.
     function revealAttachRec(box, url, c) {
       box.innerHTML = `
-        <div class="speak-ab-label">🎧 Replay my voice · compare</div>
-        <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig3">🔊 Original</button><audio class="speak-audio" controls src="${url}"></audio></div>`;
+        <div class="speak-ab-label">🎧 내 목소리 다시 듣기 · 비교</div>
+        <div class="speak-ab-row"><button class="study-cta-btn secondary" id="pr-orig3">🔊 원음</button><audio class="speak-audio" controls src="${url}"></audio></div>`;
       box.querySelector('#pr-orig3').addEventListener('click', () => playExample(c));
     }
 
@@ -1483,7 +1485,7 @@ export async function renderStudy(root) {
       mic.addEventListener('click', async () => {
         if (recording) { try { recorder && recorder.stop(); } catch (e) {} return; }
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          const h = root.querySelector('#pr-hint'); if (h) h.textContent = 'This browser does not support recording.'; mic.disabled = true; return;
+          const h = root.querySelector('#pr-hint'); if (h) h.textContent = '이 브라우저는 녹음을 지원하지 않아요.'; mic.disabled = true; return;
         }
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1496,9 +1498,9 @@ export async function renderStudy(root) {
             revealPr('', c, url);  // 인식 불가 → 점수 없이 정답+내 녹음 비교만
           };
           recorder.start(); recording = true; mic.classList.add('listening');
-          const l = label(); if (l) l.textContent = 'Recording… (tap to stop)';
+          const l = label(); if (l) l.textContent = '녹음 중… (탭하면 정지)';
         } catch (e) {
-          const h = root.querySelector('#pr-hint'); if (h) h.textContent = '🎙️ Mic access needed.';
+          const h = root.querySelector('#pr-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
         }
       });
     }
@@ -1526,7 +1528,7 @@ export async function renderStudy(root) {
       v.example_sentence.toLowerCase().includes(v.term.toLowerCase()));
     if (!pool.length) {
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">No examples for cloze yet.</div>';
+      if (el) el.innerHTML = '<div class="empty">빈칸 퀴즈용 예문이 아직 없어요.</div>';
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(20, pool.length));
@@ -1539,15 +1541,15 @@ export async function renderStudy(root) {
       recordMeasure('cloze', correct / cards.length, cards.length, { unseen });
       if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'cloze', correct, total: cards.length }); }
       const pct = Math.round((correct / cards.length) * 100);
-      const msg = pct >= 80 ? 'Got it down! 🧩' : pct >= 50 ? 'Nice! 💪' : 'Keep practicing 🔁';
+      const msg = pct >= 80 ? '완전히 익혔어요! 🧩' : pct >= 50 ? '좋아요! 💪' : '계속 연습해요 🔁';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${correct}/${cards.length}</div>
-          <div class="quiz-sum-pct">Cloze accuracy ${pct}%</div>
+          <div class="quiz-sum-pct">빈칸 정확도 ${pct}%</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="cz-again">Again</button>
-            <button class="study-cta-btn secondary" id="cz-home">Study Home</button>
+            <button class="study-cta-btn" id="cz-again">다시</button>
+            <button class="study-cta-btn secondary" id="cz-home">홈으로</button>
           </div>
         </div>`;
       root.querySelector('#cz-again').addEventListener('click', () => startCloze(source, unseen));
@@ -1557,19 +1559,19 @@ export async function renderStudy(root) {
       if (idx >= cards.length) return finishC();
       const c = cards[idx];
       root.innerHTML = `
-        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} correct</span></div>
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">${correct} 정답</span></div>
         <div class="cloze-card">
-          <div class="dict-label">🧩 What fills the blank?</div>
+          <div class="dict-label">🧩 빈칸에 들어갈 표현은?</div>
           <div class="cloze-sent">${clozeBlank(c.example_sentence, c.term, '<span class="cloze-blank">____</span>')} <span class="speak-spk" id="cz-spk">🔊</span></div>
-          ${c.definition ? `<div class="cloze-hint">Meaning: ${escapeHtml(c.definition)}</div>` : ''}
+          ${c.definition ? `<div class="cloze-hint">뜻: ${escapeHtml(c.definition)}</div>` : ''}
         </div>
-        <input class="dict-input" id="cz-in" type="text" placeholder="Type the expression" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" />
+        <input class="dict-input" id="cz-in" type="text" placeholder="표현을 입력" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done" />
         <div class="dict-actions">
-          <button class="study-cta-btn secondary" id="cz-skip">Don&#39;t know</button>
-          <button class="study-cta-btn" id="cz-check">Check</button>
+          <button class="study-cta-btn secondary" id="cz-skip">모르겠어요</button>
+          <button class="study-cta-btn" id="cz-check">확인</button>
         </div>
         <div id="cz-result"></div>
-        <button class="quiz-exit" id="cz-exit">← Study Home</button>`;
+        <button class="quiz-exit" id="cz-exit">← Study 홈</button>`;
       const input = root.querySelector('#cz-in');
       input.focus();
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].term]);
@@ -1584,7 +1586,7 @@ export async function renderStudy(root) {
         stopClip();  // 답 제출 → 자동반복 정지
         if (score >= 0.85) correct++;
         const cls = score >= 0.85 ? 'correct' : score >= 0.5 ? 'partial' : 'wrong';
-        const label = score >= 0.85 ? 'Correct! 🎉' : score >= 0.5 ? 'Almost!' : 'Wrong';
+        const label = score >= 0.85 ? '정답! 🎉' : score >= 0.5 ? '거의!' : '오답';
         root.querySelector('#cz-check').disabled = true;
         root.querySelector('#cz-skip').disabled = true;
         input.disabled = true;
@@ -1593,7 +1595,7 @@ export async function renderStudy(root) {
             <div class="dict-score">${label} — <b>${escapeHtml(c.term)}</b></div>
             <div class="dict-answer">${clozeBlank(c.example_sentence, c.term, `<b class="cloze-ans">${escapeHtml(c.term)}</b>`)}</div>
             ${c.definition ? `<div class="dict-def">${escapeHtml(c.definition)}</div>` : ''}
-            <button class="study-cta-btn" id="cz-next">Next →</button>
+            <button class="study-cta-btn" id="cz-next">다음 →</button>
           </div>`;
         speak(c.term);
         root.querySelector('#cz-next').addEventListener('click', () => { idx++; paintC(); });
