@@ -46,6 +46,24 @@ function splitBack(back) {
   const parts = String(back || '').split(/\n\s*—\s*/);
   return { def: (parts[0] || '').trim(), example: (parts[1] || '').trim() };
 }
+// ── 안드로이드/브라우저 뒤로가기: 퀴즈·세션(서브화면)은 hash 가 안 바뀌어 history 에 안 쌓인다 →
+// 뒤로가기가 Study 홈을 건너뛰고 Library 로 튕기며 진행 상태가 날아가던 문제. 서브화면 진입 때
+// history 항목을 하나 쌓고(pushState), popstate(뒤로가기)에서 '서브화면 닫고 Study 홈 복귀'로 처리.
+// 실제 라우트 이동(hashchange)이면 핸들러를 비워 일반 라우팅에 양보한다. (cnpod 검증 패턴)
+let _studyBack = null;   // 열린 서브화면을 닫는 함수(열려 있으면 non-null)
+let _popWired = false;
+function wireStudyPop() {
+  if (_popWired) return;
+  _popWired = true;
+  window.addEventListener('popstate', (e) => {
+    const fn = _studyBack;
+    if (fn) { _studyBack = null; fn(); return; }
+    // 탭 이동으로 서브화면을 떠나면 밀어둔 {studySub} 항목이 고아로 남는다 → 한 번 더 되돌려 스킵.
+    if (e.state && e.state.studySub) history.back();
+  });
+  window.addEventListener('hashchange', () => { _studyBack = null; });
+}
+
 // 세션 드릴 완료 훅 — 설정돼 있으면 드릴 finish 가 자체 요약 대신 이걸 호출(세션이 다음 단계로).
 // renderStudy 진입 시 항상 초기화(스테일 훅이 다른 화면 흐름을 가로채지 않게).
 let _sessNext = null;
@@ -117,6 +135,8 @@ function playExample(c, rate, loop) {
 export async function renderStudy(root) {
   stopClip();  // 홈/다른 모드로 진입 시 인라인 문장 재생 정지(겹침 방지)
   _sessNext = null;   // 스테일 세션 훅 무효화(드릴을 세션 밖에서 열 때 가로채기 방지)
+  wireStudyPop();     // 뒤로가기(popstate) 핸들러 1회 등록
+  _studyBack = null;  // Study 홈 = 열린 서브화면 없음
   // 스트릭(markStudyDay)은 '세션 완료'에서만 — 탭을 연 것만으로 오르던 것을 정직하게(sessSummary)
   root.innerHTML = `
     <div class="library-head"><h1 class="library-title">Study</h1></div>
@@ -554,6 +574,7 @@ export async function renderStudy(root) {
 
   async function startSession() {
     stopClip();
+    openSub();
     const size = sessSize();
     const caps = SESS_CAPS[size];
     const today = _dayKey(new Date());
@@ -618,7 +639,7 @@ export async function renderStudy(root) {
           <button class="study-cta-btn" id="sess-good">알았어요 ✓</button>
         </div>
         <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
-      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); renderStudy(root); });
+      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); exitToStudyHome(); });
       root.querySelector('#sess-flash').addEventListener('click', () => speak(term));
       root.querySelector('#sess-reveal').addEventListener('click', (e) => {
         e.currentTarget.hidden = true;
@@ -664,7 +685,7 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
       requestAnimationFrame(() => playExample(c));   // 뜻을 읽기 전에 실제 음성부터(오디오 퍼스트)
       root.querySelector('#sess-flash').addEventListener('click', () => playExample(c));
-      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); stopClip(); renderStudy(root); });
+      root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); exitToStudyHome(); });
       root.querySelector('#sess-know').addEventListener('click', () => {
         if (c.vocab_id != null) markKnown(c.vocab_id).catch(() => {});
         st.stats.newKnown++; applyKnown(1); advance();
@@ -740,7 +761,7 @@ export async function renderStudy(root) {
           <button class="study-cta-btn secondary" id="sess-more">한 세션 더</button>
         </div>
       </div>`;
-    root.querySelector('#sess-home').addEventListener('click', () => renderStudy(root));
+    root.querySelector('#sess-home').addEventListener('click', exitToStudyHome);
     root.querySelector('#sess-more').addEventListener('click', () => {
       try { localStorage.removeItem(SESS_KEY); } catch (e) { /* quota */ }
       startSession();
@@ -750,6 +771,7 @@ export async function renderStudy(root) {
   // ── 레벨 체크 — 드릴에서 안 만난(unseen) 표현만 골라 받아쓰기. 외운 게 아닌 실제 청해를 비편향 측정. ──
   async function startLevelCheck() {
     stopClip();
+    openSub();
     const listEl = root.querySelector('#study-list');
     if (listEl) listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
     let all = [];
@@ -763,6 +785,18 @@ export async function renderStudy(root) {
       return;
     }
     startDictation(pool, true);   // unseen=true → listeningUnseen 으로 기록(axisScores 우선 채택)
+  }
+
+  // 서브화면(퀴즈·세션) 진입/이탈 — history 항목으로 '뒤로가기 = Study 홈'을 보장(Library 로 안 튕김).
+  function openSub() {
+    if (_studyBack) return;   // 이미 서브화면(세션→드릴 체이닝 등) — 추가 푸시 안 함
+    _studyBack = () => renderStudy(root);
+    try { history.pushState({ studySub: true }, ''); } catch (e) { /* ignore */ }
+  }
+  function exitToStudyHome() {
+    stopClip();
+    if (_studyBack) history.back();   // popstate → _studyBack() → renderStudy(홈)
+    else renderStudy(root);
   }
 
   async function loadKind(k) {
@@ -785,6 +819,7 @@ export async function renderStudy(root) {
   const _shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, r) => p[0] - r[0]).map((x) => x[1]);
   function startQuiz(mode = 'read', source = null, unseen = false) {
     stopClip();
+    openSub();
     const pool = (source || items).filter((v) => v.term && v.definition);
     if (pool.length < 4) {
       const el = root.querySelector('#study-list');
@@ -819,7 +854,7 @@ export async function renderStudy(root) {
         <button class="quiz-exit" id="q-exit">← Study Home</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
       requestAnimationFrame(() => speak(c.term));  // 진입/다음 카드 시 발음 자동재생
-      root.querySelector('#q-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#q-exit').addEventListener('click', exitToStudyHome);
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
       tShown = performance.now();   // 표시 시각 기록(다음 클릭까지가 응답 지연)
     }
@@ -857,7 +892,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#q-again').addEventListener('click', () => startQuiz(mode, source, unseen));
-      root.querySelector('#q-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#q-home').addEventListener('click', exitToStudyHome);
     }
     paintQ();
   }
@@ -883,6 +918,7 @@ export async function renderStudy(root) {
   // 왼쪽=Again(맨 뒤로 재투입→다시 만남). 덱을 다 비울 때까지 반복. 탭=발음, Show meaning=뜻/한국어. ──
   function startSentences() {
     stopClip();
+    openSub();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -909,7 +945,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#s-again').addEventListener('click', startSentences);
-      root.querySelector('#s-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#s-home').addEventListener('click', exitToStudyHome);
     }
 
     // knownIt=true(오른쪽): 마스터 처리 후 덱에서 제거. false(왼쪽): 맨 뒤로 재투입(반복).
@@ -954,7 +990,7 @@ export async function renderStudy(root) {
       card.addEventListener('click', () => { if (!card.dataset.swiped) playExample(c); });
       requestAnimationFrame(() => playExample(c, undefined, true));  // 문장 음성 자동 반복
       if (deck[1]) prefetch([deck[1].example_sentence]);
-      root.querySelector('#sent-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sent-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#sent-again').addEventListener('click', () => advance(false));
       root.querySelector('#sent-known').addEventListener('click', () => advance(true));
       root.querySelector('#sent-action').addEventListener('click', (e) => {
@@ -1056,6 +1092,7 @@ export async function renderStudy(root) {
   }
   function startDictation(source = null, unseen = false) {
     stopClip();
+    openSub();
     const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -1084,7 +1121,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#d-again').addEventListener('click', () => startDictation(source, unseen));
-      root.querySelector('#d-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#d-home').addEventListener('click', exitToStudyHome);
     }
     function paintD() {
       if (idx >= cards.length) return finishD();
@@ -1110,7 +1147,7 @@ export async function renderStudy(root) {
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
       root.querySelector('#d-spk').addEventListener('click', () => replay());
       root.querySelector('#d-slow').addEventListener('click', () => replay(0.62));
-      root.querySelector('#d-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#d-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#d-skip').addEventListener('click', () => reveal(0));
       root.querySelector('#d-check').addEventListener('click', () => reveal(scoreText(input.value, c.example_sentence)));
       input.addEventListener('keydown', (e) => {
@@ -1141,6 +1178,7 @@ export async function renderStudy(root) {
   // ── 스피킹(Speaking) — 듣고 따라 말하기. Web Speech 인식으로 발음을 글로 받아 채점, 미지원시 녹음 후 비교(스피킹) ──
   function startSpeaking() {
     stopClip();
+    openSub();
     const pool = items.filter((v) => v.example_sentence && v.example_sentence.trim());
     if (!pool.length) {
       const el = root.querySelector('#study-list');
@@ -1168,7 +1206,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#sp-again').addEventListener('click', startSpeaking);
-      root.querySelector('#sp-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sp-home').addEventListener('click', exitToStudyHome);
     }
 
     function paintSp() {
@@ -1189,7 +1227,7 @@ export async function renderStudy(root) {
       root.querySelector('#sp-target').addEventListener('click', () => playExample(c));
       requestAnimationFrame(() => playExample(c));
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence]);
-      root.querySelector('#sp-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#sp-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#sp-skip').addEventListener('click', () => { idx++; paintSp(); });
       const mic = root.querySelector('#sp-mic');
       if (SR) wireRecognition(mic, c); else wireRecorder(mic, c);
@@ -1318,6 +1356,7 @@ export async function renderStudy(root) {
   // 기존 스피킹(영어 보고 따라말하기=모방)과 달리 영어를 가리고 한국어→영어 산출. 네이티브 회화 핵심.
   function startProduction(source = null) {
     stopClip();
+    openSub();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const pool = (source || items).filter((v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3);
     if (!pool.length) {
@@ -1345,7 +1384,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#pr-again').addEventListener('click', () => startProduction(source));
-      root.querySelector('#pr-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#pr-home').addEventListener('click', exitToStudyHome);
     }
 
     async function paintPr() {
@@ -1363,7 +1402,7 @@ export async function renderStudy(root) {
         <div id="pr-result"></div>
         <div class="dict-actions"><button class="study-cta-btn secondary" id="pr-reveal">Don&#39;t know (show answer)</button></div>
         <button class="quiz-exit" id="pr-exit">← Study Home</button>`;
-      root.querySelector('#pr-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#pr-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#pr-reveal').addEventListener('click', () => revealPr('', c));
       // 한국어 프롬프트: 사전번역(claude·고품질) 우선 → 즉시 표시(await 생략, 깜빡임 제거).
       // 없을 때만 온디맨드(MyMemory) 폴백. 한→영 드릴에선 '한국어 자극'의 품질이 곧 산출 품질이라 중요.
@@ -1482,6 +1521,7 @@ export async function renderStudy(root) {
   }
   function startCloze(source = null, unseen = false) {
     stopClip();
+    openSub();
     const pool = (source || items).filter((v) => v.example_sentence && v.term &&
       v.example_sentence.toLowerCase().includes(v.term.toLowerCase()));
     if (!pool.length) {
@@ -1511,7 +1551,7 @@ export async function renderStudy(root) {
           </div>
         </div>`;
       root.querySelector('#cz-again').addEventListener('click', () => startCloze(source, unseen));
-      root.querySelector('#cz-home').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#cz-home').addEventListener('click', exitToStudyHome);
     }
     function paintC() {
       if (idx >= cards.length) return finishC();
@@ -1535,7 +1575,7 @@ export async function renderStudy(root) {
       if (idx + 1 < cards.length) prefetch([cards[idx + 1].term]);
       root.querySelector('#cz-spk').addEventListener('click', () => playExample(c));  // 힌트: Shana 실제 문장 듣기(선택)
       requestAnimationFrame(() => playExample(c, undefined, true));  // 카드 표시 즉시 음성 자동 반복
-      root.querySelector('#cz-exit').addEventListener('click', () => renderStudy(root));
+      root.querySelector('#cz-exit').addEventListener('click', exitToStudyHome);
       root.querySelector('#cz-skip').addEventListener('click', () => reveal(0));
       root.querySelector('#cz-check').addEventListener('click', () => reveal(scoreText(input.value, c.term)));
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') reveal(scoreText(input.value, c.term)); });

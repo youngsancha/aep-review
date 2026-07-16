@@ -1587,8 +1587,9 @@ body.logged-out #app-version { display: none; }
 .study-greet { padding: 6px 2px 12px; }
 .study-greet h2 { font-family: var(--font); font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: var(--text); }
 .study-greet-sub { color: var(--text-3); font-size: 13.5px; margin-top: 3px; }
-/* 한 줄에 다 보이게(가로 스크롤 없음) — 칩은 균등폭으로 줄어든다 */
-.study-kinds { display: flex; gap: 5px; flex-wrap: nowrap; overflow: visible; padding: 14px 2px 6px; }
+/* 2×2 로 감싸 이름이 안 잘리게(한 줄 강제 시 'Idi… 600' 처럼 뭉개졌다) — 칩은 행 안에서 균등폭 */
+.study-kinds { display: flex; gap: 6px; flex-wrap: wrap; overflow: visible; padding: 14px 2px 6px; }
+.study-kinds .study-kind-chip { flex: 1 1 calc(50% - 3px); min-width: 0; justify-content: center; }
 .study-kind-chip {
   flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
   border: 0.5px solid var(--separator); background: var(--surface); color: var(--text-2);
