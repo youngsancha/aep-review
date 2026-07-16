@@ -92,6 +92,36 @@ function hasStoredSession() {
   } catch (e) { return false; }
 }
 
+// === 앱 아이콘 바로가기(manifest shortcuts) — /?sc=resume|transcript 진입 처리 ===
+// 아이콘을 길게 눌러 Resume/Transcript 를 고르면 가장 최근 듣던 회차로 바로 이동해 재생을
+// 시작한다(transcript 는 시트까지 자동 오픈). 대상 = 이어듣기 맵(aep-progress)의 최신 항목,
+// 없으면 최근 완주(aep-completed)의 마지막. 둘 다 없으면 평소처럼 라이브러리로 부팅.
+function lastPlayedId() {
+  try {
+    const m = JSON.parse(localStorage.getItem('aep-progress') || '{}') || {};
+    let best = null, at = -1;
+    for (const k of Object.keys(m)) { const p = m[k]; if (p && p.at > at) { at = p.at; best = k; } }
+    if (best != null) return best;
+    const done = JSON.parse(localStorage.getItem('aep-completed') || '[]');
+    if (Array.isArray(done) && done.length) return done[done.length - 1];
+  } catch (e) {}
+  return null;
+}
+function consumeShortcut() {
+  let sc = null;
+  try { sc = new URLSearchParams(location.search).get('sc'); } catch (e) {}
+  if (sc !== 'resume' && sc !== 'transcript') return false;
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}  // 새로고침 재발동 방지
+  const id = lastPlayedId();
+  if (id == null) return false;
+  // renderEpisode 가 이미 소비하는 플래그 재사용: autoplay(메인 화면 재생) / open-script(시트+재생).
+  try { sessionStorage.setItem(sc === 'transcript' ? 'aep-open-script' : 'aep-autoplay', String(id)); } catch (e) {}
+  const target = '#/episode/' + id;
+  if (location.hash === target) return false;   // 이미 그 화면 → 일반 라우팅이 플래그를 소비
+  location.hash = target;                        // hashchange → route() 렌더(직접 route 호출 시 이중 렌더)
+  return true;
+}
+
 // 로그인 후 잠시 뒤 백그라운드로 최근 회차(자막+오디오)를 내려받아 오프라인 청취를 준비한다.
 // 부팅 직후 대역폭 경쟁(목록/자막 로딩)을 피해 지연 실행. 세션당 1회(offline.js 내부 가드).
 let _offlineKicked = false;
@@ -142,13 +172,13 @@ async function boot() {
   if (session) {
     authed = true;
     document.body.classList.remove('logged-out');
-    route();
+    if (!consumeShortcut()) route();   // 바로가기 진입이면 hashchange 가 라우팅한다
     kickOfflineCache();
     prefetchViews();
   } else if (!navigator.onLine && hasStoredSession()) {
     authed = true;
     document.body.classList.remove('logged-out');
-    route();
+    if (!consumeShortcut()) route();
     toast('Offline — downloaded episodes only');
   } else if (pendingOAuth) {
     document.body.classList.add('logged-out');
@@ -189,6 +219,8 @@ supabase.auth.onAuthStateChange((event, session) => {
     authed = true;
     document.body.classList.remove('logged-out');
     cleanAuthUrl();
+    // INITIAL_SESSION 이 boot 보다 먼저 게이트를 여는 레이스에서도 바로가기 진입이 동작하게 여기서도 처리.
+    if (consumeShortcut()) { kickOfflineCache(); prefetchViews(); return; }
     if (!location.hash || location.hash === '#') location.hash = '#/';
     route();
     kickOfflineCache();

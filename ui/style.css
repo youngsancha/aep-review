@@ -669,6 +669,8 @@ body.on-episode {
   letter-spacing: -0.01em;
 }
 .np-extras .speed:hover { background: var(--tint-soft); color: var(--tint-hover); }
+/* 종료 동작 칩(np-endmode): 기본값(다음 회차)이 아닐 때만 강조 — 속도 칩과 동일한 실루엣 */
+.np-extras .speed.on { background: var(--tint-soft); color: var(--tint); }
 .np-tx-btn {
   background: linear-gradient(135deg, var(--grad-1), var(--grad-3));
   color: #fff;

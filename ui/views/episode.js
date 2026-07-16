@@ -78,6 +78,7 @@ export async function renderEpisode(root, idStr, tStr) {
         </div>
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
+          <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends" title="재생이 끝나면: 다음 회차 / 반복 / 정지"></button>
           ${sentences.length ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
@@ -666,6 +667,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet.classList.add('open');
     $sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    wakePolicy();   // Transcript 열림 = 화면 계속 켜둠(30초 카운트 해제)
     // 신규 필수모드 발견성 — 트랜스크립트를 처음 열 때 1회만 롱프레스 사전 안내(숨은 제스처라 힌트 필요).
     try {
       if (!localStorage.getItem('aep-hint-wordpop')) {
@@ -690,6 +692,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet.classList.remove('open');
     $sheet.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    wakePolicy();   // 일반 화면 복귀 → 30초 무조작 시 화면 꺼짐 허용 카운트 시작
   }
   escClose = (e) => { if (e.key === 'Escape') closeSheet(); };
   document.addEventListener('keydown', escClose);
@@ -921,6 +924,38 @@ export async function renderEpisode(root, idStr, tStr) {
   document.getElementById('tx-prev-sent')?.addEventListener('click', (e) => { e.stopPropagation(); prevPress(true); });
   document.getElementById('tx-next-sent')?.addEventListener('click', (e) => { e.stopPropagation(); nextPress(true); });
 
+  // === 재생 종료 동작 칩 — '일반 재생화면' 전용(Transcript 시트엔 없음, 사용자 요청 2026-07-15) ===
+  // 회차가 끝나면 ▸ 다음 회차 자동재생(기본) / 이 회차 처음부터 반복 / 한 번만(정지).
+  // 탭마다 순환, 선택은 localStorage 로 유지. 쉐도잉(문단 반복)은 끝에 도달하기 전에 처리되므로
+  // 여기 오는 'ended' 는 항상 자연 종료다.
+  const END_KEY = 'aep-endmode';
+  const END_MODES = [
+    { mode: 'next',   label: '⏭ Next',   msg: '끝나면 다음 회차를 이어서 재생해요' },
+    { mode: 'repeat', label: '↻ Repeat', msg: '끝나면 이 회차를 처음부터 다시 재생해요' },
+    { mode: 'once',   label: '⏹ Once',   msg: '이 회차만 재생하고 멈춰요' },
+  ];
+  let endIdx = (() => {
+    let s = null; try { s = localStorage.getItem(END_KEY); } catch (e) {}
+    const i = END_MODES.findIndex((m) => m.mode === s);
+    return i >= 0 ? i : 0;                        // 기본 = 다음 회차 재생
+  })();
+  const $endMode = document.getElementById('np-endmode');
+  function applyEndMode(announce) {
+    const m = END_MODES[endIdx];
+    if ($endMode) { $endMode.textContent = m.label; $endMode.classList.toggle('on', m.mode !== 'next'); }
+    try { localStorage.setItem(END_KEY, m.mode); } catch (e) {}
+    if (announce) toast(m.msg);
+  }
+  applyEndMode(false);
+  $endMode?.addEventListener('click', () => { endIdx = (endIdx + 1) % END_MODES.length; applyEndMode(true); });
+  // 자연 종료 시 선택대로 처리. Transcript 시트를 연 채 끝났다면 다음 회차도 시트를 연 채 이어간다(⏭ 과 동일).
+  const offEnded = player.on((ev) => {
+    if (ev !== 'ended') return;
+    const mode = END_MODES[endIdx].mode;
+    if (mode === 'repeat') { player.seek(0); player.play(); }
+    else if (mode === 'next' && navNextId != null) gotoEpisode(navNextId, sheetOpen());
+  });
+
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
   const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   let ctrlHideTimer = 0;
@@ -933,8 +968,14 @@ export async function renderEpisode(root, idStr, tStr) {
   // 시트 어디든 탭(포인터 누름) → 컨트롤 다시 표시 + 숨김 타이머 리셋
   $sheetCard?.addEventListener('pointerdown', showControls, { passive: true });
 
-  // === 재생 중 화면 꺼짐 방지 (Screen Wake Lock) — transcript/Now-Playing 화면 (사용자 요청) ===
+  // === 재생 중 화면 꺼짐 정책 (Screen Wake Lock) ===
+  // Transcript 시트가 열려 있는 동안엔 계속 켜둔다(쉐도잉 중 화면 유지 — 기존 동작 그대로).
+  // '일반 재생화면'은 마지막 터치 후 30초가 지나면 lock 을 놓아 기기의 자동 잠금 설정대로 화면이
+  // 꺼지게 한다(사용자 요청 2026-07-15). 웹은 화면을 직접 끌 수 없어 '켜두기 중단'이 가능한 전부.
   let wakeLock = null;
+  let wakeIdleTimer = 0;
+  const WAKE_IDLE_MS = 30000;
+  const sheetOpen = () => !!($sheet && $sheet.classList.contains('open'));
   async function acquireWake() {
     try {
       if ('wakeLock' in navigator && !wakeLock && !player.paused) {
@@ -947,14 +988,23 @@ export async function renderEpisode(root, idStr, tStr) {
     const w = wakeLock; wakeLock = null;
     try { if (w) await w.release(); } catch (e) {}
   }
+  function wakePolicy() {
+    clearTimeout(wakeIdleTimer); wakeIdleTimer = 0;
+    if (player.paused) return;
+    acquireWake();
+    if (!sheetOpen()) wakeIdleTimer = setTimeout(() => { if (!sheetOpen()) releaseWake(); }, WAKE_IDLE_MS);
+  }
   const offWake = player.on((ev) => {
-    if (ev === 'play') acquireWake();
-    else if (ev === 'pause' || ev === 'ended') releaseWake();
+    if (ev === 'play') wakePolicy();
+    else if (ev === 'pause' || ev === 'ended') { clearTimeout(wakeIdleTimer); wakeIdleTimer = 0; releaseWake(); }
   });
-  // 브라우저는 탭이 숨겨지면 wake lock 을 자동 해제 → 복귀 시 재취득
-  const onVis = () => { if (document.visibilityState === 'visible' && !player.paused) acquireWake(); };
+  // 브라우저는 탭이 숨겨지면 wake lock 을 자동 해제 → 복귀 시 재평가(시트 열림이면 계속 켜둠)
+  const onVis = () => { if (document.visibilityState === 'visible' && !player.paused) wakePolicy(); };
   document.addEventListener('visibilitychange', onVis);
-  if (!player.paused) acquireWake();
+  // 아무 터치든 30초 카운트 리셋(놓았던 lock 도 재취득) — 캡처 단계라 stopPropagation 에도 안전.
+  const onAnyPointer = () => { if (!player.paused) wakePolicy(); };
+  document.addEventListener('pointerdown', onAnyPointer, { capture: true, passive: true });
+  if (!player.paused) wakePolicy();
 
   const off = player.on(refresh);
 
@@ -1009,6 +1059,9 @@ export async function renderEpisode(root, idStr, tStr) {
     off();
     offWord();
     offWake();
+    offEnded();
+    clearTimeout(wakeIdleTimer);
+    document.removeEventListener('pointerdown', onAnyPointer, { capture: true });
     releaseWake();
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
