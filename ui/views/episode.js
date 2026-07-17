@@ -158,11 +158,11 @@ export async function renderEpisode(root, idStr, tStr) {
   const $txSeekRem    = document.getElementById('tx-seek-rem');
   let txScrub = null;
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | loop(무한반복) | smart(문단길이 비례 5~15회) | auto5/auto10(고정 N회)
+  let shadowMode = 'off';  // off | smart2(2× Smart) | smart(1× Smart) | auto5/auto10(고정 N회)
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
-  let loopCount = 0;       // smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
-  let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart 는 문단마다 다름, loop 는 0(무한)
-  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart→loop→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  let loopCount = 0;       // smart2/smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
+  let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart(2)는 문단마다 다름, autoN 은 고정
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart2→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 12회.
   // (v1.19.0: 3~10 → 5~12 — 사용자 요청 2026-07-10. 비율(0~20s 선형 매핑)은 유지)
@@ -170,7 +170,9 @@ export async function renderEpisode(root, idStr, tStr) {
   // 분포가 0~20s(중앙값 10s) → 0~20s 에 5~12회를 선형 매핑(기본 5회 + 초당 0.35회):
   // 0~2s→5~6회, 6s→7회, 10s→9회, 16s→11회, 20s+→12회.
   const smartReps = (durSec) => Math.max(5, Math.min(12, Math.round(5 + durSec * 0.35)));
-  // 반복(쉐도잉) 모드 공통 게이트 — loop/smart/auto5/auto10 전부.
+  // 2× Smart = Smart 반복의 2배(사용자 요청 2026-07-17) — 상한도 2배(최대 24회).
+  const smartRepsFor = (durSec) => shadowMode === 'smart2' ? smartReps(durSec) * 2 : smartReps(durSec);
+  // 반복(쉐도잉) 모드 공통 게이트 — smart2/smart/auto5/auto10 전부.
   function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
@@ -243,20 +245,16 @@ export async function renderEpisode(root, idStr, tStr) {
         //  뒤로 시크는 되감기 자체가 뒤로 시크라 여기서 relocate 하면 안 됨 → '앞으로'만 처리.)
         if (txTime() > loopEnd + 1.5) { loopCount = 0; confirmLoopBoundary(); return; }
         addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
-        if (shadowMode === 'loop') {
-          player.seek(toAudio(loopStart) + 0.01);
+        loopCount++;
+        if (loopCount < (loopTarget || 5)) {
+          player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
+          updateLoopBadge();                          // 카운트다운 갱신(남은 횟수)
         } else {
-          loopCount++;
-          if (loopCount < (loopTarget || 5)) {
-            player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
-            updateLoopBadge();                          // 카운트다운 갱신(남은 횟수)
+          loopCount = 0;
+          if (setLoopPara(loopPara + 1)) {
+            player.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
           } else {
-            loopCount = 0;
-            if (setLoopPara(loopPara + 1)) {
-              player.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
-            } else {
-              endShadow();                              // 마지막 문단 → 쉐도잉 종료
-            }
+            endShadow();                              // 마지막 문단 → 쉐도잉 종료
           }
         }
       }
@@ -731,14 +729,15 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → smart(길이비례 5~15회, 기본) → loop(Repeat 무한반복) → auto5 → auto10 → off … 순환.
-  // Smart 가 첫 탭(기본) — 사용자 요청 2026-07-09.
+  // 쉐도잉 버튼: off(Shadow) → smart2(2× Smart) → smart(1× Smart) → auto5 → auto10 → off … 순환.
+  // (사용자 요청 2026-07-17: Repeat∞ 제거, 2× Smart 를 Shadow 다음에 추가, 라벨 이모지 제거·고정폭 통일.)
+  // 2× Smart = 문단 길이 비례 반복(smart)의 2배. 1× Smart(=기존 smart)가 두 번째 탭.
   const SHADOW = [
-    { mode: 'off',    label: '🔁 Shadow', on: false },
-    { mode: 'smart',  label: '✨ Smart',  on: true },
-    { mode: 'loop',   label: '🔁 Repeat', on: true },
-    { mode: 'auto5',  label: '5× Auto',   on: true },
-    { mode: 'auto10', label: '10× Auto',  on: true },
+    { mode: 'off',    label: 'Shadow',   on: false },
+    { mode: 'smart2', label: '2× Smart', on: true },
+    { mode: 'smart',  label: '1× Smart', on: true },
+    { mode: 'auto5',  label: '5× Auto',  on: true },
+    { mode: 'auto10', label: '10× Auto', on: true },
   ];
   const $shadow = document.getElementById('tx-shadow');
   // 한 '문단'을 반복 대상으로 확정 — pIdx 의 문단 시작/끝(자막시각)을 loopStart/End 로.
@@ -749,12 +748,14 @@ export async function renderEpisode(root, idStr, tStr) {
     const ps = sentRanges.filter((s) => s.paraEl === pEl);
     if (!ps.length) return false;
     loopPara = pIdx; loopStart = ps[0].start; loopEnd = ps[ps.length - 1].end;
-    loopTarget = shadowMode === 'smart' ? smartReps(loopEnd - loopStart) : (REPEAT_OF[shadowMode] || 0);
+    loopTarget = (shadowMode === 'smart' || shadowMode === 'smart2')
+      ? smartRepsFor(loopEnd - loopStart) : (REPEAT_OF[shadowMode] || 0);
     updateLoopBadge();
     return true;
   }
-  // 반복 카운트다운 배지 — 반복 중인 문단 위에 남은 횟수를 작게 표시(사용자 요청 2026-07-09).
-  // smart/auto5/auto10 = "↻ N", loop = "↻ ∞". 모드 종료/문단 이동 시 이전 배지는 제거된다.
+  // 반복 카운트다운 배지 — 반복 중인 문단 위에 남은 횟수를 표시. 모든 반복 모드
+  // (2× Smart / 1× Smart / 5× Auto / 10× Auto)가 "↻ N" 으로 남은 횟수 카운트다운(사용자 요청 2026-07-17).
+  // 모드 종료/문단 이동 시 이전 배지는 제거된다.
   function updateLoopBadge() {
     document.querySelectorAll('.tx-loop-badge').forEach((b) => b.remove());
     if (!inRepeatMode() || loopPara < 0) return;
@@ -762,7 +763,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!pEl) return;
     const b = document.createElement('span');
     b.className = 'tx-loop-badge';
-    b.textContent = shadowMode === 'loop' ? '↻ ∞' : `↻ ${Math.max(0, loopTarget - loopCount)}`;
+    b.textContent = `↻ ${Math.max(0, loopTarget - loopCount)}`;
     pEl.appendChild(b);
   }
   // 현재 재생 위치가 속한 문단을 반복 대상으로(loop/auto5 진입 시 공용). 즉시 되감지 않고
@@ -1318,7 +1319,7 @@ function transcriptSheetHtml(segments, title, sub) {
           <div class="tx-toolbar">
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="Korean translation">KR</button>
             <button id="tx-ko-size" class="tx-toggle tx-ko-size-btn" aria-label="Translation text size">가</button>
-            <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">🔁 Shadow</button>
+            <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="글자 크기">A</button>
           </div>

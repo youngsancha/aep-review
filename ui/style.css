@@ -1104,18 +1104,19 @@ body.on-episode {
 /* 반복 카운트다운 배지 — 반복 중인 문단 좌상단 위에 남은 횟수(↻ N / ↻ ∞)를 작게 표시 */
 .tx-loop-badge {
   position: absolute;
-  top: calc(-15px * var(--tx-scale, 1));
+  top: calc(-18px * var(--tx-scale, 1));
   left: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* 글자/패딩도 본문 글자크기(A 칩, --tx-scale)에 비례 — 본문만 커지고 배지는 11px 고정이라
-     큰 글자에서 배지가 상대적으로 너무 작아 보이던 것 수정(사용자 요청 2026-07-13). */
-  font-size: calc(11px * var(--tx-scale, 1));
+  /* 글자/패딩도 본문 글자크기(A 칩, --tx-scale)에 비례 — 본문만 커지고 배지는 고정이라
+     큰 글자에서 배지가 상대적으로 너무 작아 보이던 것 수정(사용자 요청 2026-07-13).
+     기본 크기 확대 11→14px(이모지·숫자 더 크게, 사용자 요청 2026-07-17). */
+  font-size: calc(14px * var(--tx-scale, 1));
   font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1;
   color: var(--tint);
   background: var(--tint-soft-2);
-  padding: calc(3px * var(--tx-scale, 1)) calc(8px * var(--tx-scale, 1));
+  padding: calc(4px * var(--tx-scale, 1)) calc(10px * var(--tx-scale, 1));
   border-radius: 999px;
   pointer-events: none;   /* 문장 탭을 가로채지 않게 */
 }
