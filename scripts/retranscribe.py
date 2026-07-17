@@ -255,6 +255,8 @@ def main() -> None:
                    help="recency 대신 vocab 많은(자주 학습) 회차 먼저 — 예문 정확도를 학습지점에 빨리 도달")
     p.add_argument("--remap-only", action="store_true",
                    help="STT 없이 기존 transcript 로 vocab 타임스탬프만 재매핑(예문 클립 잘림 일괄수정, GPU 불필요)")
+    p.add_argument("--skip-hosted", action="store_true",
+                   help="이미 R2 호스팅된(매니페스트 등재) 회차는 건너뜀 — 매일 자동화가 '신규 회차만' 싸게 처리")
     args = p.parse_args()
 
     if args.remap_only:
@@ -281,7 +283,10 @@ def main() -> None:
     done = load_done()                          # 저장 베이스는 항상 전체 — --redo 여도 진행파일 손실 방지
     skip = load_skip()
     sel_done = set() if args.redo else done     # --redo 는 '이미 done' 도 다시 처리(선택 필터에만 영향)
-    ids = [i for i in select_ids(args) if i not in sel_done and i not in skip]
+    # 이미 R2 호스팅된 회차 제외(매일 자동화용) — 진행파일이 CI 마다 초기화돼도 매니페스트로 '신규만'
+    # 판정. --redo 면 무시(강제 재호스팅). 매니페스트 조회 실패는 조용히 빈 집합(과처리는 멱등이라 안전).
+    hosted = store.load_hosted() if (args.skip_hosted and not args.redo) else set()
+    ids = [i for i in select_ids(args) if i not in sel_done and i not in skip and i not in hosted]
     ids = ids[: args.limit]
     if not ids:
         log.info("처리할 episode 없음 (모두 done?). 총 done=%d", len(done))

@@ -113,7 +113,9 @@ export async function renderEpisode(root, idStr, tStr) {
   if (sentences.length) {
     try {
       const wrap = document.createElement('div');
-      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel).trim();
+      // r2_audio===true 회차만 완벽 자동싱크(자막≡서빙오디오). 아니면 광고 뒤 드리프트 가능 → 안내 바.
+      const perfectSync = ep.transcript?.r2_audio === true;
+      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel, perfectSync).trim();
       $sheet = wrap.firstElementChild;
       document.body.appendChild($sheet);
     } catch (err) {
@@ -696,6 +698,10 @@ export async function renderEpisode(root, idStr, tStr) {
   document.addEventListener('keydown', escClose);
   document.getElementById('np-tx-btn')?.addEventListener('click', openSheet);
   $sheet?.querySelector('.tx-sheet-close')?.addEventListener('click', closeSheet);
+  // 비완벽싱크 안내 바 닫기 — 이 회차 동안만 숨김(스크롤 지오메트리 밖 요소라 싱크엔 영향 없음).
+  $sheet?.querySelector('#tx-drift-x')?.addEventListener('click', () => {
+    const n = $sheet.querySelector('#tx-drift-note'); if (n) n.remove();
+  });
   $sheet?.querySelector('.tx-sheet-backdrop')?.addEventListener('click', closeSheet);
   const destroySheetDrag = $sheet ? bindSheetDrag($sheet, closeSheet) : null;
   // Mini-controls inside sheet
@@ -1274,7 +1280,7 @@ function adBarHtml(adStart, resumeStart, isPre) {
   </button>`;
 }
 
-function transcriptSheetHtml(segments, title, sub) {
+function transcriptSheetHtml(segments, title, sub, perfectSync) {
   // 광고(DAI) 구간을 감지해 자막에서 감추고 '광고' 바로 대체. 본편 문장의 타임스탬프는 그대로 두므로
   // 광고가 끝나면 다음 본편 문장이 제 시각에 하이라이트된다(싱크 보존). 광고 없으면 전부 표시(폴백).
   const adRanges = detectAdRanges(segments);
@@ -1323,6 +1329,11 @@ function transcriptSheetHtml(segments, title, sub) {
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="글자 크기">A</button>
           </div>
+          ${(!perfectSync && adRanges.length) ? `
+          <div class="tx-drift-note" id="tx-drift-note" role="note">
+            <span class="tx-drift-txt">이 회차는 아직 완전 자동싱크 전이에요 — 광고 뒤 자막이 밀리면 문장을 탭해 맞추세요</span>
+            <button class="tx-drift-x" id="tx-drift-x" aria-label="닫기">×</button>
+          </div>` : ''}
           <div class="tx-scroll">
             ${body}
           </div>

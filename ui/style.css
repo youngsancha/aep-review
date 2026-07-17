@@ -2333,3 +2333,17 @@ a { color: var(--tint); }
 .sess-flash .quiz-def { font-size: 17px; line-height: 1.55; }
 .sess-flash .sess-ex { margin-top: 10px; font-style: italic; }
 .sess-sum-lines { margin: 18px auto 0; font-size: 14px; color: var(--text-2); line-height: 1.9; }
+
+/* 비완벽싱크(비-R2호스팅) 회차 안내 바 — 툴바와 본문 사이(스크롤 밖). 광고 뒤 드리프트 주의 + 탭 재싱크 안내 */
+.tx-drift-note {
+  display: flex; align-items: center; gap: 10px;
+  margin: 2px 2px 6px; padding: 8px 12px;
+  background: var(--chip-warn-bg, rgba(255,180,60,0.14)); color: var(--chip-warn-tx, #e0a94a);
+  border-radius: 10px; font-size: 12px; line-height: 1.4;
+}
+.tx-drift-txt { flex: 1 1 auto; min-width: 0; }
+.tx-drift-x {
+  flex: 0 0 auto; border: 0; background: transparent; color: inherit;
+  font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; opacity: 0.8;
+}
+.tx-drift-x:active { transform: scale(0.9); }
