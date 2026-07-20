@@ -678,11 +678,22 @@ export async function renderEpisode(root, idStr, tStr) {
   });
 
   // === Sheet open/close (defined here so it can read state vars and fns above) ===
+  // 전체화면 시트 열림 동안 배경(탑바·탭바·앱·미니플레이어)을 inert 로 → Tab/스크린리더가 뒤 페이지로
+  // 새지 않게(포커스 트랩). inert 미지원 브라우저는 조용히 무시(무해). 닫을 때 원복.
+  const _bgInert = ['#topbar', '#tabbar', '#app', '#miniplayer'];
+  function setBgInert(on) {
+    for (const sel of _bgInert) {
+      const el = document.querySelector(sel);
+      if (el) { if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert'); }
+    }
+  }
   function openSheet() {
     if (!$sheet) return;
     $sheet.classList.add('open');
     $sheet.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    setBgInert(true);
+    $sheet.querySelector('.tx-sheet-close')?.focus?.();   // 포커스를 시트 안으로
     wakePolicy();   // Transcript 열림 = 화면 계속 켜둠(30초 카운트 해제)
     // 신규 필수모드 발견성 — 트랜스크립트를 처음 열 때 1회만 롱프레스 사전 안내(숨은 제스처라 힌트 필요).
     try {
@@ -708,6 +719,8 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet.classList.remove('open');
     $sheet.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    setBgInert(false);
+    document.getElementById('np-tx-btn')?.focus?.();   // 포커스를 연 버튼으로 복원
     wakePolicy();   // 일반 화면 복귀 → 30초 무조작 시 화면 꺼짐 허용 카운트 시작
   }
   escClose = (e) => { if (e.key === 'Escape') closeSheet(); };
@@ -1104,6 +1117,7 @@ export async function renderEpisode(root, idStr, tStr) {
     stopRaf();
     txScrub?.destroy();
     destroySheetDrag?.();        // 시트 드래그의 document 마우스 리스너 제거(누수 방지)
+    setBgInert(false);           // 시트 열린 채 이탈해도 배경 inert 가 다음 화면에 남지 않게
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
     // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
@@ -1327,7 +1341,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync) {
   }
 
   return `
-    <div class="tx-sheet" aria-hidden="true">
+    <div class="tx-sheet" role="dialog" aria-modal="true" aria-label="Transcript" aria-hidden="true">
       <div class="tx-sheet-backdrop"></div>
       <div class="tx-sheet-card">
         <div class="tx-sheet-bg" style="background-image:url('${COVER()}')"></div>
