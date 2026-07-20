@@ -811,8 +811,7 @@ body.on-episode {
   margin-top: 3px; letter-spacing: 0.02em;
 }
 .tx-sheet-close {
-  position: absolute; right: 12px; top: 50%;
-  transform: translateY(-50%);
+  position: absolute; right: 12px; top: 14px;
   width: 36px; height: 36px;
   border: 0;
   background: var(--surface-2);
@@ -2288,7 +2287,9 @@ a { color: var(--tint); }
 
 
 /* 접근성: 작은 아이콘 버튼의 탭 히트영역을 44px 이상으로 확장(시각 크기 유지, 사용자 요청 UI/UX 고도화 2026-07-19) */
-.tx-sheet-close, .vocab-card .term button.tts, .tx-drift-x, .study-x-tr, .pinfo-x, .theme-switch { position: relative; }
+/* 히트영역 ::after 기준이 되도록 position 부여 — 단 tx-sheet-close 는 이미 absolute(그 자체가 기준),
+   theme-switch 는 knob 이 .theme-track(relative) 기준이라 여기서 건드리면 안 됨(둘 다 제외). */
+.vocab-card .term button.tts, .tx-drift-x, .study-x-tr, .pinfo-x { position: relative; }
 .tx-sheet-close::after, .vocab-card .term button.tts::after, .tx-drift-x::after,
 .study-x-tr::after, .pinfo-x::after { content: ''; position: absolute; inset: -8px; }
 .vocab-card .term button.tts::after { inset: -10px; }
