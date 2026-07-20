@@ -223,8 +223,9 @@ export async function renderEpisode(root, idStr, tStr) {
       $scrub.setAttribute('aria-valuetext', `${fmtTime(player.time)} / ${fmtTime(dur)}`);  // 스크린리더에 시간 맥락
       $cur.textContent = fmtTime(player.time);
       $rem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
-      // 트랜스크립트 시트 시크 바도 동기화 — 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
-      if (txScrub && !txScrub.isDragging()) {
+      // 트랜스크립트 시트 시크 바도 동기화 — 시트가 열려 있을 때만(닫힘 시엔 안 보이는 쓰기 낭비 방지).
+      // 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
+      if (txScrub && !txScrub.isDragging() && $sheet && $sheet.classList.contains('open')) {
         const pct = (player.time / dur * 100).toFixed(2);
         if ($txSeekFill)   $txSeekFill.style.width = pct + '%';
         if ($txSeekHandle) $txSeekHandle.style.left = pct + '%';
@@ -443,6 +444,10 @@ export async function renderEpisode(root, idStr, tStr) {
     }
   }
   function _highlightImpl() {
+    // 성능: 시트가 닫혀 있으면 하이라이트/스크롤 지오메트리는 '보이지 않는' 작업이라 통째로 건너뛴다.
+    // (화면 켜고 시트 닫은 채 듣는 흔한 상태에서 4Hz 리플로우·querySelector 낭비 제거.) openSheet 가
+    // 열 때 active/para 상태를 전부 지우고 highlightActiveSegment 를 재실행하므로 싱크엔 영향 없음.
+    if (!($sheet && $sheet.classList.contains('open'))) return;
     // 추적 상태 클래스(live/no-follow → 'Now playing' 배지 표시)는 어떤 조기 return 보다 먼저 갱신.
     // 예전엔 함수 끝에서만 갱신해서, 단일 문장 문단 반복(idx 불변)·광고 구간·일시정지처럼
     // 조기 return 에 걸리는 상황에서 배지가 영영 안 사라졌다(사용자 보고 2026-07-10).
@@ -710,7 +715,10 @@ export async function renderEpisode(root, idStr, tStr) {
       lastActivePara = -1;
       userScrolledUntil = 0;
       followResume = false;
+      lastWordIdx = -1;      // 단어 카라오케도 재동기화 대상으로 리셋
       highlightActiveSegment();
+      updateWord();          // 열자마자 단어 하이라이트 즉시 맞춤(닫힘 동안 rAF 멈춰 있었으므로)
+      startRaf();            // 재생 중이면 카라오케 rAF 재가동
       showControls();  // 열 때 컨트롤 표시 후 잠시 뒤 자동 숨김
     }, 80);
   }
@@ -719,6 +727,7 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet.classList.remove('open');
     $sheet.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    stopRaf();   // 시트 닫힘 → 보이지 않는 카라오케 60fps 루프 정지(배터리)
     setBgInert(false);
     document.getElementById('np-tx-btn')?.focus?.();   // 포커스를 연 버튼으로 복원
     wakePolicy();   // 일반 화면 복귀 → 30초 무조작 시 화면 꺼짐 허용 카운트 시작
@@ -1090,7 +1099,9 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   let rafId = 0;
   function rafLoop() { updateWord(); rafId = requestAnimationFrame(rafLoop); }
-  function startRaf() { if (!rafId) rafId = requestAnimationFrame(rafLoop); }
+  // 성능: 단어 카라오케 rAF(60fps)는 '시트가 열려 재생 중'일 때만 돈다. 시트 닫힘 상태(화면 켜고
+  // 듣기)에선 카라오케가 안 보이므로 60fps 웨이크업을 통째로 없앤다. openSheet/closeSheet 가 시작/정지.
+  function startRaf() { if (!rafId && !player.paused && $sheet && $sheet.classList.contains('open')) rafId = requestAnimationFrame(rafLoop); }
   function stopRaf() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
   const offWord = player.on((ev) => {
     if (ev === 'play') startRaf();
