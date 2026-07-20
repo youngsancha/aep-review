@@ -2311,3 +2311,6 @@ a { color: var(--tint); }
   -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
   mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
 }
+
+/* SRS 인라인 재생 버튼 탭 피드백(srs-context-btn 은 위에서 이미 처리) — 일관성 완성(UI/UX 고도화 2026-07-19) */
+.srs-listen-btn:active { transform: scale(0.94); }
