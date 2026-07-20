@@ -292,7 +292,6 @@ function featuredHtml(e) {
       <div class="feat-inner">
         <img class="feat-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
         <div class="feat-body">
-          <div class="feat-label">▶ Latest</div>
           <a class="feat-title" href="#/episode/${e.id}">${escapeHtml(title)}</a>
           <div class="feat-meta">${escapeHtml(meta)}</div>
         </div>

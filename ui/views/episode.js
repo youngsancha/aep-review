@@ -59,7 +59,7 @@ export async function renderEpisode(root, idStr, tStr) {
       <div class="np-meta">
         <div class="np-show">${escapeHtml(showLabel)}</div>
         <h1 class="np-title">${escapeHtml((ep.title || '').replace(/^\d+\s*[-:.]\s*/, ''))}</h1>
-        <p class="np-subtitle">${ep.duration_sec ? escapeHtml(fmtDuration(ep.duration_sec)) : ''}</p>
+        <p class="np-subtitle">${escapeHtml(showMeta(currentShow()).name)}${ep.duration_sec ? ` · ${escapeHtml(fmtDuration(ep.duration_sec))}` : ''}</p>
       </div>
       ${ep.audio_url ? `
         <div class="np-scrubber">
