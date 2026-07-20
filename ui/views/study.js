@@ -56,6 +56,19 @@ let _studyBack = null;   // 열린 서브화면을 닫는 함수(열려 있으�
 // 타이머 콜백은 진입 시 세대를 캡처했다가 현재 세대와 다르면 그린 것을 폐기한다.
 let _studyGen = 0;
 export function _studyGenNow() { return _studyGen; }
+// 미디어 리소스 정리 레지스트리(누수 방지) — 말하기/KR→EN 드릴이 blob URL·mic 스트림·음성인식을
+// 만들면 여기에 정리자를 등록한다. 라우트 이탈(hashchange)·드릴 이동 시 일괄 실행해 revokeObjectURL
+// + 스트림/인식 정지. (예전엔 URL.createObjectURL 이 revoke 없이 누수되고, 녹음 중 이탈하면 mic 가
+// 계속 켜져 있었다 — 성능 감사 2026-07-19.)
+const _mediaCleanups = new Set();
+function registerMediaCleanup(fn) { _mediaCleanups.add(fn); return fn; }
+function runMediaCleanups() {
+  for (const fn of _mediaCleanups) { try { fn(); } catch (e) { /* ignore */ } }
+  _mediaCleanups.clear();
+}
+// blob URL 생성 즉시 revoke 정리자를 등록 — 라우트 이탈 시 일괄 해제(누수 방지). <audio> 가 다 쓸
+// 때까지는 유효하고, 화면을 떠나면 회수된다.
+function objUrl(blob) { const u = URL.createObjectURL(blob); registerMediaCleanup(() => URL.revokeObjectURL(u)); return u; }
 let _popWired = false;
 function wireStudyPop() {
   if (_popWired) return;
@@ -66,7 +79,7 @@ function wireStudyPop() {
     // 탭 이동으로 서브화면을 떠나면 밀어둔 {studySub} 항목이 고아로 남는다 → 한 번 더 되돌려 스킵.
     if (e.state && e.state.studySub) history.back();
   });
-  window.addEventListener('hashchange', () => { _studyBack = null; _studyGen++; });
+  window.addEventListener('hashchange', () => { _studyBack = null; _studyGen++; runMediaCleanups(); });
 }
 
 // 세션 드릴 완료 훅 — 설정돼 있으면 드릴 finish 가 자체 요약 대신 이걸 호출(세션이 다음 단계로).
@@ -143,6 +156,7 @@ export async function renderStudy(root) {
   wireStudyPop();     // 뒤로가기(popstate) 핸들러 1회 등록
   _studyBack = null;  // Study 홈 = 열린 서브화면 없음
   _studyGen++;        // 이 렌더의 세대 — 이전 화면의 지연 타이머를 무효화
+  runMediaCleanups(); // 드릴에서 빠져나올 때(popstate/재렌더 포함) mic 스트림 정지 + blob URL 회수
   // 스트릭(markStudyDay)은 '세션 완료'에서만 — 탭을 연 것만으로 오르던 것을 정직하게(sessSummary)
   root.innerHTML = `
     <div class="library-head"><h1 class="library-title">Study</h1></div>
@@ -519,12 +533,18 @@ export async function renderStudy(root) {
   }
 
   // 검색창은 한 번만 그리고(포커스·IME 유지), 입력 시 결과 호스트(#study-xlist-host)만 다시 그린다.
+  // 성능: 매 키입력마다 전체 리스트 innerHTML 재빌드 + 행마다 ~10개 리스너 재배선은 무거워, 150ms
+  // 디바운스(Library 검색과 동일)로 타이핑 멈춘 뒤에만 재그린다.
+  let _searchTimer = 0;
   function wireList() {
     const search = root.querySelector('#study-search');
     if (search) search.addEventListener('input', () => {
-      q = search.value;
-      const host = root.querySelector('#study-xlist-host');
-      if (host) { host.innerHTML = xlistHtml(); wireRows(); }
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => {
+        q = search.value;
+        const host = root.querySelector('#study-xlist-host');
+        if (host) { host.innerHTML = xlistHtml(); wireRows(); }
+      }, 150);
     });
     wireRows();
   }
@@ -1287,10 +1307,11 @@ export async function renderStudy(root) {
           myRec = new MediaRecorder(myStream); myRec.ondataavailable = (e) => chunks.push(e.data);
           myRec.onstop = () => {
             try { myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
-            if (chunks.length) injectCompare(URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' })), c);
+            if (chunks.length) injectCompare(objUrl(new Blob(chunks, { type: 'audio/webm' })), c);
           };
           myRec.start();
         } catch (e) { myRec = null; }
+        registerMediaCleanup(() => { try { rec && rec.stop(); } catch (e) {} try { myRec && myRec.state !== 'inactive' && myRec.stop(); } catch (e) {} try { myStream && myStream.getTracks().forEach((t) => t.stop()); } catch (e) {} });
         // continuous+interim: 말 도중 쉬어도 끊기지 않고 계속 듣는다(예전엔 첫 쉼에서 끊겨 피드백 없이
         // Speak 로 복귀하던 버그). 탭하면 끝내고, 끝나면 '무엇이든' 인식된 텍스트로 반드시 채점·피드백.
         rec = new SR();
@@ -1335,7 +1356,7 @@ export async function renderStudy(root) {
           recorder.ondataavailable = (e) => chunks.push(e.data);
           recorder.onstop = () => {
             stream.getTracks().forEach((t) => t.stop());
-            const url = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+            const url = objUrl(new Blob(chunks, { type: 'audio/webm' }));
             recording = false; mic.classList.remove('listening');
             const l = label(); if (l) l.textContent = '다시 녹음';
             root.querySelector('#sp-result').innerHTML = `
@@ -1351,6 +1372,7 @@ export async function renderStudy(root) {
             root.querySelector('#sp-next').addEventListener('click', () => { idx++; paintSp(); });
           };
           recorder.start(); recording = true; mic.classList.add('listening');
+          registerMediaCleanup(() => { try { recorder && recorder.state !== 'inactive' && recorder.stop(); } catch (e) {} try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {} });
           const l = label(); if (l) l.textContent = '녹음 중… (탭하면 정지)';
         } catch (e) {
           const h = root.querySelector('#sp-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
@@ -1463,11 +1485,12 @@ export async function renderStudy(root) {
           myRec = new MediaRecorder(myStream); myRec.ondataavailable = (e) => chunks.push(e.data);
           myRec.onstop = () => {
             try { myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
-            if (chunks.length) { pendingUrl = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+            if (chunks.length) { pendingUrl = objUrl(new Blob(chunks, { type: 'audio/webm' }));
               const box = root.querySelector('#pr-compare'); if (box) revealAttachRec(box, pendingUrl, c); }
           };
           myRec.start();
         } catch (e) { myRec = null; }
+        registerMediaCleanup(() => { try { rec && rec.stop(); } catch (e) {} try { myRec && myRec.state !== 'inactive' && myRec.stop(); } catch (e) {} try { myStream && myStream.getTracks().forEach((t) => t.stop()); } catch (e) {} });
         rec = new SR();
         rec.lang = 'en-US'; rec.interimResults = false; rec.maxAlternatives = 1; rec.continuous = false;
         listening = true; mic.classList.add('listening');
@@ -1500,11 +1523,12 @@ export async function renderStudy(root) {
           recorder.ondataavailable = (e) => chunks.push(e.data);
           recorder.onstop = () => {
             stream.getTracks().forEach((t) => t.stop());
-            const url = URL.createObjectURL(new Blob(chunks, { type: 'audio/webm' }));
+            const url = objUrl(new Blob(chunks, { type: 'audio/webm' }));
             recording = false; mic.classList.remove('listening');
             revealPr('', c, url);  // 인식 불가 → 점수 없이 정답+내 녹음 비교만
           };
           recorder.start(); recording = true; mic.classList.add('listening');
+          registerMediaCleanup(() => { try { recorder && recorder.state !== 'inactive' && recorder.stop(); } catch (e) {} try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {} });
           const l = label(); if (l) l.textContent = '녹음 중… (탭하면 정지)';
         } catch (e) {
           const h = root.querySelector('#pr-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
