@@ -2298,3 +2298,16 @@ a { color: var(--tint); }
 .np-ctrl-btn:active, .tx-mini-btn:active, #miniplayer .mp-btn:active { transform: scale(0.92); }
 .study-kind-chip:active, .ess-cat:active, .ess-dir-btn:active, .quiz-spk:active,
 .vocab-card .term button.tts:active, .tx-sheet-close:active { transform: scale(0.94); }
+
+/* About '더보기'/'접기' 토글 — 4줄 클램프가 넘칠 때만 노출(발견성, UI/UX 고도화 2026-07-19) */
+.np-about-toggle {
+  margin: 4px 0 0; padding: 4px 0; min-height: 32px;
+  background: none; border: 0; cursor: pointer;
+  color: var(--tint); font-weight: 700; font-size: 13px; font-family: var(--font);
+}
+.np-about-toggle:active { opacity: 0.6; }
+/* 접힌 About 하단 페이드 — '더 있음'을 암시(넘칠 때만 .clamped 부여) */
+.np-about-text.clamped:not(.expanded) {
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+}

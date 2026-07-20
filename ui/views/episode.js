@@ -63,7 +63,7 @@ export async function renderEpisode(root, idStr, tStr) {
       </div>
       ${ep.audio_url ? `
         <div class="np-scrubber">
-          <input id="np-scrub" type="range" min="0" max="100" step="0.1" value="0" />
+          <input id="np-scrub" type="range" min="0" max="100" step="0.1" value="0" aria-label="탐색" aria-valuetext="0:00" />
           <div class="np-times">
             <span id="np-cur">0:00</span>
             <span id="np-rem">-0:00</span>
@@ -93,6 +93,7 @@ export async function renderEpisode(root, idStr, tStr) {
       <div class="np-about">
         <div class="section-h"><h2>About</h2></div>
         <p class="np-about-text" id="np-about-text">${escapeHtml(stripTags(ep.description))}</p>
+        <button class="np-about-toggle" id="np-about-toggle" hidden aria-expanded="false">더보기</button>
       </div>
     ` : ''}
 
@@ -127,8 +128,22 @@ export async function renderEpisode(root, idStr, tStr) {
   // openSheet/closeSheet/escClose defined below, after state vars.
   let escClose = () => {};
 
-  // About 설명 펼치기/접기 (audio 유무와 무관하게 동작하도록 early-return 앞에 둠)
-  document.getElementById('np-about-text')?.addEventListener('click', (e) => e.currentTarget.classList.toggle('expanded'));
+  // About 설명 펼치기/접기 (audio 유무와 무관하게 동작하도록 early-return 앞에 둠).
+  // 4줄 클램프가 실제로 넘칠 때만 '더보기' 버튼을 노출(발견성) — 텍스트 탭도 계속 동작, 라벨 동기화.
+  const $about = document.getElementById('np-about-text');
+  const $aboutToggle = document.getElementById('np-about-toggle');
+  if ($about && $aboutToggle) {
+    const overflowing = $about.scrollHeight > $about.clientHeight + 4;
+    if (overflowing) { $aboutToggle.hidden = false; $about.classList.add('clamped'); }
+    const syncToggle = () => {
+      const open = $about.classList.contains('expanded');
+      $aboutToggle.textContent = open ? '접기' : '더보기';
+      $aboutToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    const toggle = () => { $about.classList.toggle('expanded'); syncToggle(); };
+    $about.addEventListener('click', toggle);
+    $aboutToggle.addEventListener('click', toggle);
+  }
 
   if (!ep.audio_url) {
     return; // no playback wiring needed
@@ -205,6 +220,7 @@ export async function renderEpisode(root, idStr, tStr) {
     const dur = player.duration;
     if (dur) {
       if (!npScrubbing) $scrub.value = (player.time / dur * 100).toFixed(2);  // 드래그 중엔 안 덮어씀(#6)
+      $scrub.setAttribute('aria-valuetext', `${fmtTime(player.time)} / ${fmtTime(dur)}`);  // 스크린리더에 시간 맥락
       $cur.textContent = fmtTime(player.time);
       $rem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
       // 트랜스크립트 시트 시크 바도 동기화 — 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
