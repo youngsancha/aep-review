@@ -7,7 +7,6 @@
 //  - 브라우저 배선은 initDriveCapture({ player, toast }) 주입으로만 일어난다(episode.js 가 호출).
 
 const MARKS_KEY = 'aep-marks';
-const DRIVE_KEY = 'aep-drive';
 const MAX_MARKS = 100;      // FIFO 상한 — 트리아지 없이 쌓여도 localStorage 를 못 채우게
 const DEDUPE_SEC = 4;       // 같은 회차에서 이 간격 안의 연타(핸들 버튼 더블탭)는 한 개로
 const REACTION_SEC = 1.5;   // '듣고 → 누르기'의 반응 지연 보정 — 살짝 과거 시각을 저장
@@ -91,9 +90,12 @@ export function removeMark(key) {
   saveMarks(loadMarks().filter((m) => m.k !== key));
 }
 
-export function driveOn() {
-  try { return localStorage.getItem(DRIVE_KEY) === '1'; } catch { return false; }
-}
+// 운전 모드 상태는 '메모리 전용 + 회차 진입마다 OFF 리셋'(사용자 요청 2026-07-22: transcript 에
+// 처음 들어가면 항상 꺼진 상태). 지난 주행에서 켜둔 모드가 다음날까지 남는 것을 막는 게 목적 —
+// PWA 는 백그라운드에서 며칠 살아남으므로 localStorage 는 물론 메모리 유지도 '항상 OFF'를 못
+// 보장한다. 그래서 initDriveCapture(=renderEpisode 마다 호출)가 매번 명시적으로 끈다.
+let _drive = false;
+export function driveOn() { return _drive; }
 
 // ─────────────────────────── 브라우저 배선 ───────────────────────────
 
@@ -136,8 +138,8 @@ function applyDriveMS() {
 }
 
 export function setDrive(on) {
-  try { localStorage.setItem(DRIVE_KEY, on ? '1' : '0'); } catch (e) { /* quota */ }
-  document.body.classList.toggle('drive-capture', !!on);
+  _drive = !!on;
+  document.body.classList.toggle('drive-capture', _drive);
   applyDriveMS();
 }
 
@@ -147,8 +149,8 @@ export function setDrive(on) {
 export function initDriveCapture(deps) {
   _player = deps.player;
   _toast = deps.toast;
-  document.body.classList.toggle('drive-capture', driveOn());
-  applyDriveMS();
+  setDrive(false);                                            // 회차 진입 = 항상 OFF 로 시작
+  try { localStorage.removeItem('aep-drive'); } catch (e) {}  // 구버전(persist 시절) 잔재 정리
   let fab = document.getElementById('drive-fab');
   if (!fab) {
     fab = document.createElement('button');

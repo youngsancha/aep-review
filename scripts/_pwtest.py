@@ -244,6 +244,9 @@ def main() -> int:
             # → 칩 OFF → FAB 숨김. 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
             drive_ok = None
             if sheet_open and pg.query_selector("#tx-drive"):
+                # v1.39.3: 회차 진입 시 항상 OFF 로 시작(상태 비영속) — 칩 off + FAB 숨김이 초기값
+                chip_off0 = pg.eval_on_selector("#tx-drive", "el=>el.getAttribute('aria-pressed')==='false'")
+                fab_hidden0 = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
                 pg.evaluate("window.__player.seek(23)")   # 마크 t≈21.5 → 픽스처 문장 3(22s~) 주변
                 pg.click("#tx-drive"); time.sleep(0.1)
                 fab_vis = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display!=='none'") if pg.query_selector("#drive-fab") else False
@@ -252,7 +255,7 @@ def main() -> int:
                 nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
                 pg.click("#tx-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
                 fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                drive_ok = bool(fab_vis and nmarks == 1 and fab_hidden)
+                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and fab_hidden)
             # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
             pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)
