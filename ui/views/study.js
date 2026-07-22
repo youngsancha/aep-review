@@ -5,7 +5,7 @@ import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknow
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
-import { loadMarks, removeMark, sentencesAround, groupRuns } from '/marks.js';
+import { loadMarks, removeMark, pickTriageSentences, groupRuns } from '/marks.js';
 import { getProgressMap, getCompletedAt } from '/player.js';
 import { renderEssentials } from '/views/essentials.js';
 import { recordMeasure, readProficiency, recordSnapshot, markSeen, loadSeen, loadSnapshots, weakestAxis } from '/proficiency.js';
@@ -588,7 +588,7 @@ export async function renderStudy(root) {
     const m = loadMarks().find((x) => x.k === k);
     if (!m) return;
     const ep = _driveEps[m.ep];
-    const sents = (ep && ep.transcript) ? sentencesAround(ep.transcript.segments || [], m.t) : [];
+    const sents = (ep && ep.transcript) ? pickTriageSentences(ep.transcript.segments || [], m) : [];
     const wordBtns = [...card.querySelectorAll('.dm-w')];
     const selIdx = wordBtns.map((b, i) => (b.classList.contains('sel') ? i : -1)).filter((i) => i >= 0);
     const jobs = [];
@@ -661,7 +661,7 @@ export async function renderStudy(root) {
 
     const markHtml = (m) => {
       const ep = eps[m.ep];
-      const sents = (ep && ep.transcript) ? sentencesAround(ep.transcript.segments || [], m.t) : [];
+      const sents = (ep && ep.transcript) ? pickTriageSentences(ep.transcript.segments || [], m) : [];
       const sugg = ep ? (ep.vocab || []).filter((v) => v.sentence_start_sec != null && Math.abs(v.sentence_start_sec - m.t) < 12) : [];
       const title = (m.title || (ep && ep.title) || `Episode ${m.ep}`).replace(/^\d+\s*[-:.]\s*/, '');
       return `
@@ -673,7 +673,7 @@ export async function renderStudy(root) {
         ${sents.length
           ? `<div class="dm-hint">Tap the words you didn’t know — adjacent picks become one phrase</div>
              <div class="dm-sents">${sents.map((s, si) =>
-               `<p class="dm-sent">${s.words.map((w) => `<button class="dm-w" data-si="${si}">${escapeHtml(w.word)}</button>`).join(' ')}</p>`).join('')}</div>`
+               `<p class="dm-sent${s.cur ? ' dm-cur' : ''}">${s.words.map((w) => `<button class="dm-w" data-si="${si}">${escapeHtml(w.word)}</button>`).join(' ')}</p>`).join('')}</div>`
           : `<div class="dm-hint">${ep ? 'No transcript around this moment — listen via the link below' : 'Offline — transcript unavailable, try again later'}</div>`}
         ${sugg.length ? `<div class="dm-sugg">${sugg.map((v) => `<button class="dm-sug" data-vid="${v.id}">✨ ${escapeHtml(v.term)}</button>`).join('')}</div>` : ''}
         <div class="dm-actions">

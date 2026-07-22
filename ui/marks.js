@@ -17,6 +17,7 @@ const FWD_SEC = 30;         // media-session.js DEFAULT_FWD 와 동기(캡처 OF
 
 let _player = null;
 let _toast = null;
+let _getLoop = null;   // episode.js 가 주입 — 쉐도잉 반복 중이면 {start,end}(반복 문단), 아니면 null
 
 // ─────────────────────────── 순수 헬퍼 (node 검증 대상) ───────────────────────────
 
@@ -81,6 +82,36 @@ export function sentencesAround(segments, t, before = 9, after = 3) {
   return out;
 }
 
+// 트리아지에 보여줄 문장 선택 — '저장 순간 재생 중이던 문장'이 잘리지 않게 완전한 문장 단위로.
+// (사용자 보고 2026-07-22: [t-9,t+3] 창이 과거로 치우쳐 현재 문장은 끝이 잘린 채 마지막 줄에
+// 걸리고 화면 대부분이 이전 문장들 → "저장 시점과 다른 문단"으로 보였다.)
+//  - 쉐도잉 반복 중 저장(mark.ps/pe = 반복 문단 범위) → 그 문단의 문장 전체.
+//  - 일반 재생 → t 를 품은 문장 + 앞뒤 한 문장씩.
+//  - 저장 순간의 문장에 cur=true — 렌더가 강조 표시한다.
+export function pickTriageSentences(segments, mark) {
+  const t = mark.t;
+  const sents = sentencesAround(segments, t, 24, 18);   // 넓게 뽑아 창 가장자리 절단이 선택에 안 닿게
+  if (!sents.length) return [];
+  let pick = null;
+  if (mark.ps != null && mark.pe != null) {
+    pick = sents.filter((s) => s.end > mark.ps - 0.2 && s.start < mark.pe + 0.2);
+  }
+  if (!pick || !pick.length) {
+    let idx = sents.findIndex((s) => t >= s.start && t <= s.end + 0.3);
+    if (idx < 0) {          // 문장 사이 쉼에 떨어짐 → 직전(들었던) 문장 기준
+      idx = 0;
+      for (let i = 0; i < sents.length; i++) if (sents[i].start <= t) idx = i;
+    }
+    pick = sents.slice(Math.max(0, idx - 1), idx + 2);
+  }
+  for (const s of pick) s.cur = (t >= s.start && t <= s.end + 0.3);
+  if (!pick.some((s) => s.cur)) {
+    const last = pick.filter((s) => s.start <= t).pop();
+    if (last) last.cur = true;
+  }
+  return pick;
+}
+
 // ─────────────────────────── 저장 ───────────────────────────
 
 export function loadMarks() {
@@ -105,13 +136,26 @@ export function driveOn() { return _drive; }
 // '지금 이 순간' 북마크 — FAB 과 차량 ⏭ 버튼이 공유하는 단일 진입점.
 export function addMark() {
   if (!_player || !_player.current) return false;
-  const t = Math.round(Math.max(0, (_player.time || 0) - REACTION_SEC) * 10) / 10;
+  let t = Math.max(0, (_player.time || 0) - REACTION_SEC);
+  // 쉐도잉 반복 중 저장: 반복 문단 범위를 마크에 함께 기록(트리아지가 그 문단 전체를 보여줌).
+  // 문단 끝→처음 재시크 직후 누르면 t 가 문단 밖(직전 문단 끝)으로 튀는데 — 들은 단어는 이
+  // 문단 것이므로 범위 안(끝 쪽 = 마지막으로 들은 지점)으로 보정한다(사용자 보고 2026-07-22:
+  // 저장된 문단이 저장 시점과 달랐던 원인 중 하나).
+  let ps = null, pe = null;
+  const loop = _getLoop ? _getLoop() : null;
+  if (loop && Number.isFinite(loop.start) && Number.isFinite(loop.end) && loop.end > loop.start) {
+    ps = Math.round(loop.start * 10) / 10;
+    pe = Math.round(loop.end * 10) / 10;
+    if (t < loop.start || t > loop.end) t = Math.max(loop.start, loop.end - 1);
+  }
+  t = Math.round(t * 10) / 10;
   const mark = {
     k: _player.current.id + ':' + Math.round(t),
     ep: _player.current.id,
     title: _player.current.title || '',
     t,
     at: Date.now(),
+    ...(ps != null ? { ps, pe } : {}),
   };
   const { list, added } = pushMark(loadMarks(), mark);
   if (added) saveMarks(list);
@@ -152,6 +196,7 @@ export function setDrive(on) {
 export function initDriveCapture(deps) {
   _player = deps.player;
   _toast = deps.toast;
+  _getLoop = deps.getLoop || null;
   setDrive(false);                                            // 회차 진입 = 항상 OFF 로 시작
   try { localStorage.removeItem('aep-drive'); } catch (e) {}  // 구버전(persist 시절) 잔재 정리
   let fab = document.getElementById('drive-fab');

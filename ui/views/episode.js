@@ -1019,7 +1019,13 @@ export async function renderEpisode(root, idStr, tStr) {
   // 운전 중 '읽고 고르는' 상호작용을 아예 없애는 게 목적(캡처와 학습의 시간 분리).
   // 칩은 transcript 시트 툴바(#tx-drive)에 — 차에선 시트를 연 쉐도잉 상태라 NP 화면 칩은 손이
   // 안 닿았다(사용자 요청 2026-07-22, v1.39.1에서 이동). 안내 문구는 플레이어 쪽 표기와 맞춰 영어.
-  initDriveCapture({ player, toast });
+  // getLoop: 쉐도잉 반복 중이면 반복 문단 범위를 marks.js 에 제공 — 마크가 '그 문단'에 묶이고,
+  // 문단 재시크 직후 눌러도 직전 문단으로 오기록되지 않는다(저장 문단 불일치 수리 2026-07-22).
+  initDriveCapture({
+    player, toast,
+    getLoop: () => (inRepeatMode() && loopPara >= 0 && Number.isFinite(loopStart) && Number.isFinite(loopEnd))
+      ? { start: loopStart, end: loopEnd } : null,
+  });
   const $drive = document.getElementById('tx-drive');
   const syncDriveChip = () => {
     if (!$drive) return;

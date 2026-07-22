@@ -3,7 +3,19 @@
 // 브라우저 배선(initDriveCapture/addMark)은 scripts/_pwtest.py 하니스가 실제 DOM 으로 커버한다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pushMark, groupRuns, sentencesAround } from '../ui/marks.js';
+import { pushMark, groupRuns, sentencesAround, pickTriageSentences } from '../ui/marks.js';
+
+// 문장 5개짜리 픽스처: "One one."(0-2) "Two two."(3-5) "Three three."(6-8) "Four four."(9-11) "Five five."(12-14)
+function fiveSentences() {
+  const mk = (a, b, i) => ({
+    start: a, end: b, text: '',
+    words: [
+      { word: ` ${['One', 'Two', 'Three', 'Four', 'Five'][i]}`, start: a, end: a + 1 },
+      { word: ` ${['one.', 'two.', 'three.', 'four.', 'five.'][i]}`, start: a + 1, end: b },
+    ],
+  });
+  return [0, 3, 6, 9, 12].map((a, i) => mk(a, a + 2, i));
+}
 
 test('pushMark: 실수 더블탭(1.5초 안)만 흡수, 의도된 연속 탭(2초+)·다른 회차는 추가', () => {
   const m1 = { k: '1:100', ep: 1, t: 100, at: 1 };
@@ -66,4 +78,28 @@ test('sentencesAround: t 주변 단어를 구두점/큰 쉼 경계로 문장 묶
   // 윈도 밖 단어는 제외: t=2.0, after=3 → start 5.0 초과 단어는 안 들어옴 (여기선 전부 포함 범위)
   const narrow = sentencesAround(segments, 0.5, 0.6, 0.5);
   assert.deepEqual(narrow.map((s) => s.text), ['Hello there.']);
+});
+
+test('pickTriageSentences: 저장 순간 문장은 완전한 문장으로 + 앞뒤 한 문장, cur 표시', () => {
+  const segs = fiveSentences();
+  const pick = pickTriageSentences(segs, { t: 7 });          // "Three three."(6-8) 재생 중 저장
+  assert.deepEqual(pick.map((s) => s.text), ['Two two.', 'Three three.', 'Four four.']);
+  assert.deepEqual(pick.map((s) => !!s.cur), [false, true, false]);
+  // 문장이 잘리지 않는다 — 각 문장 단어 2개 온전
+  assert.ok(pick.every((s) => s.words.length === 2));
+});
+
+test('pickTriageSentences: 문장 사이 쉼에 떨어진 t 는 직전(들었던) 문장을 cur 로', () => {
+  const segs = fiveSentences();
+  const pick = pickTriageSentences(segs, { t: 8.5 });        // Three 끝(8)과 Four 시작(9) 사이
+  assert.ok(pick.map((s) => s.text).includes('Three three.'));
+  const cur = pick.find((s) => s.cur);
+  assert.equal(cur.text, 'Three three.');
+});
+
+test('pickTriageSentences: 쉐도잉 반복 마크(ps/pe)는 반복 문단 전체를 보여준다', () => {
+  const segs = fiveSentences();
+  const pick = pickTriageSentences(segs, { t: 6.5, ps: 6, pe: 11 });   // 반복 문단 = Three+Four
+  assert.deepEqual(pick.map((s) => s.text), ['Three three.', 'Four four.']);
+  assert.equal(pick.find((s) => s.cur).text, 'Three three.');
 });
