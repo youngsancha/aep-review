@@ -108,9 +108,19 @@ export function getProgressMap() { return loadMap(); }  // 전체 진도 맵(라
 const DONE_KEY = 'aep-completed';
 function loadDone() { try { return new Set(JSON.parse(localStorage.getItem(DONE_KEY) || '[]')); } catch { return new Set(); } }
 export function getCompleted() { return loadDone(); }
-function markCompleted(id) {
+function markCompleted(id, title) {
   const s = loadDone();
   if (!s.has(id)) { s.add(id); try { localStorage.setItem(DONE_KEY, JSON.stringify([...s])); } catch (e) {} }
+  // 완료 '시각+제목' 별도 맵 — Study 홈 '최근 들은 회차' 트리아지용. 진도맵(aep-progress)은
+  // 완료 시 삭제되므로, 출퇴근에 끝까지 들은 회차는 이 맵이 없으면 최근 목록에서 사라진다.
+  try {
+    const m = JSON.parse(localStorage.getItem(DONE_AT_KEY) || '{}') || {};
+    if (!m[id]) { m[id] = { at: Date.now(), title: title || '' }; localStorage.setItem(DONE_AT_KEY, JSON.stringify(m)); }
+  } catch (e) { /* quota */ }
+}
+const DONE_AT_KEY = 'aep-completed-at';
+export function getCompletedAt() {
+  try { return JSON.parse(localStorage.getItem(DONE_AT_KEY) || '{}') || {}; } catch { return {}; }
 }
 let _lastSave = 0;
 function saveProgress() {
@@ -121,7 +131,7 @@ function saveProgress() {
     m[c.id] = { t, dur, title: c.title, at: Date.now() };
     saveMap(m);
   } else if (dur && t >= dur - 10) {  // 거의 끝까지 들음 → 완료 기록 + 이어듣기에서 제거
-    markCompleted(c.id);
+    markCompleted(c.id, c.title);
     if (m[c.id]) { delete m[c.id]; saveMap(m); }
   }
 }

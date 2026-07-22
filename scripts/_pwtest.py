@@ -137,6 +137,8 @@ export function getProgress() { return null; }
 export function getLatestProgress() { return { id:1, t:300, dur:1700, title:'211 - The Latest One', at:Date.now() }; }
 export function getProgressMap() { return { 1: { t:300, dur:1700, title:'211 - The Latest One', at:Date.now() } }; }
 export function getCompleted() { return new Set([2]); }
+export function getCompletedAt() { return { 2: { at: Date.now() - 3600e3, title: '210 - Another' } }; }
+export async function createCaptureCard(c) { (window.__captures = window.__captures || []).push(c); return { reused: false, vocabId: 99 }; }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
@@ -231,6 +233,20 @@ def main() -> int:
                          and ad_ranges[0].get('s') == 2 and ad_ranges[0].get('e') == 5)
             if pg.query_selector("#np-play"):
                 pg.click("#np-play")
+            # 운전 캡처(v1.39.0): 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(localStorage aep-marks)
+            # → 칩 OFF → FAB 숨김. 여기 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
+            # (시트 열기 전에 실행 — 시트가 열리면 #app 이 inert 라 #np-drive 클릭이 막힌다)
+            drive_ok = None
+            if pg.query_selector("#np-drive"):
+                pg.evaluate("window.__player.seek(23)")   # 마크 t≈21.5 → 픽스처 문장 3(22s~) 주변
+                pg.click("#np-drive"); time.sleep(0.1)
+                fab_vis = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display!=='none'") if pg.query_selector("#drive-fab") else False
+                if fab_vis:
+                    pg.click("#drive-fab"); time.sleep(0.1)
+                nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
+                pg.click("#np-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
+                fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
+                drive_ok = bool(fab_vis and nmarks == 1 and fab_hidden)
             sheet_open = None
             if pg.query_selector("#np-tx-btn"):
                 pg.click("#np-tx-btn"); time.sleep(0.4)
@@ -318,7 +334,7 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_btn_gone=", sync_btn_gone)
-            print("wordpop_ok=", wordpop_ok)
+            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -331,7 +347,7 @@ def main() -> int:
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True
-                     and wordpop_ok is True)
+                     and wordpop_ok is True and drive_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
@@ -500,6 +516,33 @@ def main() -> int:
                 resume_label = pg.eval_on_selector("#sess-go", "el=>el.textContent") if pg.query_selector("#sess-go") else ''
                 sess_ok = bool(sizes == 3 and has_rev and graded and has_new and in_drill
                                and streak_before_done and resume_saved and ('이어서' in (resume_label or '')))
+            # 🚗 운전 캡처 트리아지(v1.39.0): episode 하니스가 남긴 마크(aep-marks)가 Drive 섹션에 뜨고,
+            # 단어 탭 → '카드 만들기' → createCaptureCard 호출 + 마크 소거. 최근 들은 회차 행도 확인.
+            time.sleep(0.3)
+            dm_card = pg.query_selector(".dm-card") is not None
+            dm_recent = pg.query_selector(".dm-recent") is not None
+            drive_tri_ok = None
+            if dm_card:
+                dm_words = pg.eval_on_selector_all(".dm-card .dm-w", "els=>els.length")
+                pg.eval_on_selector(".dm-card .dm-w", "el=>el.click()")
+                time.sleep(0.05)
+                make_enabled = pg.eval_on_selector(".dm-card .dm-make", "el=>!el.disabled")
+                pg.eval_on_selector(".dm-card .dm-make", "el=>el.click()")
+                # 카드 생성은 translate fetch → createCaptureCard → removeMark 비동기 체인 — 고정 sleep
+                # 대신 완료를 폴링(0.5s 로는 route RTT 에 따라 ncap 읽기가 먼저 실행되는 타이밍 플레이크).
+                try:
+                    pg.wait_for_function("(window.__captures||[]).length>=1", timeout=8000)
+                except Exception:
+                    pass
+                time.sleep(0.2)
+                ncap = pg.evaluate("(window.__captures||[]).length")
+                nmarks_after = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
+                cap_ko = pg.evaluate("((window.__captures||[])[0]||{}).ko||''")
+                print("DRIVE-TRI: words=", dm_words, " make_enabled=", make_enabled, " ncap=", ncap,
+                      " nmarks_after=", nmarks_after, " cap_ko=", repr(cap_ko),
+                      " captures=", pg.evaluate("window.__captures||[]"))
+                drive_tri_ok = bool(dm_words > 0 and make_enabled and ncap == 1 and nmarks_after == 0
+                                    and isinstance(cap_ko, str) and cap_ko.startswith('[KO]'))
             study_err = pg.evaluate("window.__err||[]")
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
                   " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
@@ -508,7 +551,8 @@ def main() -> int:
                   " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
                   " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
-                  " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok, " err=", study_err)
+                  " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok,
+                  " dm_card=", dm_card, " dm_recent=", dm_recent, " drive_tri=", drive_tri_ok, " err=", study_err)
             study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and today_ok is True and know_marked is True
@@ -518,7 +562,8 @@ def main() -> int:
                         and qb_ico == 8 and qb_txt == 8 and qb_uniform is True
                         and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
                         and study_tr >= 4
-                        and sess_ok is True)
+                        and sess_ok is True
+                        and dm_card and dm_recent and drive_tri_ok is True)
 
             # === Timeline(Library) 회귀 ===
             pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건

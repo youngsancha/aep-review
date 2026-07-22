@@ -7,6 +7,7 @@ import { showCover, currentShow, showMeta } from '/config.js';
 import { translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
 import { addShadowReps } from '/proficiency.js';
+import { initDriveCapture, setDrive, driveOn } from '/marks.js';
 
 // 현재 쇼 커버(렌더 시 평가) — 멀티-쇼에서 에피소드가 속한 쇼의 아트워크를 보여준다.
 // (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
@@ -22,6 +23,8 @@ const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" s
 // ⏮/⏭ 트랙(에피소드) 이동 아이콘 — 트랜스크립트 시트의 ⏮/⏭ 과 동일 글리프(메인 화면용 28px).
 const SVG_PREV_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>';
 const SVG_NEXT_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>';
+// 운전 캡처 칩 글리프 — END_MODES 와 동일하게 currentColor 단색(컬러 이모지 사각박스 회피).
+const SVG_CAR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.4-4.2A2 2 0 0 1 8.3 5.5h7.4a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v4h-2.2M3 16V12a1 1 0 0 1 1-1"/><circle cx="7.5" cy="16.5" r="1.7"/><circle cx="16.5" cy="16.5" r="1.7"/><path d="M9.2 16.5h5.6"/></svg>';
 
 // 1× 에서 탭마다 1.25 → 1.5 → 0.5 → 0.75 → 1.0 → 1.25 … 순환 (사용자 지정 순서)
 const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
@@ -79,6 +82,7 @@ export async function renderEpisode(root, idStr, tStr) {
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
           <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends"></button>
+          <button class="speed np-drive-btn" id="np-drive" aria-pressed="false" aria-label="운전 캡처 모드">${SVG_CAR}</button>
           ${sentences.length ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
@@ -1008,6 +1012,25 @@ export async function renderEpisode(root, idStr, tStr) {
     const mode = END_MODES[endIdx].mode;
     if (mode === 'repeat') { player.seek(0); player.play(); }
     else if (mode === 'next' && navNextId != null) gotoEpisode(navNextId, sheetOpen());
+  });
+
+  // === 운전 캡처(Drive capture) — 주행 중 '지금 문장' 북마크 (marks.js) ===
+  // ON: 플로팅 🔖 FAB(시트 위에도 뜸) + 차 핸들 ⏭(Media Session nexttrack)이 현재 시각을 저장.
+  // OFF: ⏭ 은 원래 +30s 스킵으로 복귀. 저장만 하고 단어 고르기/카드 만들기는 Study 홈 트리아지에서 —
+  // 운전 중 '읽고 고르는' 상호작용을 아예 없애는 게 목적(캡처와 학습의 시간 분리).
+  initDriveCapture({ player, toast });
+  const $drive = document.getElementById('np-drive');
+  const syncDriveChip = () => {
+    if (!$drive) return;
+    $drive.setAttribute('aria-pressed', driveOn() ? 'true' : 'false');
+    $drive.classList.toggle('on', driveOn());
+  };
+  syncDriveChip();
+  $drive?.addEventListener('click', () => {
+    const on = !driveOn();
+    setDrive(on);
+    syncDriveChip();
+    toast(on ? '🚗 운전 캡처 ON — 🔖/차 ⏭ 버튼이 지금 문장을 저장해요' : '운전 캡처 OFF — ⏭ 은 +30초로 복귀');
   });
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===

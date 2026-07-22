@@ -1,10 +1,12 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
-import { escapeHtml, highlightTerm } from '/app.js';
-import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview } from '/db.js';
+import { escapeHtml, highlightTerm, toast } from '/app.js';
+import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview, getEpisode, createCaptureCard } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { translateEnKo } from '/translate.js';
+import { loadMarks, removeMark, sentencesAround, groupRuns } from '/marks.js';
+import { getProgressMap, getCompletedAt } from '/player.js';
 import { renderEssentials } from '/views/essentials.js';
 import { recordMeasure, readProficiency, recordSnapshot, markSeen, loadSeen, loadSnapshots, weakestAxis } from '/proficiency.js';
 
@@ -323,6 +325,7 @@ export async function renderStudy(root) {
           </div>
         </div>
       </div>
+      <div id="drive-host"></div>
       <details class="season-group study-practice">
         <summary class="section-h season-head"><h2>Practice</h2><span class="season-right"><span class="count">8 modes</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
         <div class="study-quiz-row">
@@ -549,8 +552,185 @@ export async function renderStudy(root) {
     wireRows();
   }
 
+  // ── 🚗 운전 캡처 트리아지 — 차에서 저장한 순간(aep-marks)을 단어 탭 → SRS 카드로 (v1.39.0) ──
+  // marks.js 캡처의 후반부. 마크된 시각 주변 자막을 탭 가능한 단어로 펼치고, 고른 단어(인접 선택
+  // = 하나의 구)를 createCaptureCard 로 오늘 세션 '새 표현' 풀에 넣는다. 마크가 없어도 최근 48h
+  // 들은 회차의 표현 훑기(알아요/학습)를 제안 — 운전 중 상호작용 0으로도 복습이 이어지게.
+  let _driveEps = {};            // paintDrive 가 갱신 — 위임 핸들러가 항상 최신 회차 데이터를 보게
+  const fmtT = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  function recentEpisodes() {
+    const cutoff = Date.now() - 48 * 3600e3;
+    const seen = new Map();
+    try {
+      for (const [id, p] of Object.entries(getProgressMap())) {
+        if (p && p.at > cutoff) seen.set(Number(id), { id: Number(id), title: p.title || '', at: p.at });
+      }
+      for (const [id, c] of Object.entries(getCompletedAt())) {
+        if (c && c.at > cutoff && !seen.has(Number(id))) seen.set(Number(id), { id: Number(id), title: c.title || '', at: c.at });
+      }
+    } catch (e) { /* localStorage 파싱 실패 — 섹션만 생략 */ }
+    return [...seen.values()].sort((a, b) => b.at - a.at).slice(0, 3);
+  }
+
+  function syncMake(card) {
+    const nSel = card.querySelectorAll('.dm-w.sel, .dm-sug.sel').length;
+    const nCards = groupRuns([...card.querySelectorAll('.dm-w')]
+      .map((b, i) => (b.classList.contains('sel') ? i : -1)).filter((i) => i >= 0)).length
+      + card.querySelectorAll('.dm-sug.sel').length;
+    const mk = card.querySelector('.dm-make');
+    if (mk) { mk.disabled = !nSel; mk.textContent = nSel ? `카드 만들기 (${nCards})` : '카드 만들기'; }
+  }
+
+  async function makeCards(card) {
+    const k = card.dataset.k;
+    const m = loadMarks().find((x) => x.k === k);
+    if (!m) return;
+    const ep = _driveEps[m.ep];
+    const sents = (ep && ep.transcript) ? sentencesAround(ep.transcript.segments || [], m.t) : [];
+    const wordBtns = [...card.querySelectorAll('.dm-w')];
+    const selIdx = wordBtns.map((b, i) => (b.classList.contains('sel') ? i : -1)).filter((i) => i >= 0);
+    const jobs = [];
+    for (const run of groupRuns(selIdx)) {
+      const term = run.map((i) => wordBtns[i].textContent.replace(/^[^A-Za-z']+|[^A-Za-z']+$/g, ''))
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!term) continue;
+      const s = sents[Number(wordBtns[run[0]].dataset.si)];
+      jobs.push({ term, sentence: s ? s.text : null, startSec: s ? s.start : m.t, endSec: s ? s.end : null });
+    }
+    for (const sug of card.querySelectorAll('.dm-sug.sel')) {
+      const v = ((ep && ep.vocab) || []).find((x) => String(x.id) === sug.dataset.vid);
+      if (v) jobs.push({ term: v.term, sentence: v.example_sentence, startSec: v.sentence_start_sec, endSec: v.sentence_end_sec });
+    }
+    if (!jobs.length) return;
+    const mk = card.querySelector('.dm-make');
+    if (mk) { mk.disabled = true; mk.textContent = '만드는 중…'; }
+    let made = 0;
+    for (const j of jobs) {
+      try {
+        const ko = await translateEnKo(j.term);   // 실패해도 '' — 카드엔 term 이 back 폴백
+        await createCaptureCard({ episodeId: m.ep, term: j.term, ko, sentence: j.sentence, startSec: j.startSec, endSec: j.endSec });
+        made++;
+      } catch (e) { /* 개별 실패(오프라인 등)는 건너뜀 — 남은 것 계속 */ }
+    }
+    if (made) {
+      removeMark(k);
+      toast(`카드 ${made}장 추가 — 오늘 세션 '새 표현'에 나와요`);
+      paintDrive().catch(() => {});
+    } else if (mk) { mk.disabled = false; mk.textContent = '카드 만들기'; }
+  }
+
+  async function toggleRecent(row) {
+    const list = row.querySelector('.dm-recent-list');
+    if (!list) return;
+    if (!list.hidden) { list.hidden = true; return; }
+    list.hidden = false;
+    if (list.dataset.loaded) return;
+    list.innerHTML = '<div class="dm-hint">불러오는 중…</div>';
+    try {
+      const ep = await getEpisode(Number(row.dataset.ep));
+      const vs = ep.vocab || [];
+      list.innerHTML = vs.length ? vs.map((v) => `
+        <div class="dm-vrow" data-vid="${v.id}">
+          <div class="dm-vmain"><b>${escapeHtml(v.term)}</b>${v.definition ? `<span>${escapeHtml(v.definition)}</span>` : ''}</div>
+          <button class="dm-know" data-vid="${v.id}">알아요</button>
+          <button class="dm-study" data-vid="${v.id}">학습</button>
+        </div>`).join('') : '<div class="dm-hint">이 회차엔 추출된 표현이 없어요</div>';
+      list.dataset.loaded = '1';
+    } catch (e) {
+      list.innerHTML = '<div class="dm-hint">불러오지 못했어요 — 온라인에서 다시 시도해 주세요</div>';
+    }
+  }
+
+  async function paintDrive() {
+    const host = root.querySelector('#drive-host');
+    if (!host) return;
+    const marks = loadMarks();
+    const recents = recentEpisodes();
+    if (!marks.length && !recents.length) { host.innerHTML = ''; return; }
+    const gen = _studyGen;
+
+    // 마크가 걸린 회차만 받아온다(회차별 1회 — transcript 는 SW 데이터캐시라 재방문 무료).
+    const eps = {};
+    await Promise.all([...new Set(marks.map((m) => m.ep))].map(async (id) => {
+      try { eps[id] = await getEpisode(id); } catch (e) { /* 오프라인 — 해당 마크는 문장 없이 표시 */ }
+    }));
+    if (gen !== _studyGen || !root.querySelector('#drive-host')) return;   // 렌더 세대 가드(뒤로가기/재렌더)
+    _driveEps = eps;
+
+    const markHtml = (m) => {
+      const ep = eps[m.ep];
+      const sents = (ep && ep.transcript) ? sentencesAround(ep.transcript.segments || [], m.t) : [];
+      const sugg = ep ? (ep.vocab || []).filter((v) => v.sentence_start_sec != null && Math.abs(v.sentence_start_sec - m.t) < 12) : [];
+      const title = (m.title || (ep && ep.title) || `회차 ${m.ep}`).replace(/^\d+\s*[-:.]\s*/, '');
+      return `
+      <div class="dm-card" data-k="${escapeHtml(m.k)}">
+        <div class="dm-head">
+          <span class="dm-when">🎧 ${escapeHtml(title)} · ${fmtT(m.t)}</span>
+          <button class="dm-x" aria-label="이 마크 지우기">지우기</button>
+        </div>
+        ${sents.length
+          ? `<div class="dm-hint">몰랐던 단어를 탭하세요 — 붙은 단어를 이어 고르면 구(句) 하나로 저장돼요</div>
+             <div class="dm-sents">${sents.map((s, si) =>
+               `<p class="dm-sent">${s.words.map((w) => `<button class="dm-w" data-si="${si}">${escapeHtml(w.word)}</button>`).join(' ')}</p>`).join('')}</div>`
+          : `<div class="dm-hint">${ep ? '이 시각 주변 자막을 찾지 못했어요 — 아래 링크로 직접 들어보세요' : '오프라인이라 자막을 못 받았어요 — 나중에 다시 열어 주세요'}</div>`}
+        ${sugg.length ? `<div class="dm-sugg">${sugg.map((v) => `<button class="dm-sug" data-vid="${v.id}">✨ ${escapeHtml(v.term)}</button>`).join('')}</div>` : ''}
+        <div class="dm-actions">
+          <button class="dm-make" disabled>카드 만들기</button>
+          <a class="dm-open" href="#/episode/${m.ep}/${Math.max(0, Math.floor(m.t) - 4)}">회차에서 듣기 ›</a>
+        </div>
+      </div>`;
+    };
+
+    const recentHtml = (r) => `
+      <div class="dm-recent" data-ep="${r.id}">
+        <button class="dm-recent-btn"><span>🎧 ${escapeHtml((r.title || `회차 ${r.id}`).replace(/^\d+\s*[-:.]\s*/, ''))}</span><i>표현 훑기 ›</i></button>
+        <div class="dm-recent-list" hidden></div>
+      </div>`;
+
+    host.innerHTML = `
+      <div class="section-h"><h2>🚗 Drive</h2>${marks.length ? `<span class="count">${marks.length}</span>` : ''}</div>
+      ${marks.map(markHtml).join('')}
+      ${recents.length ? `<div class="dm-recents"><div class="dm-recents-h">최근 들은 회차</div>${recents.map(recentHtml).join('')}</div>` : ''}`;
+
+    if (!host.dataset.wired) {
+      host.dataset.wired = '1';
+      host.addEventListener('click', (e) => {
+        const w = e.target.closest('.dm-w');
+        if (w) { w.classList.toggle('sel'); syncMake(w.closest('.dm-card')); return; }
+        const sug = e.target.closest('.dm-sug');
+        if (sug) { sug.classList.toggle('sel'); syncMake(sug.closest('.dm-card')); return; }
+        const x = e.target.closest('.dm-x');
+        if (x) { removeMark(x.closest('.dm-card').dataset.k); paintDrive().catch(() => {}); return; }
+        const mk = e.target.closest('.dm-make');
+        if (mk) { makeCards(mk.closest('.dm-card')); return; }
+        const ka = e.target.closest('.dm-know');
+        if (ka) {
+          const row = ka.closest('.dm-vrow');
+          markKnown(Number(ka.dataset.vid)).catch(() => {});
+          applyKnown(1);
+          row.classList.add('done');
+          row.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          return;
+        }
+        const stb = e.target.closest('.dm-study');
+        if (stb) {
+          const row = stb.closest('.dm-vrow');
+          markUnknown(Number(stb.dataset.vid)).catch(() => {});
+          toast('오늘 세션 새 표현에 추가했어요');
+          row.classList.add('done');
+          row.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+          return;
+        }
+        const rb = e.target.closest('.dm-recent-btn');
+        if (rb) { toggleRecent(rb.closest('.dm-recent')); }
+      });
+    }
+  }
+
   function paintShell() {
     root.innerHTML = heroHtml() + '<div id="study-list"></div>' + statsHtml();
+    paintDrive().catch(() => {});   // 비동기 — transcript 도착 후 채움(#drive-host 는 Today 카드 바로 아래)
     root.querySelectorAll('.study-kind-chip').forEach((b) =>
       b.addEventListener('click', () => loadKind(b.dataset.kind)));
     root.querySelector('#study-quiz-read')?.addEventListener('click', () => startQuiz('read'));

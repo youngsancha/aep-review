@@ -2315,3 +2315,69 @@ a { color: var(--tint); }
 
 /* SRS 인라인 재생 버튼 탭 피드백(srs-context-btn 은 위에서 이미 처리) — 일관성 완성(UI/UX 고도화 2026-07-19) */
 .srs-listen-btn:active { transform: scale(0.94); }
+
+/* ========== 🚗 Drive capture — 운전 캡처(marks.js + Study 트리아지) ========== */
+/* NP 칩 on 상태 — 속도칩과 같은 회색이 기본, 켜지면 브랜드 틴트로 '주행 모드 중' 표시 */
+.np-drive-btn[aria-pressed="true"] {
+  color: var(--tint-hover); background: var(--tint-soft);
+  box-shadow: inset 0 0 0 1.5px var(--tint-hover);
+}
+
+/* 플로팅 저장 버튼 — body 직속이라 transcript 시트의 배경 inert 에 안 걸리고, 시트(z 200) 위에 뜬다.
+   운전 중 조준 없이 누르는 큰 원 + 표시는 CSS 만으로(body.drive-capture.on-episode) 라우트 연동. */
+#drive-fab {
+  position: fixed; right: 14px; bottom: 42vh; z-index: 500;   /* 스크러버·전송 컨트롤 위(겹침 방지) */
+  width: 64px; height: 64px; border-radius: 50%;
+  display: none; align-items: center; justify-content: center;
+  border: none; cursor: pointer;
+  background: var(--grad-brand); color: #fff;
+  box-shadow: var(--shadow-pop);
+  opacity: 0.92;
+}
+body.drive-capture.on-episode #drive-fab { display: flex; }
+#drive-fab:active { transform: scale(0.94); }
+#drive-fab .drive-fab-n {
+  position: absolute; top: -3px; right: -3px; min-width: 21px; height: 21px; padding: 0 5px;
+  border-radius: 11px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; font-style: normal; line-height: 19px; text-align: center;
+}
+#drive-fab.pop { animation: drive-pop 0.35s ease; }
+@keyframes drive-pop { 40% { transform: scale(1.18); } }
+
+/* Study 홈 트리아지 — 마크 카드(문장 단어 탭 → 카드 만들기) */
+.dm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 0 0 10px; }
+.dm-head { display: flex; align-items: center; gap: 8px; }
+.dm-when { font-size: 13px; color: var(--text-2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-x { border: none; background: none; color: var(--text-3); font-size: 12.5px; padding: 8px; margin: -8px -8px -8px 0; }
+.dm-hint { font-size: 12.5px; color: var(--text-3); margin: 6px 0 8px; }
+.dm-sents { display: flex; flex-direction: column; gap: 6px; }
+.dm-sent { margin: 0; line-height: 2.15; }
+.dm-w {
+  display: inline; border: none; padding: 3px 4px; margin: 0; border-radius: 7px;
+  background: none; color: var(--text); font: inherit; font-size: 16px; line-height: 1.6; cursor: pointer;
+}
+.dm-w.sel { background: var(--tint-soft); color: var(--tint-hover); box-shadow: inset 0 0 0 1.5px var(--tint-hover); font-weight: 600; }
+.dm-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dm-sug { border: 1px solid var(--border); background: none; color: var(--text-2); border-radius: 999px; padding: 6px 11px; font-size: 13.5px; }
+.dm-sug.sel { background: var(--tint-soft); color: var(--tint-hover); border-color: var(--tint-hover); font-weight: 600; }
+.dm-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.dm-make { border: none; border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 700; background: var(--grad-brand); color: #fff; }
+.dm-make:disabled { opacity: 0.45; }
+.dm-open { margin-left: auto; font-size: 13px; color: var(--text-2); text-decoration: none; padding: 8px 0; }
+
+/* 최근 들은 회차 — 표현 훑기(알아요/학습) */
+.dm-recents { margin: 2px 0 6px; }
+.dm-recents-h { font-size: 12.5px; color: var(--text-3); margin: 2px 2px 4px; }
+.dm-recent + .dm-recent { border-top: 1px solid var(--border); }
+.dm-recent-btn { display: flex; width: 100%; align-items: center; gap: 8px; border: none; background: none; padding: 11px 2px; font-size: 14.5px; color: var(--text); min-height: 44px; }
+.dm-recent-btn span { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-recent-btn i { font-style: normal; color: var(--text-2); font-size: 13px; flex: none; }
+.dm-recent-list { padding: 2px 0 10px; }
+.dm-vrow { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
+.dm-vrow.done { opacity: 0.4; }
+.dm-vmain { flex: 1; min-width: 0; }
+.dm-vmain b { display: block; font-size: 14.5px; }
+.dm-vmain span { display: block; font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-know, .dm-study { flex: none; border: 1px solid var(--border); background: none; border-radius: 999px; padding: 7px 12px; font-size: 13px; color: var(--text-2); min-height: 34px; }
+.dm-study { color: var(--tint-hover); border-color: var(--tint-hover); }

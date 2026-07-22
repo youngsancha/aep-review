@@ -242,6 +242,36 @@ export async function markUnknown(vocabId) {
   if (error) throw new Error(error.message);
 }
 
+// 운전 캡처 → 카드 생성(Study 트리아지). 같은 term 의 vocab 이 이미 있으면 새로 만들지 않고
+// 그 SRS 카드를 오늘 복습으로 리셋(markUnknown) — 중복 카드 방지 + 기존 Claude 정의를 그대로 활용.
+// 없으면 vocab_cards(단어/구 + 실제 발화 문장·시각) + srs_cards(due=오늘, reps=0) 를 함께 만든다.
+// due=오늘 → srsQueue 의 '신규' 풀에 바로 들어가 오늘/내일 세션에 자연 편입(별도 복습 UI 불필요).
+export async function createCaptureCard({ episodeId, term, ko, sentence, startSec, endSec }) {
+  const { data: existing, error: qerr } = await withShow(
+    supabase.from('vocab_cards').select('id').ilike('term', term))   // ilike + 와일드카드 없음 = 대소문자 무시 완전일치
+    .limit(1);
+  if (qerr) throw new Error(qerr.message);
+  if (existing && existing.length) {
+    await markUnknown(existing[0].id);        // ingest 가 vocab 마다 srs 카드를 만들므로 항상 짝이 있다
+    return { reused: true, vocabId: existing[0].id };
+  }
+  const show = currentShow();
+  const kind = /\s/.test(term.trim()) ? 'collocation' : 'word';
+  const { data: v, error } = await supabase.from('vocab_cards').insert({
+    episode_id: episodeId, show, term, kind,
+    definition: ko || null,                   // 실시간 사전 소스가 MyMemory 뿐 — 한국어 뜻을 정의로
+    example_sentence: sentence || null,
+    sentence_start_sec: startSec ?? null, sentence_end_sec: endSec ?? null,
+  }).select('id').single();
+  if (error) throw new Error(error.message);
+  const { error: serr } = await supabase.from('srs_cards').insert({
+    episode_id: episodeId, vocab_id: v.id, show,
+    front: term, back: ko || term, category: kind, due_date: todayStr(),
+  });
+  if (serr) throw new Error(serr.message);
+  return { reused: false, vocabId: v.id };
+}
+
 // vocab 행 → 뷰 표준 모양(에피소드 제목·재생 audio_url·known·예문 한글). expressionsByKind/allExpressions 공용.
 const VOCAB_SELECT =
   'id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)';
