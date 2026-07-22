@@ -233,26 +233,26 @@ def main() -> int:
                          and ad_ranges[0].get('s') == 2 and ad_ranges[0].get('e') == 5)
             if pg.query_selector("#np-play"):
                 pg.click("#np-play")
-            # 운전 캡처(v1.39.0): 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(localStorage aep-marks)
-            # → 칩 OFF → FAB 숨김. 여기 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
-            # (시트 열기 전에 실행 — 시트가 열리면 #app 이 inert 라 #np-drive 클릭이 막힌다)
-            drive_ok = None
-            if pg.query_selector("#np-drive"):
-                pg.evaluate("window.__player.seek(23)")   # 마크 t≈21.5 → 픽스처 문장 3(22s~) 주변
-                pg.click("#np-drive"); time.sleep(0.1)
-                fab_vis = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display!=='none'") if pg.query_selector("#drive-fab") else False
-                if fab_vis:
-                    pg.click("#drive-fab"); time.sleep(0.1)
-                nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
-                pg.click("#np-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
-                fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                drive_ok = bool(fab_vis and nmarks == 1 and fab_hidden)
             sheet_open = None
             if pg.query_selector("#np-tx-btn"):
                 pg.click("#np-tx-btn"); time.sleep(0.4)
                 sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')")
                 if pg.query_selector("#tx-mini-play"):
                     pg.click("#tx-mini-play")
+            # 운전 캡처(v1.39.1): 칩은 transcript 시트 툴바(#tx-drive) — 시트를 연 뒤에만 클릭 가능
+            # (닫힌 시트는 pointer-events:none). 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(aep-marks)
+            # → 칩 OFF → FAB 숨김. 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
+            drive_ok = None
+            if sheet_open and pg.query_selector("#tx-drive"):
+                pg.evaluate("window.__player.seek(23)")   # 마크 t≈21.5 → 픽스처 문장 3(22s~) 주변
+                pg.click("#tx-drive"); time.sleep(0.1)
+                fab_vis = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display!=='none'") if pg.query_selector("#drive-fab") else False
+                if fab_vis:
+                    pg.click("#drive-fab"); time.sleep(0.1)
+                nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
+                pg.click("#tx-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
+                fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
+                drive_ok = bool(fab_vis and nmarks == 1 and fab_hidden)
             # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
             pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)

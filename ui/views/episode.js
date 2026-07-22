@@ -82,7 +82,6 @@ export async function renderEpisode(root, idStr, tStr) {
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
           <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends"></button>
-          <button class="speed np-drive-btn" id="np-drive" aria-pressed="false" aria-label="운전 캡처 모드">${SVG_CAR}</button>
           ${sentences.length ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
@@ -1018,19 +1017,21 @@ export async function renderEpisode(root, idStr, tStr) {
   // ON: 플로팅 🔖 FAB(시트 위에도 뜸) + 차 핸들 ⏭(Media Session nexttrack)이 현재 시각을 저장.
   // OFF: ⏭ 은 원래 +30s 스킵으로 복귀. 저장만 하고 단어 고르기/카드 만들기는 Study 홈 트리아지에서 —
   // 운전 중 '읽고 고르는' 상호작용을 아예 없애는 게 목적(캡처와 학습의 시간 분리).
+  // 칩은 transcript 시트 툴바(#tx-drive)에 — 차에선 시트를 연 쉐도잉 상태라 NP 화면 칩은 손이
+  // 안 닿았다(사용자 요청 2026-07-22, v1.39.1에서 이동). 안내 문구는 플레이어 쪽 표기와 맞춰 영어.
   initDriveCapture({ player, toast });
-  const $drive = document.getElementById('np-drive');
+  const $drive = document.getElementById('tx-drive');
   const syncDriveChip = () => {
     if (!$drive) return;
     $drive.setAttribute('aria-pressed', driveOn() ? 'true' : 'false');
-    $drive.classList.toggle('on', driveOn());
   };
   syncDriveChip();
-  $drive?.addEventListener('click', () => {
+  $drive?.addEventListener('click', (e) => {
+    e.stopPropagation();               // 시트 탭 리스너(컨트롤 표시 등)와 분리
     const on = !driveOn();
     setDrive(on);
     syncDriveChip();
-    toast(on ? '🚗 운전 캡처 ON — 🔖/차 ⏭ 버튼이 지금 문장을 저장해요' : '운전 캡처 OFF — ⏭ 은 +30초로 복귀');
+    toast(on ? '🚗 Drive capture ON — 🔖 or car ⏭ saves this sentence' : 'Drive capture OFF — ⏭ skips +30s again');
   });
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
@@ -1392,6 +1393,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync) {
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="글자 크기">A</button>
+            <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
           </div>
           ${(!perfectSync && adRanges.length) ? `
           <div class="tx-drift-note" id="tx-drift-note" role="note">

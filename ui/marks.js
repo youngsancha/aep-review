@@ -110,7 +110,8 @@ export function addMark() {
   };
   const { list, added } = pushMark(loadMarks(), mark);
   if (added) saveMarks(list);
-  if (_toast) _toast(added ? `🔖 저장 ${list.length}개 — Study 탭에서 카드로` : '🔖 방금 저장한 순간이에요');
+  // 안내는 영어 — 플레이어/시트 컨트롤 표기(Shadow·Transcript 등)와 통일(사용자 요청 2026-07-22).
+  if (_toast) _toast(added ? `🔖 Saved (${list.length}) — make cards in Study` : '🔖 Already saved this moment');
   const fab = document.getElementById('drive-fab');
   if (fab) {
     const n = fab.querySelector('.drive-fab-n');
@@ -152,7 +153,7 @@ export function initDriveCapture(deps) {
   if (!fab) {
     fab = document.createElement('button');
     fab.id = 'drive-fab';
-    fab.setAttribute('aria-label', '지금 문장 저장');
+    fab.setAttribute('aria-label', 'Save this sentence');
     fab.innerHTML =
       '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' +
       `<i class="drive-fab-n">${loadMarks().length}</i>`;
