@@ -515,7 +515,7 @@ def main() -> int:
                 resume_saved = bool(st and st.get('stage') == 'drill' and not st.get('completedAt'))
                 resume_label = pg.eval_on_selector("#sess-go", "el=>el.textContent") if pg.query_selector("#sess-go") else ''
                 sess_ok = bool(sizes == 3 and has_rev and graded and has_new and in_drill
-                               and streak_before_done and resume_saved and ('이어서' in (resume_label or '')))
+                               and streak_before_done and resume_saved and ('Resume' in (resume_label or '')))
             # 🚗 운전 캡처 트리아지(v1.39.0): episode 하니스가 남긴 마크(aep-marks)가 Drive 섹션에 뜨고,
             # 단어 탭 → '카드 만들기' → createCaptureCard 호출 + 마크 소거. 최근 들은 회차 행도 확인.
             time.sleep(0.3)

@@ -39,7 +39,8 @@ const SESS_CAPS = {
   M: { review: 20, fresh: 3, drills: 1, read: 10, dictation: 5, cloze: 7, prod: 5, min: 10 },
   L: { review: 40, fresh: 5, drills: 2, read: 12, dictation: 7, cloze: 9, prod: 6, min: 20 },
 };
-const DRILL_LABEL = { dictation: '✍️ 받아쓰기', read: '🎯 스피드 퀴즈', prod: '🗣️ KR→EN', cloze: '🧩 빈칸' };
+// 모드 라벨은 영어 — Practice 리스트(Dictation/Cloze/Quiz…)와 동일 표기(홈 영문화 2026-07-22).
+const DRILL_LABEL = { dictation: '✍️ Dictation', read: '🎯 Speed quiz', prod: '🗣️ KR→EN', cloze: '🧩 Cloze' };
 function sessSize() { try { const v = localStorage.getItem(SESS_SIZE_KEY); return SESS_CAPS[v] ? v : 'M'; } catch (e) { return 'M'; } }
 function loadSess() { try { return JSON.parse(localStorage.getItem(SESS_KEY) || 'null'); } catch (e) { return null; } }
 function saveSess(st) { try { localStorage.setItem(SESS_KEY, JSON.stringify(st)); } catch (e) { /* quota */ } }
@@ -179,12 +180,12 @@ export async function renderStudy(root) {
     if (!ov) {
       const offline = !navigator.onLine;
       root.innerHTML = `<div class="empty study-offline">
-        <p class="study-offline-title">${offline ? '📴 오프라인이에요' : '불러오지 못했어요'}</p>
+        <p class="study-offline-title">${offline ? '📴 You’re offline' : 'Couldn’t load'}</p>
         <p class="study-offline-sub">${offline
-          ? 'Study 통계는 온라인에서 채워져요. Essentials 는 오프라인에서도 학습할 수 있어요.'
+          ? 'Study stats need a connection — Essentials still works offline.'
           : escapeHtml(e.message)}</p>
-        <button class="btn primary" id="study-ess-cta">✨ Essentials 열기</button>
-        <button class="btn" id="study-retry">다시 시도</button>
+        <button class="btn primary" id="study-ess-cta">✨ Open Essentials</button>
+        <button class="btn" id="study-retry">Retry</button>
       </div>`;
       document.getElementById('study-ess-cta')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
       document.getElementById('study-retry')?.addEventListener('click', () => renderStudy(root));
@@ -297,9 +298,9 @@ export async function renderStudy(root) {
         <div class="cont-body">
           <div class="cont-title" id="sess-title">${(() => {
             const st = loadSess(); const t = _dayKey(new Date());
-            if (st && st.d === t && st.completedAt) return '✓ 오늘 세션 완료';
-            if (st && st.d === t && st.stage !== 'done') return '오늘 세션 — 진행 중';
-            return '오늘 세션';
+            if (st && st.d === t && st.completedAt) return '✓ Session complete';
+            if (st && st.d === t && st.stage !== 'done') return 'Daily session · in progress';
+            return 'Daily session';
           })()}</div>
           <div class="cont-bar"><span id="study-known-bar" style="width:${pct}%"></span></div>
           <div class="cont-meta" id="sess-preview">${(() => {
@@ -308,20 +309,20 @@ export async function renderStudy(root) {
             const drills = (st && st.d === t && !st.completedAt && st.drillModes) ? st.drillModes : pickDrills(caps.drills);
             const nRev = Math.min(ov.dueReview ?? ov.due ?? 0, caps.review);
             const nNew = Math.min(ov.dueNew ?? 0, caps.fresh);
-            return `복습 ${nRev} · 새 표현 ${nNew} · ${drills.map((m) => DRILL_LABEL[m] || m).join(' · ')}`;
+            return `Review ${nRev} · New ${nNew} · ${drills.map((m) => DRILL_LABEL[m] || m).join(' · ')}`;
           })()}</div>
           <div class="cont-actions">
             <button class="cont-play" id="sess-go">${(() => {
               const st = loadSess(); const t = _dayKey(new Date());
-              if (st && st.d === t && st.completedAt) return '한 세션 더';
-              if (st && st.d === t && st.stage !== 'done') return '▶ 이어서 하기';
+              if (st && st.d === t && st.completedAt) return '▶ One more';
+              if (st && st.d === t && st.stage !== 'done') return '▶ Resume';
               return '▶ Start';
             })()}</button>
             <a class="cont-script" id="plan-level" role="button" tabindex="0">Level check ›</a>
             <a class="cont-script" href="#/srs">Review${ov.due > 0 ? ` ${ov.due}` : ''} ›</a>
           </div>
-          <div class="sess-size" role="group" aria-label="세션 크기">
-            ${['S', 'M', 'L'].map((z) => `<button data-size="${z}" class="${z === sessSize() ? 'on' : ''}">${z} · ${SESS_CAPS[z].min}분</button>`).join('')}
+          <div class="sess-size" role="group" aria-label="Session size">
+            ${['S', 'M', 'L'].map((z) => `<button data-size="${z}" class="${z === sessSize() ? 'on' : ''}">${z} · ${SESS_CAPS[z].min} min</button>`).join('')}
           </div>
         </div>
       </div>
@@ -342,7 +343,7 @@ export async function renderStudy(root) {
       </details>
       <button class="study-ess-row" id="study-essentials">
         <span class="study-ess-ico">✨</span>
-        <span class="study-ess-txt"><b>Essentials</b><span>미국 현지·비즈니스 핵심표현</span></span>
+        <span class="study-ess-txt"><b>Essentials</b><span>Everyday &amp; business American English</span></span>
         <span class="study-ess-go">›</span>
       </button>
       <div class="section-h"><h2>Expressions</h2><span class="count">${ov.total.toLocaleString()}</span></div>
@@ -431,7 +432,7 @@ export async function renderStudy(root) {
   }
   function listHtml() {
     if (!items.length) return '<div class="empty">표현이 아직 없어요.</div>';
-    return `<div class="study-swipe-tip"><b>밀기 →</b> <b>알아요</b> · <b>←</b> 되돌리기 · 카드 탭 = 발음</div>`
+    return `<div class="study-swipe-tip"><b>Swipe →</b> <b>Know it</b> · <b>←</b> undo · tap card = speak</div>`
       + `<input class="study-search" id="study-search" type="search" inputmode="search" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Search expressions…" value="${escapeHtml(q)}" />`
       + `<div id="study-xlist-host">${xlistHtml()}</div>`;
   }
@@ -579,7 +580,7 @@ export async function renderStudy(root) {
       .map((b, i) => (b.classList.contains('sel') ? i : -1)).filter((i) => i >= 0)).length
       + card.querySelectorAll('.dm-sug.sel').length;
     const mk = card.querySelector('.dm-make');
-    if (mk) { mk.disabled = !nSel; mk.textContent = nSel ? `카드 만들기 (${nCards})` : '카드 만들기'; }
+    if (mk) { mk.disabled = !nSel; mk.textContent = nSel ? `Make cards (${nCards})` : 'Make cards'; }
   }
 
   async function makeCards(card) {
@@ -604,7 +605,7 @@ export async function renderStudy(root) {
     }
     if (!jobs.length) return;
     const mk = card.querySelector('.dm-make');
-    if (mk) { mk.disabled = true; mk.textContent = '만드는 중…'; }
+    if (mk) { mk.disabled = true; mk.textContent = 'Creating…'; }
     let made = 0;
     for (const j of jobs) {
       try {
@@ -615,9 +616,9 @@ export async function renderStudy(root) {
     }
     if (made) {
       removeMark(k);
-      toast(`카드 ${made}장 추가 — 오늘 세션 '새 표현'에 나와요`);
+      toast(`${made} card${made > 1 ? 's' : ''} added — coming up in today’s session`);
       paintDrive().catch(() => {});
-    } else if (mk) { mk.disabled = false; mk.textContent = '카드 만들기'; }
+    } else if (mk) { mk.disabled = false; mk.textContent = 'Make cards'; }
   }
 
   async function toggleRecent(row) {
@@ -626,19 +627,19 @@ export async function renderStudy(root) {
     if (!list.hidden) { list.hidden = true; return; }
     list.hidden = false;
     if (list.dataset.loaded) return;
-    list.innerHTML = '<div class="dm-hint">불러오는 중…</div>';
+    list.innerHTML = '<div class="dm-hint">Loading…</div>';
     try {
       const ep = await getEpisode(Number(row.dataset.ep));
       const vs = ep.vocab || [];
       list.innerHTML = vs.length ? vs.map((v) => `
         <div class="dm-vrow" data-vid="${v.id}">
           <div class="dm-vmain"><b>${escapeHtml(v.term)}</b>${v.definition ? `<span>${escapeHtml(v.definition)}</span>` : ''}</div>
-          <button class="dm-know" data-vid="${v.id}">알아요</button>
-          <button class="dm-study" data-vid="${v.id}">학습</button>
-        </div>`).join('') : '<div class="dm-hint">이 회차엔 추출된 표현이 없어요</div>';
+          <button class="dm-know" data-vid="${v.id}">Know it</button>
+          <button class="dm-study" data-vid="${v.id}">Learn</button>
+        </div>`).join('') : '<div class="dm-hint">No expressions in this episode yet</div>';
       list.dataset.loaded = '1';
     } catch (e) {
-      list.innerHTML = '<div class="dm-hint">불러오지 못했어요 — 온라인에서 다시 시도해 주세요</div>';
+      list.innerHTML = '<div class="dm-hint">Couldn’t load — try again when online</div>';
     }
   }
 
@@ -662,36 +663,36 @@ export async function renderStudy(root) {
       const ep = eps[m.ep];
       const sents = (ep && ep.transcript) ? sentencesAround(ep.transcript.segments || [], m.t) : [];
       const sugg = ep ? (ep.vocab || []).filter((v) => v.sentence_start_sec != null && Math.abs(v.sentence_start_sec - m.t) < 12) : [];
-      const title = (m.title || (ep && ep.title) || `회차 ${m.ep}`).replace(/^\d+\s*[-:.]\s*/, '');
+      const title = (m.title || (ep && ep.title) || `Episode ${m.ep}`).replace(/^\d+\s*[-:.]\s*/, '');
       return `
       <div class="dm-card" data-k="${escapeHtml(m.k)}">
         <div class="dm-head">
           <span class="dm-when">🎧 ${escapeHtml(title)} · ${fmtT(m.t)}</span>
-          <button class="dm-x" aria-label="이 마크 지우기">지우기</button>
+          <button class="dm-x" aria-label="Dismiss this moment">Dismiss</button>
         </div>
         ${sents.length
-          ? `<div class="dm-hint">몰랐던 단어를 탭하세요 — 붙은 단어를 이어 고르면 구(句) 하나로 저장돼요</div>
+          ? `<div class="dm-hint">Tap the words you didn’t know — adjacent picks become one phrase</div>
              <div class="dm-sents">${sents.map((s, si) =>
                `<p class="dm-sent">${s.words.map((w) => `<button class="dm-w" data-si="${si}">${escapeHtml(w.word)}</button>`).join(' ')}</p>`).join('')}</div>`
-          : `<div class="dm-hint">${ep ? '이 시각 주변 자막을 찾지 못했어요 — 아래 링크로 직접 들어보세요' : '오프라인이라 자막을 못 받았어요 — 나중에 다시 열어 주세요'}</div>`}
+          : `<div class="dm-hint">${ep ? 'No transcript around this moment — listen via the link below' : 'Offline — transcript unavailable, try again later'}</div>`}
         ${sugg.length ? `<div class="dm-sugg">${sugg.map((v) => `<button class="dm-sug" data-vid="${v.id}">✨ ${escapeHtml(v.term)}</button>`).join('')}</div>` : ''}
         <div class="dm-actions">
-          <button class="dm-make" disabled>카드 만들기</button>
-          <a class="dm-open" href="#/episode/${m.ep}/${Math.max(0, Math.floor(m.t) - 4)}">회차에서 듣기 ›</a>
+          <button class="dm-make" disabled>Make cards</button>
+          <a class="dm-open" href="#/episode/${m.ep}/${Math.max(0, Math.floor(m.t) - 4)}">Listen in episode ›</a>
         </div>
       </div>`;
     };
 
     const recentHtml = (r) => `
       <div class="dm-recent" data-ep="${r.id}">
-        <button class="dm-recent-btn"><span>🎧 ${escapeHtml((r.title || `회차 ${r.id}`).replace(/^\d+\s*[-:.]\s*/, ''))}</span><i>표현 훑기 ›</i></button>
+        <button class="dm-recent-btn"><span>🎧 ${escapeHtml((r.title || `Episode ${r.id}`).replace(/^\d+\s*[-:.]\s*/, ''))}</span><i>Skim expressions ›</i></button>
         <div class="dm-recent-list" hidden></div>
       </div>`;
 
     host.innerHTML = `
       <div class="section-h"><h2>🚗 Drive</h2>${marks.length ? `<span class="count">${marks.length}</span>` : ''}</div>
       ${marks.map(markHtml).join('')}
-      ${recents.length ? `<div class="dm-recents"><div class="dm-recents-h">최근 들은 회차</div>${recents.map(recentHtml).join('')}</div>` : ''}`;
+      ${recents.length ? `<div class="dm-recents"><div class="dm-recents-h">Recently played</div>${recents.map(recentHtml).join('')}</div>` : ''}`;
 
     if (!host.dataset.wired) {
       host.dataset.wired = '1';
@@ -717,7 +718,7 @@ export async function renderStudy(root) {
         if (stb) {
           const row = stb.closest('.dm-vrow');
           markUnknown(Number(stb.dataset.vid)).catch(() => {});
-          toast('오늘 세션 새 표현에 추가했어요');
+          toast('Added to today’s new expressions');
           row.classList.add('done');
           row.querySelectorAll('button').forEach((b) => { b.disabled = true; });
           return;
