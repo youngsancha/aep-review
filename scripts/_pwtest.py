@@ -253,9 +253,19 @@ def main() -> int:
                 if fab_vis:
                     pg.click("#drive-fab"); time.sleep(0.1)
                 nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
+                # v1.40.0 드래그: 12px+ 이동 = 위치 이동(마크 생성 없음) + aep-fab-pos 저장 + 실제 이동
+                bb = pg.eval_on_selector("#drive-fab", "el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height};}")
+                pg.mouse.move(bb["x"] + bb["w"] / 2, bb["y"] + bb["h"] / 2)
+                pg.mouse.down()
+                pg.mouse.move(bb["x"] + bb["w"] / 2 - 120, bb["y"] + bb["h"] / 2 - 80, steps=8)
+                pg.mouse.up(); time.sleep(0.1)
+                bb2 = pg.eval_on_selector("#drive-fab", "el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top};}")
+                pos_saved = pg.evaluate("!!localStorage.getItem('aep-fab-pos')")
+                nmarks2 = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
+                drag_ok = bool(pos_saved and abs(bb2["x"] - bb["x"]) > 60 and nmarks2 == nmarks)
                 pg.click("#tx-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
                 fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and fab_hidden)
+                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and drag_ok and fab_hidden)
             # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
             pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)

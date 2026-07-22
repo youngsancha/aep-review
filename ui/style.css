@@ -2336,6 +2336,11 @@ a { color: var(--tint); }
 }
 body.drive-capture.on-episode #drive-fab { display: flex; }
 #drive-fab:active { transform: scale(0.94); }
+/* 터치 신뢰성: 이 버튼 위에서 시작한 터치는 브라우저가 스크롤/제스처로 절대 가로채지 못하게(핵심).
+   ::after 로 히트영역을 92px 로 확장 — 주행 진동 속 어림 탭도 명중. */
+#drive-fab { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+#drive-fab::after { content: ''; position: absolute; inset: -14px; border-radius: 50%; }
+#drive-fab.dragging { opacity: 1; transform: scale(1.08); transition: none; cursor: grabbing; }
 #drive-fab .drive-fab-n {
   position: absolute; top: -3px; right: -3px; min-width: 21px; height: 21px; padding: 0 5px;
   border-radius: 11px; background: var(--surface); color: var(--text);

@@ -5,24 +5,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pushMark, groupRuns, sentencesAround } from '../ui/marks.js';
 
-test('pushMark: 연타(4초 안 같은 회차)는 흡수, 다른 시각/회차는 추가', () => {
+test('pushMark: 실수 더블탭(1.5초 안)만 흡수, 의도된 연속 탭(2초+)·다른 회차는 추가', () => {
   const m1 = { k: '1:100', ep: 1, t: 100, at: 1 };
   let r = pushMark([], m1);
   assert.equal(r.added, true);
   assert.equal(r.list.length, 1);
 
-  // 2.5초 뒤 연타 → dedupe(핸들 버튼 더블탭 보호)
-  r = pushMark(r.list, { k: '1:103', ep: 1, t: 102.5, at: 2 });
+  // 0.9초 뒤 연타 → dedupe(실수 더블탭 보호)
+  r = pushMark(r.list, { k: '1:101', ep: 1, t: 100.9, at: 2 });
   assert.equal(r.added, false);
   assert.equal(r.list.length, 1);
 
-  // 같은 시각이라도 다른 회차면 별개 마크
-  r = pushMark(r.list, { k: '2:100', ep: 2, t: 100, at: 3 });
+  // 2초 뒤 탭은 '의도된' 저장 — 흡수하면 주행 중 "안 눌린 것"처럼 느껴진다(v1.40.0에서 4s→1.5s)
+  r = pushMark(r.list, { k: '1:102', ep: 1, t: 102, at: 3 });
   assert.equal(r.added, true);
   assert.equal(r.list.length, 2);
 
-  // 같은 회차, 4초 이상 떨어지면 별개 마크
-  r = pushMark(r.list, { k: '1:110', ep: 1, t: 110, at: 4 });
+  // 같은 시각이라도 다른 회차면 별개 마크
+  r = pushMark(r.list, { k: '2:100', ep: 2, t: 100, at: 4 });
   assert.equal(r.added, true);
   assert.equal(r.list.length, 3);
 });

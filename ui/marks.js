@@ -7,8 +7,11 @@
 //  - 브라우저 배선은 initDriveCapture({ player, toast }) 주입으로만 일어난다(episode.js 가 호출).
 
 const MARKS_KEY = 'aep-marks';
+const FAB_POS_KEY = 'aep-fab-pos';   // 사용자가 드래그로 옮긴 FAB 위치 {l,t}(px) — 기기별 유지
 const MAX_MARKS = 100;      // FIFO 상한 — 트리아지 없이 쌓여도 localStorage 를 못 채우게
-const DEDUPE_SEC = 4;       // 같은 회차에서 이 간격 안의 연타(핸들 버튼 더블탭)는 한 개로
+// 연타 흡수 간격: 4s → 1.5s (2026-07-22). 실주행에서 몇 초 간격의 '의도된' 연속 탭이 흡수돼
+// "눌렀는데 반응이 없다"로 느껴졌다. 실수 더블탭(<0.5s)만 막으면 충분 — 나머지는 전부 저장.
+const DEDUPE_SEC = 1.5;
 const REACTION_SEC = 1.5;   // '듣고 → 누르기'의 반응 지연 보정 — 살짝 과거 시각을 저장
 const FWD_SEC = 30;         // media-session.js DEFAULT_FWD 와 동기(캡처 OFF 시 ⏭ 원복용)
 
@@ -155,14 +158,78 @@ export function initDriveCapture(deps) {
   if (!fab) {
     fab = document.createElement('button');
     fab.id = 'drive-fab';
-    fab.setAttribute('aria-label', 'Save this sentence');
+    fab.setAttribute('aria-label', 'Save this sentence (drag to move)');
     fab.innerHTML =
       '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>' +
       `<i class="drive-fab-n">${loadMarks().length}</i>`;
-    fab.addEventListener('click', (e) => { e.stopPropagation(); addMark(); });
+    bindFabPointer(fab);
     document.body.appendChild(fab);
+    applyFabPos(fab);
+    window.addEventListener('resize', () => applyFabPos(fab));  // 회전/리사이즈 → 화면 안으로 재클램프
   } else {
     const n = fab.querySelector('.drive-fab-n');
     if (n) n.textContent = String(loadMarks().length);
   }
+}
+
+// ─────────────────────────── FAB 탭/드래그 ───────────────────────────
+// 신뢰성 원칙(주행 중 실패 0): click 이벤트를 쓰지 않는다 — click 은 탭 중 손가락이 조금만
+// 밀려도(주행 진동) 브라우저가 제스처로 판정해 아예 발화하지 않는 일이 있었다(사용자 보고
+// 2026-07-22). 대신 pointer 이벤트 + setPointerCapture + CSS touch-action:none 으로 터치를
+// 처음부터 끝까지 우리가 소유한다: 12px 이상 움직이면 '위치 이동(드래그)', 그 미만이면 놓는
+// 순간 무조건 저장. 시스템이 제스처를 뺏어(pointercancel) 가도 이동이 없었다면 저장한다.
+const DRAG_START_PX = 12;
+
+function clampPos(l, t, size) {
+  const m = 8;
+  return {
+    l: Math.min(Math.max(l, m), window.innerWidth - size - m),
+    t: Math.min(Math.max(t, m), window.innerHeight - size - m),
+  };
+}
+
+function applyFabPos(fab) {
+  let pos = null;
+  try { pos = JSON.parse(localStorage.getItem(FAB_POS_KEY) || 'null'); } catch (e) { /* 파싱 실패 → 기본 위치 */ }
+  if (!pos || !Number.isFinite(pos.l) || !Number.isFinite(pos.t)) return;   // 기본 위치는 CSS(right/bottom)
+  const { l, t } = clampPos(pos.l, pos.t, fab.offsetWidth || 64);
+  fab.style.left = l + 'px';
+  fab.style.top = t + 'px';
+  fab.style.right = 'auto';
+  fab.style.bottom = 'auto';
+}
+
+function bindFabPointer(fab) {
+  let pid = null, sx = 0, sy = 0, sl = 0, st = 0, moved = false;
+  fab.addEventListener('pointerdown', (e) => {
+    if (pid != null) return;                 // 멀티터치 두 번째 손가락 무시
+    pid = e.pointerId; moved = false;
+    sx = e.clientX; sy = e.clientY;
+    const r = fab.getBoundingClientRect(); sl = r.left; st = r.top;
+    try { fab.setPointerCapture(pid); } catch (err) { /* 미지원 — move/up 은 그래도 옴 */ }
+    e.preventDefault();
+  });
+  fab.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== pid) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!moved && Math.hypot(dx, dy) < DRAG_START_PX) return;
+    moved = true;
+    fab.classList.add('dragging');
+    const { l, t } = clampPos(sl + dx, st + dy, fab.offsetWidth || 64);
+    fab.style.left = l + 'px'; fab.style.top = t + 'px';
+    fab.style.right = 'auto'; fab.style.bottom = 'auto';
+  });
+  const finish = (e) => {
+    if (e.pointerId !== pid) return;
+    pid = null;
+    fab.classList.remove('dragging');
+    if (moved) {
+      const r = fab.getBoundingClientRect();
+      try { localStorage.setItem(FAB_POS_KEY, JSON.stringify({ l: Math.round(r.left), t: Math.round(r.top) })); } catch (err) { /* quota */ }
+    } else {
+      addMark();          // 탭(이동 없음) — pointercancel 이어도 저장: 차 안에선 놓치는 쪽이 더 비싸다
+    }
+  };
+  fab.addEventListener('pointerup', finish);
+  fab.addEventListener('pointercancel', finish);
 }
