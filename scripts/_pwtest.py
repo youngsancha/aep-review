@@ -266,6 +266,23 @@ def main() -> int:
                 pg.click("#tx-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
                 fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
                 drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and drag_ok and fab_hidden)
+            # 재생바 시크 = 자동추적 즉시 재개(v1.40.1): 컨트롤을 깨우는 탭(.tx-scroll touchstart,
+            # 4s 보류)이 걸린 직후 시크해도 화면이 곧장 새 문단으로 이동해야 한다. 목 플레이어는
+            # 자동 timeupdate 가 없어 '즉시 재앵커'가 아니면 scrollTop 이 영영 안 변한다(결정적).
+            seek_follow = None
+            if sheet_open and pg.query_selector("#tx-seek-track"):
+                pg.eval_on_selector(".tx-sheet-card", "el=>el.classList.remove('controls-hidden')")
+                pg.dispatch_event(".tx-scroll", "touchstart")
+                st0 = pg.eval_on_selector(".tx-scroll", "el=>el.scrollTop")
+                sb = pg.eval_on_selector("#tx-seek-track", "el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height};}")
+                sy = sb["y"] + sb["h"] / 2
+                pg.mouse.move(sb["x"] + sb["w"] * 0.01, sy)
+                pg.mouse.down()
+                pg.mouse.move(sb["x"] + sb["w"] * 0.06, sy, steps=6)   # frac 0.06 → t≈102(픽스처 마지막 문장 부근)
+                pg.mouse.up(); time.sleep(0.4)
+                st1 = pg.eval_on_selector(".tx-scroll", "el=>el.scrollTop")
+                tnow = pg.evaluate("window.__player._t")
+                seek_follow = bool(tnow > 90 and (st1 - st0) > 60)
             # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
             pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)
@@ -347,7 +364,7 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_btn_gone=", sync_btn_gone)
-            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok)
+            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok, " seek_follow=", seek_follow)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -360,7 +377,7 @@ def main() -> int:
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True
-                     and wordpop_ok is True and drive_ok is True)
+                     and wordpop_ok is True and drive_ok is True and seek_follow is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")

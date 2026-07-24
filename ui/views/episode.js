@@ -772,7 +772,18 @@ export async function renderEpisode(root, idStr, tStr) {
       },
       onSeek(frac) {
         const dur = player.duration;
-        if (dur) { player.seek(dur * frac); player.play(); }
+        if (!dur) return;
+        player.seek(dur * frac);
+        player.play();
+        // 재생바 시크 = 명시적 위치 선택 → 자동추적 즉시 재개(탭 시크·광고 스킵과 동일 규약).
+        // 이게 없으면: 직전에 컨트롤을 깨우려고 .tx-scroll 을 만진 탭이 4s 보류를 걸고, 그 보류 중
+        // 시크 틱이 paraChanged 를 '스크롤 없이' 소진 → 단일 문장 반복 문단에선 idx 가 다시 안 바뀌어
+        // 화면이 영영 새 문단으로 못 간다(사용자 보고 2026-07-23 "재생바 앞으로 스크롤해도 문단 안 바뀜").
+        userScrolledUntil = 0;
+        followResume = false;
+        lastActiveSent = -1;
+        lastActivePara = -1;   // 강제 재평가 — 같은 문장 안 시크도 즉시 재앵커
+        highlightActiveSegment();
       },
     });
   }
