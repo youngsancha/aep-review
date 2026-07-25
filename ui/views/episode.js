@@ -205,7 +205,7 @@ export async function renderEpisode(root, idStr, tStr) {
   let loopCount = 0;       // smart2/smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
   let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart(2)는 문단마다 다름, autoN 은 고정
   let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart2→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
-  const REPEAT_OF = { auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
+  const REPEAT_OF = { auto2: 2, auto3: 3, auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 12회.
   // (v1.19.0: 3~10 → 5~12 — 사용자 요청 2026-07-10. 비율(0~20s 선형 매핑)은 유지)
   // 실측 캘리브레이션(2026-07-09, 최신 8회차 981문단): groupIntoParagraphs 가 문단을 ~16s에서 끊어
@@ -809,13 +809,16 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → smart2(2× Smart) → smart(1× Smart) → auto5 → auto10 → off … 순환.
-  // (사용자 요청 2026-07-17: Repeat∞ 제거, 2× Smart 를 Shadow 다음에 추가, 라벨 이모지 제거·고정폭 통일.)
-  // 2× Smart = 문단 길이 비례 반복(smart)의 2배. 1× Smart(=기존 smart)가 두 번째 탭.
+  // 쉐도잉 버튼: off(Shadow) → 2× Smart → 1× Smart → 2× Auto → 3× Auto → 5× Auto → 10× Auto → off … 순환.
+  // (2026-07-17: Repeat∞ 제거, 2× Smart 추가, 고정폭 통일. 2026-07-25 사용자 요청: 2×/3× Auto 추가 —
+  //  적은 반복으로 빠르게 따라 말하고 다음 문단으로 넘어가고 싶을 때. auto 는 2→3→5→10 오름차순.)
+  // 2× Smart = 문단 길이 비례 반복(smart)의 2배. N× Auto = 문단을 고정 N회 반복 후 다음 문단으로.
   const SHADOW = [
     { mode: 'off',    label: 'Shadow',   on: false },
     { mode: 'smart2', label: '2× Smart', on: true },
     { mode: 'smart',  label: '1× Smart', on: true },
+    { mode: 'auto2',  label: '2× Auto',  on: true },
+    { mode: 'auto3',  label: '3× Auto',  on: true },
     { mode: 'auto5',  label: '5× Auto',  on: true },
     { mode: 'auto10', label: '10× Auto', on: true },
   ];
