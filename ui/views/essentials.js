@@ -36,7 +36,7 @@ export async function renderEssentials(root, goBack) {
   root.innerHTML = '<div class="study-greet"><h2>Essentials</h2></div><div class="empty"><span class="spinner"></span></div>';
   let pack;
   try { pack = await loadPack(); } catch (e) {
-    root.innerHTML = `<div class="empty">Failed to load Essentials.<br><button class="study-cta-btn" id="ess-back">← Study</button></div>`;
+    root.innerHTML = `<div class="empty">Essentials 를 불러오지 못했어요.<br><button class="study-cta-btn" id="ess-back">← Study</button></div>`;
     root.querySelector('#ess-back')?.addEventListener('click', () => goBack());
     return;
   }
@@ -76,7 +76,7 @@ export async function renderEssentials(root, goBack) {
       <button class="ess-play" id="ess-play">🃏 ${(() => {
         const u = pool.filter((c) => !kn.has(c.id)).length;
         const n = Math.min(18, u || pool.length);
-        return u ? `Study ${n} new card${n > 1 ? 's' : ''}` : `Review ${n} card${n > 1 ? 's' : ''}`;
+        return u ? `새 표현 ${n}개 학습` : `복습 ${n}개`;
       })()}</button>
       <div class="ess-list" id="ess-list"></div>`;
     root.querySelector('#ess-back').addEventListener('click', () => goBack());
@@ -92,7 +92,7 @@ export async function renderEssentials(root, goBack) {
     const pool = cards.filter(inSel);
     const el = root.querySelector('#ess-list');
     if (!el) return;
-    el.innerHTML = `<div class="study-swipe-tip"><b>Tap</b> for audio · <b>KR</b> for meaning · <b>swipe →</b> Known</div>`
+    el.innerHTML = `<div class="study-swipe-tip"><b>탭</b> 발음 · <b>KR</b> 뜻 · <b>밀기 →</b> Known</div>`
       + `<ul class="study-xlist">${pool.map((c) => `
         <li class="study-x ess-x tap${kn.has(c.id) ? ' known' : ''}" data-id="${c.id}" data-term="${escapeHtml(c.term)}">
           <div class="study-x-swipe-hint">✓ Known</div>
@@ -131,7 +131,7 @@ export async function renderEssentials(root, goBack) {
       if (!sw) return;
       const isKnown = li.classList.contains('known');
       if ((dx > 0 && isKnown) || (dx < 0 && !isKnown)) return;
-      if (hint) hint.textContent = dx < 0 ? '↺ Unknown' : '✓ Known';
+      if (hint) hint.textContent = dx < 0 ? '↺ 되돌리기' : '✓ Known';
       li.style.transition = 'none';
       li.style.transform = `translateX(${Math.max(-132, Math.min(dx, 132))}px)`;
       li.classList.toggle('swipe-armed', Math.abs(dx) > 78);
@@ -164,15 +164,15 @@ export async function renderEssentials(root, goBack) {
     prefetch(deck.slice(0, 6).map((c) => c.term));
 
     function finish() {
-      const msg = againCnt === 0 ? 'Flawless deck! 🌟' : 'Deck cleared! 🃏';
+      const msg = againCnt === 0 ? '완벽해요! 🌟' : '덱 완료! 🃏';
       root.innerHTML = `
         <div class="quiz-summary">
           <div class="quiz-sum-msg">${msg}</div>
           <div class="quiz-sum-score">${total}</div>
-          <div class="quiz-sum-pct">mastered${againCnt ? ` · ${againCnt} repeats` : ''}</div>
+          <div class="quiz-sum-pct">마스터${againCnt ? ` · ${againCnt}회 반복` : ''}</div>
           <div class="quiz-sum-actions">
-            <button class="study-cta-btn" id="ess-again">Play again</button>
-            <button class="study-cta-btn secondary" id="ess-done">Essentials Home</button>
+            <button class="study-cta-btn" id="ess-again">한 덱 더</button>
+            <button class="study-cta-btn secondary" id="ess-done">Essentials 홈</button>
           </div>
         </div>`;
       root.querySelector('#ess-again').addEventListener('click', () => startGame(srcCards, dir));
@@ -193,7 +193,7 @@ export async function renderEssentials(root, goBack) {
       const c = deck[0];
       // 생산(ko): 한국어 뜻만 보여주고 영어를 '말하게' → 정답(영어)은 reveal 까지 숨김.
       const front = prod
-        ? `<div class="ess-card-ko">${escapeHtml(c.ko)}</div><div class="ess-prod-hint">🗣️ Say it in English</div>`
+        ? `<div class="ess-card-ko">${escapeHtml(c.ko)}</div><div class="ess-prod-hint">🗣️ 영어로 말해보세요</div>`
         : `<div class="ess-card-term">${escapeHtml(c.term)} <span class="sent-spk">🔊</span></div>`;
       const reveal = prod
         ? `<div class="ess-card-term">${escapeHtml(c.term)} <span class="sent-spk">🔊</span></div>
@@ -211,12 +211,12 @@ export async function renderEssentials(root, goBack) {
           <div class="sent-reveal" id="ess-reveal" hidden>${reveal}</div>
         </div>
         <div class="sent-game-row">
-          <button class="sent-game-btn again" id="ess-g-again">↺ Again</button>
-          <button class="study-cta-btn" id="ess-g-show">${prod ? 'Show answer' : 'Show meaning'}</button>
+          <button class="sent-game-btn again" id="ess-g-again">↺ 다시</button>
+          <button class="study-cta-btn" id="ess-g-show">${prod ? '정답 보기' : '뜻 보기'}</button>
           <button class="sent-game-btn known" id="ess-g-known">✓ Known</button>
         </div>
-        <div class="study-swipe-tip">Swipe → Known · ← Again (repeats)</div>
-        <button class="quiz-exit" id="ess-g-exit">← Essentials Home</button>`;
+        <div class="study-swipe-tip">밀기 → Known · ← 다시(반복)</div>
+        <button class="quiz-exit" id="ess-g-exit">← Essentials 홈</button>`;
       const card = root.querySelector('#ess-card');
       // 인식모드: 탭/진입 시 영어 발음 자동. 생산모드: 정답 노출 방지 위해 침묵(reveal 후에만 발음).
       card.addEventListener('click', () => { if (!card.dataset.swiped && !prod) speak(c.term); });
