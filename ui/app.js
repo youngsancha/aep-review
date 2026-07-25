@@ -261,7 +261,9 @@ function refreshData() {
   // 에피소드 화면에선 재라우팅 금지 — 같은 해시라 hashchange 없이 route()→renderEpisode 가 재실행되면
   // teardown(시트 제거·리스너 해제)이 안 돼 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다
   // (버그헌트 #1). 에피소드 데이터는 이미 로드돼 있어 새로고침 불필요 → 스핀 애니메이션만.
-  if (/^#\/episode\//.test(location.hash || '')) { done(); return; }
+  // 복습(#/srs)도 재라우팅 금지 — renderSrs 재실행이 진행 중 카드 큐·점수를 처음부터 리셋해
+  // 학습 데이터가 조용히 날아간다(정밀진단 수정). 에피소드와 동일하게 스핀 애니메이션만.
+  if (/^#\/(episode|srs)\b/.test(location.hash || '')) { done(); return; }
   Promise.resolve(route()).finally(done);
 }
 async function signOut() {

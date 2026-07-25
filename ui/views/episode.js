@@ -1,6 +1,6 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
 import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast } from '/app.js';
-import { getEpisode, episodeNav } from '/db.js';
+import { getEpisode, episodeNav, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
 import { showCover, currentShow, showMeta } from '/config.js';
@@ -46,6 +46,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
   }, { once: true });
 
+  const vknown = loadVKnown();   // '알아요' 로컬 마크 (vocabHtml + 아래 배선 공용)
   const segments = ep.transcript?.segments || [];
   const sentences = resegment(segments);  // Whisper segment → 구두점 기준 진짜 문장
   const vocabs = ep.vocab || [];
@@ -103,7 +104,7 @@ export async function renderEpisode(root, idStr, tStr) {
     ${vocabs.length ? `
       <div class="section-h"><h2>Vocabulary</h2><span class="count">${vocabs.length}</span></div>
       <ul class="vocab-list">
-        ${vocabs.map((v) => vocabHtml(v)).join('')}
+        ${vocabs.map((v) => vocabHtml(v, vknown)).join('')}
       </ul>
     ` : ''}
 
@@ -147,6 +148,27 @@ export async function renderEpisode(root, idStr, tStr) {
     $about.addEventListener('click', toggle);
     $aboutToggle.addEventListener('click', toggle);
   }
+
+  // Vocab 발음(TTS)·'알아요'·prefetch 는 오디오가 필요 없다 → early-return '앞'에 배선한다.
+  // (예전엔 audio 아래에 있어 오디오 미다운로드 회차에서 ▶ 발음/알아요 버튼이 죽어 있었다 — 정밀진단 수정.)
+  document.querySelectorAll('.vocab-card .tts').forEach((btn) => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); speak(btn.dataset.text); });
+  });
+  document.querySelectorAll('.vocab-card .vocab-known').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.id, 10);
+      const card = btn.closest('.vocab-card');
+      const nowKnown = !(card && card.classList.contains('vknown'));
+      if (nowKnown) { vknown.add(id); markKnown(id).catch(() => {}); }   // SRS 마스터로도 반영(카드 없으면 no-op)
+      else vknown.delete(id);
+      saveVKnown(vknown);
+      if (card) card.classList.toggle('vknown', nowKnown);
+      btn.setAttribute('aria-pressed', nowKnown ? 'true' : 'false');
+      btn.textContent = nowKnown ? '✓ 알아요' : '알아요';
+    });
+  });
+  prefetch(vocabs.map((v) => v.term).filter(Boolean));
 
   if (!ep.audio_url) {
     return; // no playback wiring needed
@@ -992,10 +1014,12 @@ export async function renderEpisode(root, idStr, tStr) {
   // 회색 칩/흰 아이콘 조합, 글리프가 칩 안을 크게 채운다(사용자 요청 2026-07-15).
   // 다음 회차(스킵) / 반복(루프 화살표) / 한 번만(루프 화살표+중앙 1 — cnpod-review 와 동일 글리프).
   // 영문 텍스트·안내 토스트 없음.
+  // aria: 세 모드가 같은 라벨('After the episode ends')이면 스크린리더로 현재 상태 구별 불가였다 →
+  // 상태별 aria-label 로 지금 어떤 종료 동작인지 읽히게(정밀진단 a11y 수정).
   const END_MODES = [
-    { mode: 'next',   label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>' },
-    { mode: 'repeat', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' },
-    { mode: 'once',   label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15.5" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor" stroke="none">1</text></svg>' },
+    { mode: 'next',   aria: 'When the episode ends: play the next episode', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>' },
+    { mode: 'repeat', aria: 'When the episode ends: repeat this episode', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>' },
+    { mode: 'once',   aria: 'When the episode ends: stop', label: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="15.5" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor" stroke="none">1</text></svg>' },
   ];
   let endIdx = (() => {
     let s = null; try { s = localStorage.getItem(END_KEY); } catch (e) {}
@@ -1005,7 +1029,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const $endMode = document.getElementById('np-endmode');
   function applyEndMode() {
     const m = END_MODES[endIdx];
-    if ($endMode) $endMode.innerHTML = m.label;   // 강조색 없음 — 항상 1× 칩과 동일한 회색 유지
+    if ($endMode) { $endMode.innerHTML = m.label; $endMode.setAttribute('aria-label', m.aria); }   // 강조색 없음 — 항상 1× 칩과 동일한 회색 유지
     try { localStorage.setItem(END_KEY, m.mode); } catch (e) {}
   }
   applyEndMode();
@@ -1196,13 +1220,7 @@ export async function renderEpisode(root, idStr, tStr) {
   ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'change', 'blur'].forEach((ev) => $scrub.addEventListener(ev, () => { npScrubbing = false; }));
   $speed.addEventListener('click', () => setSpeed(speedIdx + 1));
 
-  // Vocab interactions
-  document.querySelectorAll('.vocab-card .tts').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      speak(btn.dataset.text);
-    });
-  });
+  // Vocab 예문 시크만 여기(오디오 필요) — .tts/.vocab-known/prefetch 는 위 early-return 앞에서 배선됨.
   document.querySelectorAll('.vocab-card .ex').forEach((el) => {
     el.addEventListener('click', () => {
       const start = parseFloat(el.dataset.start || '0');
@@ -1212,7 +1230,6 @@ export async function renderEpisode(root, idStr, tStr) {
       }
     });
   });
-  prefetch(vocabs.map((v) => v.term).filter(Boolean));
 
   // "스크립트로 보기" 진입 플래그(라이브러리/트랜스크립트 ⏮⏭ 에서 설정): 자동재생 + 시트 자동 열기.
   // aep-autoplay: 메인 화면 ⏮/⏭ 로 회차 이동 시 — 시트는 안 열고 자동재생만(메인 화면 유지).
@@ -1632,20 +1649,28 @@ function renderSegmentWords(seg) {
   }).join('');
 }
 
-function vocabHtml(v) {
+// 회차 화면에서 '알아요' 처리한 vocab id (localStorage) — 재방문 시 흐리게 표시.
+// SRS 마스터(markKnown)와 별개의 로컬 힌트라, 오프라인/SRS 카드 부재에도 카드 상태가 유지된다.
+const VKNOWN_KEY = 'aep-vocab-known';
+function loadVKnown() { try { return new Set(JSON.parse(localStorage.getItem(VKNOWN_KEY) || '[]')); } catch { return new Set(); } }
+function saveVKnown(set) { try { localStorage.setItem(VKNOWN_KEY, JSON.stringify([...set])); } catch (e) { /* quota */ } }
+
+function vocabHtml(v, known) {
   const kind = v.kind || 'word';
   const ex = v.example_sentence
     ? `<p class="ex" data-start="${v.sentence_start_sec || 0}">${escapeHtml(v.example_sentence)}</p>`
     : '';
+  const isKnown = known && known.has(v.id);
   return `
-    <li class="vocab-card ${kind}">
+    <li class="vocab-card ${kind}${isKnown ? ' vknown' : ''}" data-id="${v.id}">
       <div class="term">
         <span>${escapeHtml(v.term)}</span>
-        <button class="tts" data-text="${escapeHtml(v.term)}" aria-label="play">▶</button>
+        <button class="tts" data-text="${escapeHtml(v.term)}" aria-label="Play pronunciation">▶</button>
         <span class="chip ${kind}" style="margin-left:auto">${escapeHtml(kind.replace('_', ' '))}</span>
       </div>
       ${v.definition ? `<p class="def">${escapeHtml(v.definition)}</p>` : ''}
       ${ex}
+      <button class="vocab-known" data-id="${v.id}" aria-pressed="${isKnown ? 'true' : 'false'}">${isKnown ? '✓ 알아요' : '알아요'}</button>
     </li>
   `;
 }

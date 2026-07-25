@@ -391,7 +391,17 @@ def main() -> int:
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_btn_gone=", sync_btn_gone)
-            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok, " seek_follow=", seek_follow)
+            # Vocabulary '알아요' 학습 액션(v1.42.1): 버튼 존재 → 탭 → markKnown 호출 + 카드 .vknown 흐림
+            vk_btn = pg.query_selector(".vocab-card .vocab-known")
+            vk_ok = None
+            if vk_btn:
+                pg.eval_on_selector(".vocab-card .vocab-known", "el=>el.click()")
+                time.sleep(0.15)
+                vk_marked = pg.evaluate("(window.__known||[]).length>0")
+                vk_dim = pg.eval_on_selector(".vocab-card", "el=>el.classList.contains('vknown')")
+                vk_aria = pg.eval_on_selector(".vocab-card .vocab-known", "el=>el.getAttribute('aria-pressed')")
+                vk_ok = bool(vk_marked and vk_dim and vk_aria == "true")
+            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok, " seek_follow=", seek_follow, " vk_ok=", vk_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -404,7 +414,8 @@ def main() -> int:
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True
-                     and wordpop_ok is True and drive_ok is True and seek_follow is True)
+                     and wordpop_ok is True and drive_ok is True and seek_follow is True
+                     and vk_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
