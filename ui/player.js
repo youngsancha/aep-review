@@ -90,7 +90,7 @@ player.on((ev) => {
   const now = Date.now();
   if (now - _lastErrToast < 3000) return;
   _lastErrToast = now;
-  toast(navigator.onLine ? '재생 실패 — 다시 시도해 주세요' : '오프라인에선 ⬇ 받은 회차만 재생돼요');
+  toast(navigator.onLine ? 'Playback failed — try again' : 'Offline — only downloaded (⬇) episodes play');
 });
 window.__player = player;  // debug
 

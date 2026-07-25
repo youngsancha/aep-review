@@ -33,7 +33,7 @@ export async function renderTimeline(root) {
       ${heroHtml({total: 0, ready: 0})}
       <div class="empty">
         No episodes yet.<br />
-        Tap the ↻ button (top right) to sync the RSS feed.
+        New episodes are added automatically — tap ↻ (top right) to refresh.
       </div>
     `;
     wireShowSwitch(root);
@@ -107,8 +107,8 @@ function markOfflineReady(scope) {
           const i = CYCLE.indexOf(m.offlineCount());
           const next = CYCLE[(i + 1) % CYCLE.length];
           m.setOfflineCount(next);
-          if (next > 0) { toast(`오프라인 저장: 최근 ${next}개 받는 중…`); m.forceRun && m.forceRun(); }
-          else toast('오프라인 저장 끔');
+          if (next > 0) { toast(`Saving latest ${next} for offline…`); m.forceRun && m.forceRun(); }
+          else toast('Offline downloads off');
           setTimeout(() => markOfflineReady(scope), 400);   // 상태줄 즉시 반영
         };
         $st.addEventListener('click', cycle);

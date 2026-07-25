@@ -607,6 +607,7 @@ body.on-episode {
   align-items: center;
 }
 .np-extras .speed {
+  position: relative;
   background: var(--surface-2); border: 0;
   color: var(--text);
   font-size: 12px; font-weight: 700;
@@ -618,6 +619,8 @@ body.on-episode {
   text-align: center; font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+/* 히트영역 44px — 속도/종료모드 칩도 시각 크기 유지하며 터치 정확도 확보(v1.41.0) */
+.np-extras .speed::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 /* .pressed = 종료모드 칩의 탭 하이라이트 유지(속도 칩의 모바일 끈적 hover 와 동일한 느낌) */
 .np-extras .speed:hover, .np-extras .speed.pressed { background: var(--tint-soft); color: var(--tint-hover); }
 /* 종료 동작 칩(np-endmode): 항상 1× 속도 칩과 동일한 회색 칩 + 텍스트색 글리프(회색/흰 조합) */
@@ -993,6 +996,7 @@ body.on-episode {
   background: var(--surface);
 }
 .tx-toggle {
+  position: relative;
   background: var(--surface-2); border: 0;
   color: var(--tint);
   font-size: 12.5px; font-weight: 700;
@@ -1002,6 +1006,9 @@ body.on-episode {
   letter-spacing: -0.01em;
   transition: background 0.15s, color 0.15s, transform 0.1s;
 }
+/* 터치 타깃 44px 보장 — 칩 시각 크기(~30px)는 그대로 두고 투명 히트영역만 위아래로 넓힌다.
+   운전 중/핸즈-프리 쉐도잉의 주 컨트롤(KR·가·Shadow·1×·A·🚗)이라 정확도가 중요(v1.41.0). */
+.tx-toggle::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 .tx-toggle:hover { background: var(--tint-soft); }
 .tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
@@ -1331,11 +1338,12 @@ body.on-episode {
   margin-top: 6px;
 }
 .srs-listen-btn {
+  position: relative;
   background: var(--grad-brand);
   color: white;
   border: 0; border-radius: 50%;
-  width: 38px; height: 38px;
-  font-size: 14px; cursor: pointer;
+  width: 44px; height: 44px;   /* 38→44: 핸즈-프리 쉐도잉 중 다시듣기 버튼 터치 타깃(v1.41.0) */
+  font-size: 15px; cursor: pointer;
   flex: 0 0 auto;
   box-shadow: var(--glow-brand);
 }
@@ -1962,7 +1970,7 @@ body.logged-out #app-version { display: none; }
   margin: 12px auto 0; display: block;
   border: 0; background: var(--tint-soft); color: var(--tint);
   font-family: var(--font); font-size: 12.5px; font-weight: 700;
-  padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  padding: 8px 16px; min-height: 44px; border-radius: 999px; cursor: pointer;   /* 44px 터치 타깃(v1.41.0) */
 }
 .srs-context-btn:active { transform: scale(0.96); }
 

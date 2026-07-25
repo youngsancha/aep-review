@@ -24,7 +24,7 @@ const ROUTES = [
   { re: /^#?\/$/,                    load: () => import('/views/timeline.js').then((m) => m.renderTimeline), title: 'E-Podcast', tab: 'timeline', back: false, key: 'timeline' },
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, load: () => import('/views/episode.js').then((m) => m.renderEpisode), title: 'Episode', tab: 'timeline', back: true, key: 'episode' },
   { re: /^#?\/study$/,               load: () => import('/views/study.js').then((m) => m.renderStudy), title: 'Study',    tab: 'study',    back: false, key: 'study' },
-  { re: /^#?\/srs$/,                 load: () => import('/views/srs.js').then((m) => m.renderSrs),   title: 'Review',   tab: 'srs',      back: false, key: 'srs' },
+  { re: /^#?\/srs$/,                 load: () => import('/views/srs.js').then((m) => m.renderSrs),   title: 'Review',   tab: 'study',    back: true,  key: 'srs' },
 ];
 
 let _prevKey = null;  // 직전 라우트 키 — 같은 뷰(에피소드↔에피소드) 전환 감지용

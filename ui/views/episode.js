@@ -1172,6 +1172,10 @@ export async function renderEpisode(root, idStr, tStr) {
     setBgInert(false);           // 시트 열린 채 이탈해도 배경 inert 가 다음 화면에 남지 않게
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
+    // 운전 캡처 OFF 로 복원 — 회차를 떠나면 차/잠금화면 ⏭(nexttrack)이 다시 +30초 스킵이 되게 한다.
+    // 없으면 캡처를 켠 채 라이브러리/학습으로 나가도 ⏭ 이 계속 '직전 회차 북마크'로 하이재킹된다
+    // (다음 회차 진입 시 initDriveCapture 가 어차피 OFF 로 리셋하므로 회차↔회차 전환엔 무해). v1.41.0.
+    setDrive(false);
     // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
     if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
     $sheet?.remove();

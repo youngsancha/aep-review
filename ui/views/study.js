@@ -945,10 +945,12 @@ export async function renderStudy(root) {
     _sessNext = null;
     stopClip();
     st.stage = 'done';
-    st.completedAt = Date.now();
-    saveSess(st);
-    // 스트릭은 실제로 뭔가 학습했을 때만 — 오프라인/빈 큐로 즉시 요약에 도달한 세션은 안 오른다.
+    // 스트릭·완료 마크는 실제로 뭔가 학습했을 때만 — 오프라인/빈 큐로 즉시 요약에 도달한 세션은
+    // completedAt 을 남기지 않아 Today 카드가 '✓ 완료/한 세션 더'가 아니라 '▶ Start'로 남는다
+    // (큐가 차면 다시 온전히 시작 가능). v1.41.0 정밀진단 수정.
     const worked = st.stats.reviewDone + st.stats.reviewAgain + st.stats.newDone + st.stats.newKnown + st.stats.drills.length > 0;
+    if (worked) st.completedAt = Date.now();
+    saveSess(st);
     if (worked) markStudyDay();
     const drills = st.stats.drills.map((d) => {
       const lbl = DRILL_LABEL[d.mode] || d.mode;
@@ -1063,7 +1065,10 @@ export async function renderStudy(root) {
         </div>
         <button class="quiz-exit" id="q-exit">← Study 홈</button>`;
       root.querySelector('#q-spk').addEventListener('click', () => speak(c.term));
-      requestAnimationFrame(() => speak(c.term));  // 진입/다음 카드 시 발음 자동재생
+      // 자동재생은 '듣기' 퀴즈에서만 — read/weak 모드는 보기가 표현(term)이고 정의를 보여주므로
+      // c.term(정답)을 자동재생하면 어느 보기를 고를지 알려주는 정답 유출이 된다(자동화 축 측정도 왜곡).
+      // read/weak 는 '🔊 힌트' 버튼으로 원할 때만 듣게 유지(v1.41.0 정밀진단 HIGH 수정).
+      if (mode === 'listen') requestAnimationFrame(() => speak(c.term));
       root.querySelector('#q-exit').addEventListener('click', exitToStudyHome);
       root.querySelectorAll('.quiz-opt').forEach((b) => b.addEventListener('click', () => answerQ(b, c)));
       tShown = performance.now();   // 표시 시각 기록(다음 클릭까지가 응답 지연)

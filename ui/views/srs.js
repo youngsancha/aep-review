@@ -40,7 +40,26 @@ function maskTerm(term) {
 }
 
 export async function renderSrs(root) {
-  const initial = await srsQueue();
+  // srsQueue 는 REST 쿼리라 SW 가 캐시 못 함 → 오프라인이면 throw. 막다른 에러 대신 상태별 안내.
+  // (Study 홈의 studyOverview 오프라인 처리와 동일 원칙, v1.41.0 정밀진단 수정.)
+  let initial;
+  try {
+    initial = await srsQueue();
+  } catch (e) {
+    const offline = !navigator.onLine;
+    root.innerHTML = `
+      <div class="empty srs-done">
+        <div class="srs-done-emoji">${offline ? '📴' : '⚠️'}</div>
+        <p class="srs-done-title">${offline ? '오프라인이에요' : '불러오지 못했어요'}</p>
+        <p class="srs-done-sub">${offline
+          ? '복습 큐는 온라인에서 불러와요. 연결되면 다시 시도해 주세요.'
+          : escapeHtml(e.message)}</p>
+        <button class="btn primary srs-done-cta" id="srs-retry">다시 시도</button>
+        <a class="btn srs-done-cta" href="#/study">📚 Study 로</a>
+      </div>`;
+    root.querySelector('#srs-retry')?.addEventListener('click', () => renderSrs(root));
+    return;
+  }
   if (!initial.length) {
     root.innerHTML = `
       <div class="empty srs-done">
