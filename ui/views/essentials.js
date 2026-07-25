@@ -118,6 +118,18 @@ export async function renderEssentials(root, goBack) {
     });
   }
 
+  // 스와이프로 Known 이 바뀌어도 상단 진행바가 stale 하던 것 수정 — 전체 재렌더(리스트 재빌드 →
+  // 스와이프 애니메이션 취소)는 피하고 진행바 두 노드만 in-place 갱신(정밀진단 수정).
+  function refreshProgress() {
+    const kn = known();
+    const masteredAll = cards.filter((c) => kn.has(c.id)).length;
+    const pct = cards.length ? Math.round((masteredAll / cards.length) * 100) : 0;
+    const bar = root.querySelector('.ess-prog-bar span');
+    if (bar) bar.style.width = pct + '%';
+    const meta = root.querySelector('.ess-prog-meta');
+    if (meta) meta.innerHTML = `<b>${masteredAll}</b> / ${cards.length} mastered · ${pct}%`;
+  }
+
   // 리스트 스와이프: 오른쪽=Known, 왼쪽=되돌리기(localStorage)
   function wireSwipe(li) {
     let x0 = null, y0 = null, sw = false;
@@ -141,8 +153,8 @@ export async function renderEssentials(root, goBack) {
       const dx = x0 != null ? e.clientX - x0 : 0;
       const isKnown = li.classList.contains('known');
       if (sw) { li.dataset.swiped = '1'; setTimeout(() => { li.dataset.swiped = ''; }, 350); }
-      if (sw && dx > 78 && !isKnown) { setKnown(li.dataset.id, true); li.classList.add('known'); if (navigator.vibrate) navigator.vibrate(12); }
-      else if (sw && dx < -78 && isKnown) { setKnown(li.dataset.id, false); li.classList.remove('known'); if (navigator.vibrate) navigator.vibrate(12); }
+      if (sw && dx > 78 && !isKnown) { setKnown(li.dataset.id, true); li.classList.add('known'); refreshProgress(); if (navigator.vibrate) navigator.vibrate(12); }
+      else if (sw && dx < -78 && isKnown) { setKnown(li.dataset.id, false); li.classList.remove('known'); refreshProgress(); if (navigator.vibrate) navigator.vibrate(12); }
       reset();
     });
   }
