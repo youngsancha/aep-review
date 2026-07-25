@@ -197,11 +197,38 @@ TIMELINE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
+SETTINGS_HARNESS = UI / "_harness_settings.html"
+OFFLINE_MOCK = UI / "_offmock.js"
+OFFLINE_MOCK_JS = r"""
+let _n = 15;
+export function offlineCount(){ return _n; }
+export function setOfflineCount(n){ _n = n; (window.__offset = window.__offset || []).push(n); }
+export async function forceRun(){ (window.__force = window.__force || []).push(1); }
+"""
+# Settings 시트 전용 하니스 — settings.js 를 직접 로드(실제 app.js 는 topbar 배선이 하니스에서
+# 안 도므로 커버 불가). /app.js→_mocks(toast/escapeHtml), /offline.js→_offmock 로 치환.
+SETTINGS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/app.js":"/_mocks.js","/offline.js":"/_offmock.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body>
+<span id="app-version">v0</span>
+<script type="module">
+  import { openSettings } from '/settings.js';
+  window.__theme=[]; window.__signout=0; window.__ready=false;
+  openSettings({ applyTheme:(v)=>window.__theme.push(v), version:'9.9.9', onSignOut:()=>{window.__signout++;} })
+    .then(()=>{window.__ready=true;})
+    .catch((e)=>{(window.__err=window.__err||[]).push('settings:'+e);window.__ready=true;});
+</script></body></html>
+"""
+
+
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
     STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
+    SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
+    OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
@@ -651,7 +678,38 @@ def main() -> int:
                            and tl_progress is True and tl_done is True and tl_compact is True
                            and tl_search == 1 and tl_no_pan and not tl_err)
 
-            ok = ep_ok and study_ok and timeline_ok
+            # === Settings 시트 회귀 (v1.41.0) ===
+            pg.goto("http://localhost:8123/_harness_settings.html")
+            pg.wait_for_function("window.__ready===true", timeout=10000)
+            time.sleep(0.2)
+            set_sheet = pg.query_selector(".set-sheet[role=dialog]") is not None
+            theme_btns = pg.eval_on_selector_all(".set-seg", "els=>els[0]?els[0].querySelectorAll('.set-seg-btn').length:0")
+            off_btns = pg.eval_on_selector_all(".set-seg", "els=>els[1]?els[1].querySelectorAll('.set-seg-btn').length:0")
+            has_signout = pg.query_selector("#set-signout") is not None
+            # 현재 오프라인=15 → 'on' 초기값 확인
+            off_on0 = pg.eval_on_selector_all(".set-seg", "els=>els[1]?[...els[1].querySelectorAll('.set-seg-btn')].find(b=>b.classList.contains('on'))?.dataset.v:null")
+            # Dark 테마 탭 → applyTheme('dark') 호출 + .on 이동
+            pg.eval_on_selector_all(".set-seg", "els=>[...els[0].querySelectorAll('.set-seg-btn')].find(b=>b.dataset.v==='dark').click()")
+            time.sleep(0.1)
+            theme_called = pg.evaluate("(window.__theme||[]).includes('dark')")
+            # 오프라인 30 탭 → setOfflineCount(30) + forceRun
+            pg.eval_on_selector_all(".set-seg", "els=>[...els[1].querySelectorAll('.set-seg-btn')].find(b=>b.dataset.v==='30').click()")
+            time.sleep(0.1)
+            off_set = pg.evaluate("(window.__offset||[]).includes(30)")
+            forced = pg.evaluate("(window.__force||[]).length>0")
+            # 로그아웃 → onSignOut 호출 + 시트 닫힘
+            pg.click("#set-signout"); time.sleep(0.4)
+            signout_called = pg.evaluate("window.__signout")
+            sheet_closed = pg.query_selector(".set-backdrop") is None
+            set_err = pg.evaluate("window.__err||[]")
+            settings_ok = bool(set_sheet and theme_btns == 3 and off_btns == 4 and has_signout
+                               and off_on0 == "15" and theme_called and off_set and forced
+                               and signout_called == 1 and sheet_closed and not set_err)
+            print("SETTINGS: sheet=", set_sheet, " theme_btns=", theme_btns, " off_btns=", off_btns,
+                  " off_on0=", off_on0, " theme_called=", theme_called, " off_set=", off_set,
+                  " forced=", forced, " signout=", signout_called, " closed=", sheet_closed, " err=", set_err)
+
+            ok = ep_ok and study_ok and timeline_ok and settings_ok
             b.close()
     finally:
         srv.terminate()
@@ -659,6 +717,8 @@ def main() -> int:
         HARNESS.unlink(missing_ok=True)
         STUDY_HARNESS.unlink(missing_ok=True)
         TIMELINE_HARNESS.unlink(missing_ok=True)
+        SETTINGS_HARNESS.unlink(missing_ok=True)
+        OFFLINE_MOCK.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

@@ -13,6 +13,18 @@ const $sync = document.getElementById('sync-btn');
 const $version = document.getElementById('app-version');
 
 if ($version) $version.textContent = 'v' + APP_VERSION;
+// 버전 표시 = Settings 진입점(지금까지 아무 동작 없던 pill 에 역할 부여). 로그아웃(노출)·테마
+// Auto/Light/Dark·오프라인 개수를 한 메뉴로 모은다. settings.js 는 탭 시에만 동적 로드.
+if ($version) {
+  $version.setAttribute('role', 'button');
+  $version.setAttribute('tabindex', '0');
+  $version.setAttribute('aria-label', 'Settings');
+  const openSet = () => import('/settings.js').then((m) => m.openSettings({
+    applyTheme, version: APP_VERSION, onSignOut: signOut,
+  })).catch((e) => console.error('[settings]', e));
+  $version.addEventListener('click', openSet);
+  $version.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSet(); } });
+}
 
 // === 전역 오류 안전망 (안정성: 오류 0 목표) ===
 // 예기치 못한 오류/거부가 콘솔 스팸이나 깨진 화면으로 이어지지 않게 잡아 로깅만 한다.

@@ -2396,3 +2396,48 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
 .dm-vmain span { display: block; font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-know, .dm-study { flex: none; border: 1px solid var(--border); background: none; border-radius: 999px; padding: 7px 12px; font-size: 13px; color: var(--text-2); min-height: 34px; }
 .dm-study { color: var(--tint-hover); border-color: var(--tint-hover); }
+
+/* ========== Settings 시트 (v1.41.0 정밀진단 — 흩어진 설정 통합) ========== */
+#app-version { cursor: pointer; }
+#app-version:active { transform: scale(0.94); }
+.set-backdrop {
+  position: fixed; inset: 0; z-index: 2100;
+  background: rgba(0,0,0,0.42);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; transition: opacity 0.22s;
+}
+.set-backdrop.open { opacity: 1; }
+.set-sheet {
+  width: 100%; max-width: 560px;
+  background: var(--surface); color: var(--text);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: var(--shadow-pop);
+  transform: translateY(100%); transition: transform 0.26s cubic-bezier(0.2,0.8,0.2,1);
+  max-height: 88vh; overflow-y: auto;
+}
+.set-backdrop.open .set-sheet { transform: translateY(0); }
+.set-grab { width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 6px auto 10px; }
+.set-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.set-head h3 { margin: 0; font-size: 18px; }
+.set-x { border: 0; background: none; color: var(--text-2); font-size: 17px; padding: 8px; margin: -8px; min-width: 44px; min-height: 44px; cursor: pointer; }
+.set-body { display: flex; flex-direction: column; gap: 6px; }
+.set-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.set-row-l { margin-bottom: 10px; }
+.set-row-l b { display: block; font-size: 15px; }
+.set-row-l span { display: block; font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.set-seg { display: flex; gap: 6px; }
+.set-seg-btn {
+  flex: 1; border: 1px solid var(--border); background: none; color: var(--text-2);
+  border-radius: 10px; padding: 0 6px; min-height: 44px; font-size: 14px; font-weight: 600; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.set-seg-btn.on { background: var(--tint-soft); color: var(--tint-hover); border-color: var(--tint-hover); font-weight: 700; }
+.set-note { font-size: 12px; color: var(--text-3); padding: 12px 0 4px; line-height: 1.5; }
+.set-signout {
+  margin: 8px 0 4px; width: 100%; min-height: 48px;
+  border: 1px solid var(--border); background: none; color: var(--tint-hover);
+  border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.set-signout:active { transform: scale(0.99); }
+.set-ver { text-align: center; font-size: 11.5px; color: var(--text-3); margin-top: 12px; font-variant-numeric: tabular-nums; }
