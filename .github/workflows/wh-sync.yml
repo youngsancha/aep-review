@@ -65,4 +65,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE: https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev
+          # 선택: YouTube 봇차단 우회용 쿠키(넷스케이프 형식 파일 내용). player_client 우회가 실패하면
+          # Repo Settings → Secrets → Actions 에 YT_COOKIES 추가(브라우저 확장으로 youtube.com 쿠키 export).
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: python -m ingest.wh_fetch --limit ${{ github.event.inputs.limit || 3 }}

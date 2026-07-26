@@ -89,14 +89,29 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
     import json
 
     base = out_mp3.with_suffix("")   # yt-dlp 가 .mp3 / .info.json 을 붙임
+    # CI(데이터센터 IP)에선 YouTube 가 익명 추출을 봇으로 막는다("Sign in to confirm…"). 로컬(주거용
+    # IP)에선 통과. 우회: ① player_client 를 tv/web_safari/mweb 로(봇체크에 덜 걸리는 클라이언트),
+    # ② YT_COOKIES(넷스케이프 쿠키 파일 내용) 시크릿이 있으면 --cookies 로 인증(가장 확실).
+    extra: list[str] = ["--extractor-args", "youtube:player_client=tv,web_safari,mweb,default"]
+    cookiefile = None
+    cookies = os.environ.get("YT_COOKIES")
+    if cookies:
+        cookiefile = base.with_suffix(".cookies.txt")
+        cookiefile.write_text(cookies, "utf-8")
+        extra += ["--cookies", str(cookiefile)]
     cmd = [
         "yt-dlp", "-f", "140/bestaudio/best",
         "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
         "--write-info-json", "--no-playlist",
         "--socket-timeout", "60", "--no-warnings", "--quiet",
+        *extra,
         "-o", str(base) + ".%(ext)s", page_url,
     ]
-    subprocess.run(cmd, check=True, timeout=1800)
+    try:
+        subprocess.run(cmd, check=True, timeout=1800)
+    finally:
+        if cookiefile:
+            cookiefile.unlink(missing_ok=True)
     title, dur = "", None
     info = base.with_suffix(".info.json")
     if info.exists():
