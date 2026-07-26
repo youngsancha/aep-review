@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -99,8 +100,10 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
         cookiefile = base.with_suffix(".cookies.txt")
         cookiefile.write_text(cookies, "utf-8")
         extra += ["--cookies", str(cookiefile)]
+    # `python -m yt_dlp` (콘솔 스크립트 대신) — venv 든 CI 든 같은 인터프리터의 모듈을 쓴다
+    # (로컬 venv 엔 yt-dlp 바이너리가 PATH 에 없을 수 있어 FileNotFound 방지).
     cmd = [
-        "yt-dlp", "-f", "140/bestaudio/best",
+        sys.executable, "-m", "yt_dlp", "-f", "140/bestaudio/best",
         "--extract-audio", "--audio-format", "mp3", "--audio-quality", "0",
         "--write-info-json", "--no-playlist",
         "--socket-timeout", "60", "--no-warnings", "--quiet",
