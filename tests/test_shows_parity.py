@@ -13,17 +13,20 @@ from ingest import shows
 CONFIG_JS = Path(__file__).resolve().parent.parent / "ui" / "config.js"
 
 
-def _js_shows() -> list[tuple[str, str]]:
-    """config.js 의 SHOWS 에서 (slug, rss) 를 문서 순서대로 추출."""
+def _js_shows() -> list[tuple[str, str | None]]:
+    """config.js 의 SHOWS 에서 (slug, rss) 를 문서 순서대로 추출. rss 는 문자열 또는 null."""
     src = CONFIG_JS.read_text(encoding="utf-8")
-    # SHOWS = [ ... ]; 블록만 잘라 그 안에서 slug/rss 를 짝지어 읽는다.
+    # SHOWS = [ ... ]; 블록만 잘라 각 쇼 객체({ ... })별로 slug + rss(문자열|null)를 읽는다.
     m = re.search(r"export const SHOWS = \[(.*?)\];", src, re.S)
     assert m, "config.js 에서 SHOWS 배열을 못 찾음"
     block = m.group(1)
-    slugs = re.findall(r"slug:\s*'([^']+)'", block)
-    rsses = re.findall(r"rss:\s*'([^']+)'", block)
-    assert len(slugs) == len(rsses), "config.js SHOWS 의 slug/rss 개수 불일치"
-    return list(zip(slugs, rsses))
+    out: list[tuple[str, str | None]] = []
+    # slug 단위로 쇼 객체를 나눠, 그 안에서 rss 값(따옴표 문자열 또는 null)을 찾는다.
+    for om in re.finditer(r"slug:\s*'([^']+)'(.*?)(?=slug:\s*'|$)", block, re.S):
+        slug, body = om.group(1), om.group(2)
+        rm = re.search(r"rss:\s*(?:'([^']+)'|null)", body)
+        out.append((slug, rm.group(1) if (rm and rm.group(1)) else None))
+    return out
 
 
 def test_slug_and_rss_parity():

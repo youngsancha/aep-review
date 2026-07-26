@@ -51,8 +51,21 @@ export const SHOWS = [
     short: 'All Ears English',
     host: 'Lindsay & Michelle',
     level: '중급–고급 · 일상·비즈니스 ESL',
+    source: 'rss',
     rss: 'https://feeds.megaphone.fm/allearsenglish',
     cover: _AEE_COVER,
+  },
+  {
+    // White House 브리핑 — RSS 없음(whitehouse.gov 스크레이프 + yt-dlp, ingest/wh_fetch.py).
+    // 미 연방정부 저작물이라 미국 내 퍼블릭 도메인. 격식 영어·시사 어휘·Q&A 청해용.
+    slug: 'wh',
+    name: 'White House Briefing',
+    short: 'White House',
+    host: 'Press Secretary & officials',
+    level: '고급 · 격식체·시사·Q&A 청해',
+    source: 'whitehouse',
+    rss: null,
+    cover: '/icons/wh-cover.png?v=1',   // whitehouse.gov 공식 앱 아이콘(apple-touch-icon 180²). ?v=1 로 뷰의 &w=..&h=.. 부착이 유효 쿼리
   },
 ];
 export const SHOW_BY_SLUG = Object.fromEntries(SHOWS.map((s) => [s.slug, s]));

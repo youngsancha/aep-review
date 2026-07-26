@@ -7,22 +7,29 @@ import {
   currentShow, setCurrentShow, showMeta, showCover, showOptions, SHOW_COVER, SHOW_COVER_SM,
 } from '../ui/config.js';
 
-const REQUIRED = ['slug', 'name', 'host', 'level', 'rss', 'cover'];
+// rss 는 source==='rss' 쇼만 필수(wh 는 whitehouse.gov 스크레이프라 rss 없음).
+const REQUIRED = ['slug', 'name', 'host', 'level', 'cover'];
 
-test('SHOWS: aep + allears 두 쇼, 필수 필드 완비', () => {
-  assert.equal(SHOWS.length, 2);
+test('SHOWS: aep + allears + wh 세 쇼, 필수 필드 완비', () => {
+  assert.equal(SHOWS.length, 3);
   const slugs = SHOWS.map((s) => s.slug);
-  assert.deepEqual(slugs, ['aep', 'allears']);
+  assert.deepEqual(slugs, ['aep', 'allears', 'wh']);
   for (const s of SHOWS) {
     for (const f of REQUIRED) assert.ok(s[f] && String(s[f]).trim(), `${s.slug}.${f} 비어있음`);
-    assert.ok(/^https?:\/\//.test(s.rss), `${s.slug}.rss URL 아님`);
-    assert.ok(/^https?:\/\//.test(s.cover), `${s.slug}.cover URL 아님`);
+    assert.ok(s.cover && String(s.cover).trim(), `${s.slug}.cover 없음`);
+    if ((s.source || 'rss') === 'rss') {
+      assert.ok(/^https?:\/\//.test(s.rss), `${s.slug}.rss URL 아님`);
+    } else {
+      assert.equal(s.rss, null, `${s.slug} 는 비-RSS 소스라 rss=null 이어야`);
+    }
   }
 });
 
-test('RSS: 두 쇼 모두 megaphone 피드(공통 clean-URL/R2 싱크 적용)', () => {
+test('RSS: rss 소스 쇼는 megaphone 피드; wh 는 whitehouse 소스(rss 없음)', () => {
   assert.equal(SHOW_BY_SLUG.aep.rss, 'https://feeds.megaphone.fm/americanenglishpodcast');
   assert.equal(SHOW_BY_SLUG.allears.rss, 'https://feeds.megaphone.fm/allearsenglish');
+  assert.equal(SHOW_BY_SLUG.wh.source, 'whitehouse');
+  assert.equal(SHOW_BY_SLUG.wh.rss, null);
 });
 
 test('SHOW_BY_SLUG / DEFAULT_SHOW', () => {
@@ -47,7 +54,7 @@ test('showMeta/showCover: 기본=aep, 미지 slug 는 첫 쇼로 폴백', () => 
 
 test('showOptions: 선택기 렌더 데이터 — 기본 쇼(aep)만 active', () => {
   const opts = showOptions();
-  assert.equal(opts.length, 2);
+  assert.equal(opts.length, 3);
   const aep = opts.find((o) => o.slug === 'aep');
   const aee = opts.find((o) => o.slug === 'allears');
   assert.equal(aep.active, true);          // node: localStorage 없음 → currentShow=aep 가 active

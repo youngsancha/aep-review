@@ -2450,3 +2450,18 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
 }
 .set-signout:active { transform: scale(0.99); }
 .set-ver { text-align: center; font-size: 11.5px; color: var(--text-3); margin-top: 12px; font-variant-numeric: tabular-nums; }
+
+/* White House 회차 전용 — 영상 보기(외부 링크). 앱은 오디오 쉐도잉 전용이라 영상은 whitehouse.gov 에서.
+   (정밀진단 후속 WH 쇼: 사용자 요청 "영상도 같이") */
+.np-wh-video {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 16px 0; padding: 12px 14px; min-height: 44px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  text-decoration: none; color: var(--text);
+}
+.np-wh-video:active { transform: scale(0.99); }
+.np-wh-video-ico { font-size: 22px; flex: none; }
+.np-wh-video-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.np-wh-video-txt b { font-size: 14.5px; }
+.np-wh-video-txt span { font-size: 12px; color: var(--text-3); }
+.np-wh-video-go { flex: none; color: var(--text-2); font-size: 15px; }

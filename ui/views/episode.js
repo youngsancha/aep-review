@@ -101,6 +101,14 @@ export async function renderEpisode(root, idStr, tStr) {
       </div>
     ` : ''}
 
+    ${(ep.show === 'wh' && ep.guid) ? `
+      <a class="np-wh-video" href="https://www.whitehouse.gov/videos/${encodeURIComponent(ep.guid)}/" target="_blank" rel="noopener noreferrer">
+        <span class="np-wh-video-ico">📺</span>
+        <span class="np-wh-video-txt"><b>Watch the full video</b><span>whitehouse.gov · 오디오는 이 앱에서 쉐도잉</span></span>
+        <span class="np-wh-video-go">↗</span>
+      </a>
+    ` : ''}
+
     ${vocabs.length ? `
       <div class="section-h"><h2>Vocabulary</h2><span class="count">${vocabs.length}</span></div>
       <ul class="vocab-list">
