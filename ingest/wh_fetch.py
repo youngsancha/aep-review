@@ -112,7 +112,7 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
     finally:
         if cookiefile:
             cookiefile.unlink(missing_ok=True)
-    title, dur = "", None
+    title, dur, update = "", None, None
     info = base.with_suffix(".info.json")
     if info.exists():
         try:
@@ -120,10 +120,13 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
             title = (d.get("title") or "").strip()
             if d.get("duration") is not None:
                 dur = int(float(d["duration"]))
+            ud = d.get("upload_date") or d.get("release_date")   # yt-dlp: YYYYMMDD
+            if ud and len(str(ud)) == 8:
+                update = f"{str(ud)[:4]}-{str(ud)[4:6]}-{str(ud)[6:8]}"
         except (ValueError, OSError):
             pass
         info.unlink(missing_ok=True)
-    return {"title": title, "duration": dur}
+    return {"title": title, "duration": dur, "upload_date": update}
 
 
 # ─────────────────────────── 신규 발견 ───────────────────────────
@@ -145,31 +148,42 @@ def _r2_public_url(ep_id: int) -> str:
     return f"{base}/{ep_id}.mp3"
 
 
-def ingest_one(slug: str, do_stt: bool = True) -> dict[str, Any]:
-    """브리핑 1건: 오디오 추출 → insert → R2 업로드 → (옵션) R2 재STT. 반환 요약."""
+# C-SPAN 프로그램 URL → 안정적 guid. '/program/.../{id}' 의 끝 숫자 ID 를 쓴다.
+_CSPAN_ID_RE = re.compile(r"c-span\.org/(?:program|event|video)/(?:[a-z0-9-]+/)*(\d{4,})")
+
+
+def cspan_guid(url: str) -> str | None:
+    m = _CSPAN_ID_RE.search(url)
+    return f"cspan-{m.group(1)}" if m else None
+
+
+def ingest_page(page_url: str, guid: str, pub_date: str | None, title_fallback: str,
+                do_stt: bool = True) -> dict[str, Any]:
+    """소스 무관 코어: 오디오 추출 → episodes insert → R2 업로드 → (옵션) R2 재STT. 반환 요약.
+    whitehouse.gov(YouTube 임베드)·C-SPAN(자체 m3u8) 둘 다 extract_audio 로 처리된다
+    (yt-dlp '-f 140/bestaudio/best' → YouTube 는 140, C-SPAN 은 bestaudio 로 폴백)."""
     from ingest import store
     from scripts.retranscribe import retranscribe_one
 
-    page = PAGE_URL.format(slug=slug)
     with tempfile.TemporaryDirectory(prefix="wh_") as tmp:
         mp3 = Path(tmp) / "a.mp3"
-        meta = extract_audio(page, mp3)
+        meta = extract_audio(page_url, mp3)
         if not mp3.exists() or mp3.stat().st_size < 10_000:
-            raise RuntimeError(f"audio extract produced no/empty file for {slug}")
-        title = meta.get("title") or title_from_slug(slug)
+            raise RuntimeError(f"audio extract produced no/empty file for {guid}")
+        title = meta.get("title") or title_fallback
         row = {
-            "guid": slug, "season": None, "episode_no": None,
-            "title": title, "pub_date": slug_to_pubdate(slug),
+            "guid": guid, "season": None, "episode_no": None,
+            "title": title, "pub_date": pub_date or meta.get("upload_date"),
             "duration_sec": meta.get("duration"),
-            "description": f"White House press briefing — {page}",
-            "audio_url": page,          # 임시 폴백(비-null 필수); R2 업로드 후 R2 URL 로 교체
+            "description": f"White House press briefing — {page_url}",
+            "audio_url": page_url,      # 임시 폴백(비-null 필수); R2 업로드 후 R2 URL 로 교체
             "show": SHOW, "created_at": store._now(),
         }
         res = store.client().table("episodes").insert(row).execute()
         ep_id = res.data[0]["id"]
         store.upload_audio_r2(ep_id, mp3)   # R2 {id}.mp3
         store.client().table("episodes").update({"audio_url": _r2_public_url(ep_id)}).eq("id", ep_id).execute()
-    out: dict[str, Any] = {"slug": slug, "id": ep_id, "title": title}
+    out: dict[str, Any] = {"guid": guid, "id": ep_id, "title": title}
     if do_stt:
         # from_r2: 방금 올린 R2 오디오를 STT → 자막≡오디오. remap=False(신규라 재매핑 대상 없음).
         r = retranscribe_one({"id": ep_id}, remap=False, host_r2=False, from_r2=True)
@@ -177,10 +191,32 @@ def ingest_one(slug: str, do_stt: bool = True) -> dict[str, Any]:
     return out
 
 
-def run(limit: int | None = 3, do_stt: bool = True) -> dict[str, Any]:
+def ingest_one(slug: str, do_stt: bool = True) -> dict[str, Any]:
+    """whitehouse.gov 브리핑 1건(슬러그)."""
+    return ingest_page(PAGE_URL.format(slug=slug), guid=slug,
+                       pub_date=slug_to_pubdate(slug), title_fallback=title_from_slug(slug), do_stt=do_stt)
+
+
+def run(limit: int | None = 3, do_stt: bool = True, cspan_urls: list[str] | None = None) -> dict[str, Any]:
+    """cspan_urls 지정 시: 그 C-SPAN 프로그램들만 적재(반자동, 쿠키 불필요). 아니면 whitehouse.gov 자동 발견."""
+    from ingest import store
+    done, errs = [], []
+    if cspan_urls:
+        have = store.existing_guids(SHOW)
+        targets = [(u, cspan_guid(u)) for u in cspan_urls]
+        fresh = [(u, g) for (u, g) in targets if g and g not in have]
+        log.info("wh(cspan): %d url(s), %d new: %s", len(cspan_urls), len(fresh), [g for _, g in fresh])
+        for url, g in fresh:
+            try:
+                done.append(ingest_page(url, guid=g, pub_date=None, title_fallback="White House Daily Briefing", do_stt=do_stt))
+                log.info("wh(cspan): ingested %s", g)
+            except Exception as e:  # noqa: BLE001
+                log.exception("wh(cspan): FAILED %s", url)
+                errs.append({"url": url, "error": str(e)[:200]})
+        return {"new": len(fresh), "ingested": len(done), "errors": errs, "items": done}
+
     fresh = discover_new(limit)
     log.info("wh: discovered %d new briefing(s): %s", len(fresh), fresh)
-    done, errs = [], []
     for slug in fresh:
         try:
             done.append(ingest_one(slug, do_stt=do_stt))
@@ -197,13 +233,16 @@ def main() -> int:
     p.add_argument("--all", action="store_true", help="발견된 신규 전부")
     p.add_argument("--no-stt", action="store_true", help="STT 생략(오디오+행만; 자막은 나중에)")
     p.add_argument("--list-only", action="store_true", help="신규 슬러그만 출력(DB 미기록)")
+    p.add_argument("--cspan-urls", default=None,
+                   help="C-SPAN 프로그램 URL 콤마구분(반자동, 쿠키불필요). 지정 시 whitehouse.gov 자동발견 대신 이것만 적재")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.list_only:
         for s in discover_new(None if args.all else args.limit):
             print(s, "→", slug_to_pubdate(s))
         return 0
-    res = run(limit=None if args.all else args.limit, do_stt=not args.no_stt)
+    cspan = [u.strip() for u in args.cspan_urls.split(",") if u.strip()] if args.cspan_urls else None
+    res = run(limit=None if args.all else args.limit, do_stt=not args.no_stt, cspan_urls=cspan)
     log.info("wh done: %s", {k: v for k, v in res.items() if k != "items"})
     return 1 if res["errors"] and not res["ingested"] else 0
 

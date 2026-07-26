@@ -45,3 +45,11 @@ def test_wh_show_registered_without_rss():
         assert False, "rss_for('wh') should raise"
     except KeyError:
         pass
+
+
+def test_cspan_guid():
+    from ingest import wh_fetch as w
+    assert w.cspan_guid("https://www.c-span.org/program/white-house-event/white-house-daily-briefing/677472") == "cspan-677472"
+    assert w.cspan_guid("https://c-span.org/program/662693") == "cspan-662693"
+    assert w.cspan_guid("https://www.c-span.org/event/white-house-event/x/445397") == "cspan-445397"
+    assert w.cspan_guid("https://example.com/no-id") is None

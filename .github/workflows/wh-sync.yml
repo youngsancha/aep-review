@@ -17,6 +17,10 @@ on:
         description: "최신 미적재 브리핑 몇 개까지 (기본 3)"
         required: false
         default: "3"
+      cspan_urls:
+        description: "C-SPAN 프로그램 URL 콤마구분(반자동, 쿠키불필요). 넣으면 자동발견 대신 이것만 적재"
+        required: false
+        default: ""
   schedule:
     # 주 3회(월·수·금) 17:30 UTC / 02:30 KST — aep-sync(16:00) 이후, 브리핑 빈도에 맞춰 저빈도.
     - cron: "30 17 * * 1,3,5"
@@ -68,4 +72,10 @@ jobs:
           # 선택: YouTube 봇차단 우회용 쿠키(넷스케이프 형식 파일 내용). player_client 우회가 실패하면
           # Repo Settings → Secrets → Actions 에 YT_COOKIES 추가(브라우저 확장으로 youtube.com 쿠키 export).
           YT_COOKIES: ${{ secrets.YT_COOKIES }}
-        run: python -m ingest.wh_fetch --limit ${{ github.event.inputs.limit || 3 }}
+          CSPAN_URLS: ${{ github.event.inputs.cspan_urls }}
+        run: |
+          if [ -n "$CSPAN_URLS" ]; then
+            python -m ingest.wh_fetch --cspan-urls "$CSPAN_URLS"
+          else
+            python -m ingest.wh_fetch --limit ${{ github.event.inputs.limit || 3 }}
+          fi
