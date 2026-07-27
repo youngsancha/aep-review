@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import statistics
 import sys
 import time
 import urllib.request
@@ -154,7 +153,7 @@ def main():
 
     # A. 호스팅 완료
     not_hosted = [e["id"] for e in transcribed if e["id"] not in manifest]
-    print(f"=== A. 호스팅 ===")
+    print("=== A. 호스팅 ===")
     print(f"전체 {len(eps)} · 자막보유 {len(transcribed)} · 호스팅 {len(manifest)} · 미호스팅(자막有) {len(not_hosted)}")
     if not_hosted:
         print(f"  미호스팅: {sorted(not_hosted)[:40]}")
@@ -192,13 +191,13 @@ def main():
     for eid, why in sync_bad[:60]:
         print(f"  ep{eid}: {why}")
 
-    print(f"\n=== C. 문장분할(런온 잔존) ===")
+    print("\n=== C. 문장분할(런온 잔존) ===")
     seg_bad = [(eid, q) for (eid, _, _, q) in rows if isinstance(q, dict) and q.get("runons")]
     print(f"런온 잔존 회차: {len(seg_bad)} / {len(rows)}")
     for eid, q in seg_bad[:40]:
         print(f"  ep{eid}: 문장{q['n']} 최대{q['max_w']}단어/{q['max_dur']}s 런온{q['runons']}")
 
-    print(f"\n=== 종합 ===")
+    print("\n=== 종합 ===")
     ok = (not not_hosted) and (not sync_bad) and (not seg_bad)
     print("✅ 전수 통과" if ok else f"⚠ 미호스팅{len(not_hosted)} 싱크의심{len(sync_bad)} 런온{len(seg_bad)}")
 

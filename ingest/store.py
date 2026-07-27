@@ -54,7 +54,8 @@ def r2():
     load_dotenv(PROJECT_ROOT / ".env")
     import boto3
     from botocore.config import Config
-    ep = os.environ.get("R2_ENDPOINT"); ak = os.environ.get("R2_ACCESS_KEY_ID")
+    ep = os.environ.get("R2_ENDPOINT")
+    ak = os.environ.get("R2_ACCESS_KEY_ID")
     sk = os.environ.get("R2_SECRET_ACCESS_KEY")
     if not (ep and ak and sk):
         raise SystemExit("R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 가 환경에 없습니다.")

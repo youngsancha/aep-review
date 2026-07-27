@@ -24,7 +24,11 @@ E-Podcast — English-podcast shadowing PWA for the user's daily commute (car) +
    (must match). New JS module → register in BOTH `ui/index.html` importmap AND `ui/service-worker.js` SHELL.
 2. Gates (all must pass): `node scripts/jscheck.mjs` · `npx eslint ui scripts tests` ·
    `node --test tests/*.mjs` (87) · `.venv/bin/python -m pytest -q` (28) ·
+   `.venv/bin/python -m ruff check ingest scripts tests conftest.py` → `All checks passed!` ·
    `.venv/bin/python scripts/_pwtest.py` → prints `RESULT: PASS`.
+   ruff is a real gate as of v1.45.7 — it used to sit at 76 permanent errors, so nobody looked at it and
+   genuine signals hid inside the noise. `pyproject.toml` now exempts only the compact
+   `action(); sleep()` idiom in the verify/harness scripts; `ingest/` gets no exemption.
    `_pwtest.py` now covers six surfaces: episode · study · timeline · settings · **SRS** · **router**.
    The router harness runs the *real* `app.js` with only `/supabase.js` and the view modules stubbed —
    it is the only place routing, the back button, 404 chrome and the sync toast are exercised.

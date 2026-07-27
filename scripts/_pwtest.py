@@ -6,7 +6,10 @@ renderEpisode 를 띄운 뒤, 런타임 에러·문장수·재생 버튼 동작�
 
     python scripts/_pwtest.py
 """
-import json, subprocess, sys, time
+import json
+import subprocess
+import sys
+import time
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
@@ -388,11 +391,12 @@ def main() -> int:
                 st1 = pg.eval_on_selector(".tx-scroll", "el=>el.scrollTop")
                 tnow = pg.evaluate("window.__player._t")
                 seek_follow = bool(tnow > 90 and (st1 - st0) > 60)
-            # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨고 해당 표현이 보이는지
+            # 즉시 해설 패널: vocab 시점(70s)으로 seek → 패널이 뜨는지.
+            # (예전엔 패널 텍스트도 받아 뒀지만 설계가 바뀌어 지금은 아래 notes_no_vocab 이
+            #  '패널에 vocab term/def 가 없어야 한다'를 검증한다 → 텍스트 캡처는 불필요.)
             pg.evaluate("window.__player.seek(71)")
             time.sleep(0.3)
             notes_show = pg.eval_on_selector(".tx-notes", "el=>el.classList.contains('show')") if pg.query_selector(".tx-notes") else None
-            notes_text = pg.eval_on_selector(".tx-notes", "el=>el.textContent") if pg.query_selector(".tx-notes") else ""
             # 번역 기본 ON(#8): 클릭 없이도 not-easy 문장에서 번역행이 뜨고 채워지는지 + 버튼 on
             trans_default_on = pg.eval_on_selector("#tx-trans", "el=>el.classList.contains('on')") if pg.query_selector("#tx-trans") else None
             pg.evaluate("window.__player.seek(71)")  # vocab 문장(난이도 not-easy)에서 번역카드 노출
@@ -944,11 +948,12 @@ def main() -> int:
                          and rt_toast_ep == "Nothing to refresh here"
                          and rt_back_hash == "#/" and rt_still_alive is True
                          and rt_404_back is True and rt_404_tabs == 0 and rt_404_title == "E-Podcast"
-                         and rt_scroll_before > 100 and rt_scroll_after == 0)
+                         and rt_scroll_before > 100 and rt_scroll_after == 0
+                         and not rt_err)
             print("ROUTER: deep=", rt_deep, " back_shown=", rt_back_shown, " sync_toast=", repr(rt_toast_ep),
                   " back_hash=", rt_back_hash, " alive=", rt_still_alive,
                   " 404[back_hidden=", rt_404_back, " tabs_lit=", rt_404_tabs, " title=", repr(rt_404_title), "]",
-                  " scroll", rt_scroll_before, "->", rt_scroll_after, " ok=", router_ok)
+                  " scroll", rt_scroll_before, "->", rt_scroll_after, " err=", rt_err, " ok=", router_ok)
 
             ok = ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
             b.close()
