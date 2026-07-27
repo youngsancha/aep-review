@@ -731,6 +731,21 @@ def main() -> int:
             chip_swap_ok = (chip_keep == '1' and chip_on_idx == 1
                             and isinstance(chip_aria, str) and chip_aria.split(',')[1] == 'true'
                             and chip_aria.split(',')[0] == 'false')
+            # v1.45.7: Today 카드의 'Level check ›'(#plan-level) — 커버리지가 없던 컨트롤인데
+            # v1.45.6 에서 히트 영역(.cont-script::after 44px)과 키보드 핸들러를 동시에 건드렸다.
+            # ① 클릭이 여전히 받아쓰기(레벨 체크)로 진입하는지 ② role="button" 답게 Enter 로도 되는지.
+            lvl_click = lvl_key = None
+            if pg.query_selector("#plan-level"):
+                pg.eval_on_selector("#plan-level", "el=>el.click()"); time.sleep(0.45)
+                lvl_click = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check"))
+                exitToStudyHome = "history.back()"
+                pg.evaluate(exitToStudyHome); time.sleep(0.5)
+                if pg.query_selector("#plan-level"):
+                    pg.eval_on_selector("#plan-level", """el=>el.dispatchEvent(
+                        new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}))""")
+                    time.sleep(0.45)
+                    lvl_key = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check"))
+            print("LEVEL-CHECK: click=", lvl_click, " enter_key=", lvl_key)
             study_err = pg.evaluate("window.__err||[]")
             print("KIND-CHIP: shell_kept=", chip_keep, " on_idx=", chip_on_idx, " aria=", chip_aria, " ok=", chip_swap_ok)
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
@@ -742,7 +757,7 @@ def main() -> int:
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
                   " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok,
                   " dm_card=", dm_card, " dm_recent=", dm_recent, " drive_tri=", drive_tri_ok, " err=", study_err)
-            study_ok = (chip_swap_ok is True
+            study_ok = (chip_swap_ok is True and lvl_click is True and lvl_key is True
                         and study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and today_ok is True and know_marked is True
