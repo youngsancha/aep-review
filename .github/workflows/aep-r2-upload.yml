@@ -89,11 +89,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           R2_PUBLIC_BASE: https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev
+          IDS: ${{ inputs.retranscribe_ids }}
         # --recent(후보 범위)와 --limit(처리 상한)은 별개다. 예전엔 한 입력이 둘 다 채워서,
         # 범위를 넓히면 처리량도 같이 커져 job timeout 에 걸렸다. 실제 제동은 시간 예산이 건다.
         # --recent 는 pub_date 최신순이라 오래된 특정 회차를 노리려면 ids 로 직접 준다.
-        env:
-          IDS: ${{ inputs.retranscribe_ids }}
         run: |
           # ids 와 recent 는 배타적이다. ${IDS:-...} 로는 이걸 표현할 수 없다 —
           # IDS 가 설정돼 있으면 기본값이 아니라 IDS 값 자체가 튀어나와 인자가 중복된다.
