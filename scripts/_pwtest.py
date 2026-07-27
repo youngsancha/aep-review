@@ -635,7 +635,24 @@ def main() -> int:
                       " captures=", pg.evaluate("window.__captures||[]"))
                 drive_tri_ok = bool(dm_words > 0 and make_enabled and ncap == 1 and nmarks_after == 0
                                     and isinstance(cap_ko, str) and cap_ko.startswith('[KO]'))
+            # v1.45.0: 종류 칩 전환은 셸을 재생성하지 않는다(칩 .on + #study-list 만 교체).
+            # 검증법: 셸 노드(.study-kinds)에 표식을 심고 다른 칩을 누른 뒤 표식이 살아있는지 본다
+            # — 살아있으면 innerHTML 전면 재생성이 없었다는 뜻(예전엔 paintShell 로 통째로 날아갔다).
+            # 다른 study 검사가 모두 끝난 뒤 실행해 상태 변경이 앞 단계에 영향을 주지 않게 한다.
+            chip_keep = chip_on_idx = chip_aria = None
+            _chips = pg.query_selector_all(".study-kind-chip")
+            if len(_chips) >= 2:
+                pg.evaluate("document.querySelector('.study-kinds').dataset.pwmark='1'")
+                _chips[1].click(); time.sleep(0.5)
+                chip_keep = pg.eval_on_selector(".study-kinds", "el=>el.dataset.pwmark||''")
+                chip_on_idx = pg.eval_on_selector_all(".study-kind-chip", "els=>els.findIndex(e=>e.classList.contains('on'))")
+                chip_aria = pg.eval_on_selector_all(
+                    ".study-kind-chip", "els=>els.map(e=>e.getAttribute('aria-pressed')).join(',')")
+            chip_swap_ok = (chip_keep == '1' and chip_on_idx == 1
+                            and isinstance(chip_aria, str) and chip_aria.split(',')[1] == 'true'
+                            and chip_aria.split(',')[0] == 'false')
             study_err = pg.evaluate("window.__err||[]")
+            print("KIND-CHIP: shell_kept=", chip_keep, " on_idx=", chip_on_idx, " aria=", chip_aria, " ok=", chip_swap_ok)
             print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
                   " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
                   " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
@@ -645,7 +662,8 @@ def main() -> int:
                   " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
                   " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok,
                   " dm_card=", dm_card, " dm_recent=", dm_recent, " drive_tri=", drive_tri_ok, " err=", study_err)
-            study_ok = (study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
+            study_ok = (chip_swap_ok is True
+                        and study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
                         and quiz_opts == 4 and not study_err
                         and today_ok is True and know_marked is True
                         and known_before != known_after and dict_ok is True

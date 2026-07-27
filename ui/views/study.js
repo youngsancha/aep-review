@@ -349,7 +349,7 @@ export async function renderStudy(root) {
       <div class="section-h"><h2>Expressions</h2><span class="count">${ov.total.toLocaleString()}</span></div>
       <div class="study-kinds">
         ${kinds.map((k) => `
-          <button class="study-kind-chip${k.kind === selected ? ' on' : ''}" data-kind="${k.kind}">
+          <button class="study-kind-chip${k.kind === selected ? ' on' : ''}" data-kind="${k.kind}" aria-pressed="${k.kind === selected}">
             <span class="study-kind-emoji">${KIND_EMOJI[k.kind] || '•'}</span>
             <span class="study-kind-name">${KIND_LABEL[k.kind] || k.kind}</span>
             <span class="study-kind-n">${k.total}</span>
@@ -1013,9 +1013,23 @@ export async function renderStudy(root) {
   async function loadKind(k) {
     stopClip();
     selected = k;
-    q = '';
-    paintShell();
-    const listEl = root.querySelector('#study-list');
+    q = '';   // 검색어 초기화는 listHtml() 의 input value 가 담당 — 목록만 다시 그리면 반영된다.
+    // 종류 전환은 '칩 하이라이트 + 목록'만 바꾸면 된다. 예전엔 paintShell() 로 셸 전체를 다시
+    // 그려서 ① paintDrive() 가 매번 재실행(자막 재조회) ② 전 리스너 재바인딩 ③ 화면 번쩍임 +
+    // 스크롤 위치 유실이 있었다. selected 는 칩 마크업에서만 쓰이므로 셸 재생성이 불필요하다.
+    // (퀴즈 핸들러들은 클릭 시점에 items 를 읽는 클로저라 재바인딩 없이도 최신 목록을 본다.)
+    let listEl = root.querySelector('#study-list');
+    if (!listEl) {
+      paintShell();                                  // 최초 진입 — 셸이 아직 없다
+      listEl = root.querySelector('#study-list');
+      if (!listEl) return;
+    } else {
+      root.querySelectorAll('.study-kind-chip').forEach((b) => {
+        const on = b.dataset.kind === k;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    }
     listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
     try {
       items = await expressionsByKind(k);

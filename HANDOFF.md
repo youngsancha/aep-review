@@ -66,8 +66,12 @@ Ranked by value. Pick up here if continuing the audit upgrade:
    prune, capped at 50) + `tests/offline_pins.test.mjs` (7) + `_pwtest` OFFLINE-CHIP assertions
    (absent on megaphone / `Offline` on hosted / `Saved` when cached). No real progress bar: R2 has no
    CORS so the response is opaque and byte counts are unreadable — shows `Saving…` instead of faking one.
-2. **Study kind-chip full repaint** — switching Idioms/Phrasal/etc. rebuilds the whole shell + Drive;
-   should only toggle `.study-kind-chip.on` + re-render `#study-list`. (medium perf/UX, study.js loadKind)
+2. ~~**Study kind-chip full repaint**~~ — **SHIPPED v1.45.1.** `loadKind()` now only moves `.on` +
+   `aria-pressed` and swaps `#study-list`; `paintShell()` runs on first entry only. `selected` was
+   read in exactly one place (the chip markup), so the shell rebuild — which also re-ran `paintDrive()`
+   (transcript refetch) on every chip tap and dropped scroll position — was never needed. Proven by a
+   new `_pwtest` KIND-CHIP check: a marker set on `.study-kinds` must survive the switch (negative
+   control confirmed: restoring the old `paintShell()` call makes the harness FAIL).
 3. **Mini-player −15s back button** — only +30s exists; asymmetric. Layout is tight (skipped as low value).
 4. **Brand-name unify** — login title + `media-session.js` say "American English Podcast" but the app is
    "E-Podcast"; make config.js the single source. (low)
