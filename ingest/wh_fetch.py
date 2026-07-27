@@ -18,6 +18,9 @@ whitehouse.gov 를 소스로 한다. 단일 사용자·개인용 앱.
 사용:
     python -m ingest.wh_fetch --limit 3            # 최신 미적재 브리핑 3개
     python -m ingest.wh_fetch --list-only          # 발견된 신규 슬러그만 출력(네트워크 조회, DB 미기록)
+    python -m ingest.wh_fetch --discover-only      # 목록 스크레이프만 — 자격증명 불필요(소스 헬스체크)
+
+로컬 실행은 scripts/wh_local.sh 를 쓴다(Keychain 에서 비밀값 주입). 배경·상태는 docs/WH_LOCAL_INGEST.md.
 """
 from __future__ import annotations
 
@@ -134,11 +137,16 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
 
 # ─────────────────────────── 신규 발견 ───────────────────────────
 
+def discover_all() -> list[str]:
+    """목록 스크레이프만(DB·자격증명 불필요) → 발견된 전체 슬러그. 소스가 살아있는지,
+    whitehouse.gov HTML 변경으로 _SLUG_RE 가 깨졌는지 확인하는 무자격증명 점검용."""
+    return parse_slugs(_fetch(LISTING_URL))
+
+
 def discover_new(limit: int | None) -> list[str]:
     """목록 스크레이프 + DB 대조 → 신규 슬러그(최신 우선, 목록 순서 = 최신순)."""
     from ingest import store
-    html = _fetch(LISTING_URL)
-    slugs = parse_slugs(html)
+    slugs = discover_all()
     have = store.existing_guids(SHOW)
     fresh = [s for s in slugs if s not in have]
     return fresh[: (limit or len(fresh))]
@@ -235,11 +243,19 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=3, help="최신 미적재 브리핑 N개 (기본 3)")
     p.add_argument("--all", action="store_true", help="발견된 신규 전부")
     p.add_argument("--no-stt", action="store_true", help="STT 생략(오디오+행만; 자막은 나중에)")
-    p.add_argument("--list-only", action="store_true", help="신규 슬러그만 출력(DB 미기록)")
+    p.add_argument("--list-only", action="store_true", help="신규 슬러그만 출력(DB 대조함, 미기록)")
+    p.add_argument("--discover-only", action="store_true",
+                   help="목록 스크레이프 결과만 출력 — DB·자격증명 불필요(소스 헬스체크)")
     p.add_argument("--cspan-urls", default=None,
                    help="C-SPAN 프로그램 URL 콤마구분(반자동, 쿠키불필요). 지정 시 whitehouse.gov 자동발견 대신 이것만 적재")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    if args.discover_only:
+        found = discover_all()
+        for s in found:
+            print(s, "→", slug_to_pubdate(s))
+        print(f"({len(found)} briefing(s) on the listing page)")
+        return 0 if found else 1   # 0건 = 스크레이프 깨짐 신호(HTML 변경 등)
     if args.list_only:
         for s in discover_new(None if args.all else args.limit):
             print(s, "→", slug_to_pubdate(s))
