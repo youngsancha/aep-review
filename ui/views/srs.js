@@ -74,6 +74,10 @@ export async function renderSrs(root) {
   const queue = [...initial];
   const total = queue.length;
   let done = 0, mastered = 0, againCount = 0;
+  // 진짜 first-pass: 카드별 '첫 채점' 결과만 집계한다. done/mastered 는 재시도(again 후 재큐)를
+  // 포함하므로 최종 정답률이지 첫 시도 정답률이 아니다 — 예전엔 그 값을 'first-pass' 로 표시했다.
+  const _gradedOnce = new Set();
+  let firstTry = 0, firstGood = 0;
   let stage = 0;
   let inFlight = false;
 
@@ -85,7 +89,7 @@ export async function renderSrs(root) {
 
   function paint() {
     if (!queue.length) {
-      const acc = total > 0 ? Math.round(mastered * 100 / Math.max(done, 1)) : 0;
+      const acc = firstTry > 0 ? Math.round(firstGood * 100 / firstTry) : 0;
       root.innerHTML = `
         <div class="srs-summary">
           <div class="srs-summary-num">${total}</div>
@@ -95,7 +99,10 @@ export async function renderSrs(root) {
           </div>
           <div class="srs-summary-actions">
             <a class="btn primary" href="#/">Back to episodes</a>
-            <button class="btn secondary" onclick="location.reload()">Review again</button>
+            <!-- 예전엔 'Review again' + location.reload() 였는데, 방금 큐를 비운 직후라 새로고침해도
+                 due 카드가 없어 항상 '복습 완료' 빈 화면으로 떨어졌다(약속과 다른 동작). 실제로
+                 이어서 할 수 있는 곳으로 보낸다. -->
+            <a class="btn secondary" href="#/study">📚 Study</a>
           </div>
         </div>`;
       return;
@@ -142,7 +149,9 @@ export async function renderSrs(root) {
             ${stage >= 1 ? `
               <div class="srs-listen-row">
                 <button class="srs-listen-btn" id="tts-btn" aria-label="Replay audio">🔊</button>
-                <span class="srs-hint-mono">${escapeHtml(maskTerm(term))}</span>
+                <!-- 마스킹 힌트는 '아직 못 본' 단계(1)에서만. stage 2 는 바로 아래 .srs-term 으로
+                     정답을 통째로 보여주므로, 같이 두면 힌트가 정답 옆에서 무의미하게 남는다. -->
+                ${stage === 1 ? `<span class="srs-hint-mono">${escapeHtml(maskTerm(term))}</span>` : ''}
               </div>
             ` : ''}
 
@@ -189,7 +198,13 @@ export async function renderSrs(root) {
       prefetch([term]);
     }
 
+    // 이 렌더에서 이미 진행했는가. 스와이프는 뒤이어 합성 click 을 남기는데, 둘 다 advance 를
+    // 호출하면 0→1→2 로 한 번에 튀어 '떠올리기' 단계가 통째로 스킵됐다. paint() 마다 새 클로저가
+    // 만들어지므로 렌더 단위 플래그로 정확히 1회만 통과시킨다.
+    let advanced = false;
     const advance = () => {
+      if (advanced) return;
+      advanced = true;
       if (stage === 0) {
         stage = 1;
         paint();
@@ -266,6 +281,11 @@ export async function renderSrs(root) {
     done++;
     if (gradeKey === 'again') againCount++;
     else mastered++;
+    if (!_gradedOnce.has(c.id)) {          // 이 카드의 '첫' 채점만 first-pass 통계에 반영
+      _gradedOnce.add(c.id);
+      firstTry++;
+      if (gradeKey !== 'again') firstGood++;
+    }
 
     setTimeout(() => {
       stopClip();  // 다음 카드로 넘어가면 이전 맥락 재생 정지

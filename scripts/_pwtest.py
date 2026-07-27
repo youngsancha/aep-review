@@ -208,6 +208,19 @@ TIMELINE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
+SRS_HARNESS = UI / "_harness_srs.html"
+SRS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
+<script type="module">
+  import { renderSrs } from '/views/srs.js';
+  window.__ready=false;
+  renderSrs(document.getElementById('app')).then(()=>{window.__ready=true;})
+    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
+</script></body></html>
+"""
+
 SETTINGS_HARNESS = UI / "_harness_settings.html"
 OFFLINE_MOCK = UI / "_offmock.js"
 OFFLINE_MOCK_JS = r"""
@@ -238,6 +251,7 @@ def main() -> int:
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
     STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
+    SRS_HARNESS.write_text(SRS_HARNESS_HTML, encoding="utf-8")
     SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
     OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
@@ -771,7 +785,41 @@ def main() -> int:
                   " off_on0=", off_on0, " theme_called=", theme_called, " off_set=", off_set,
                   " forced=", forced, " signout=", signout_called, " closed=", sheet_closed, " err=", set_err)
 
-            ok = ep_ok and study_ok and timeline_ok and settings_ok
+            # === SRS 복습 (v1.45.4 — 지금까지 자동검증이 전혀 없던 화면) ===
+            # 목 큐는 카드 2장. A=again → B=good → 재큐된 A=good 으로 채점하면
+            # 진짜 first-pass 는 1/2=50%, 옛 계산(mastered/done)은 2/3=67% 라 숫자로 구분된다.
+            pg.goto("http://localhost:8123/_harness_srs.html")
+            pg.wait_for_function("window.__ready===true", timeout=10000)
+            cls0 = pg.eval_on_selector("#card", "el=>el.className")
+            pg.click("#card"); time.sleep(0.35)
+            srs_mask1 = pg.query_selector(".srs-hint-mono") is not None    # 단계1: 마스킹 힌트 노출
+            srs_term1 = pg.query_selector(".srs-term") is not None         # 단계1: 정답은 아직 숨김
+            pg.click("#card"); time.sleep(0.35)
+            srs_mask2 = pg.query_selector(".srs-hint-mono") is not None    # 단계2: 힌트가 사라져야 함
+            srs_term2 = pg.query_selector(".srs-term") is not None         # 단계2: 정답 노출
+            def _grade(kind):
+                pg.click(f'[data-grade="{kind}"]'); time.sleep(0.6)
+            _grade("again")
+            pg.click("#card"); time.sleep(0.3); pg.click("#card"); time.sleep(0.3)
+            _grade("good")
+            pg.click("#card"); time.sleep(0.3); pg.click("#card"); time.sleep(0.3)
+            _grade("good")
+            time.sleep(0.4)
+            srs_meta = pg.eval_on_selector(".srs-summary-meta", "el=>el.textContent.replace(/\\s+/g,' ').trim()") \
+                if pg.query_selector(".srs-summary-meta") else None
+            srs_reviews = pg.evaluate("window.__reviews||[]")
+            srs_err = pg.evaluate("window.__err||[]")
+            srs_ok = (cls0.find("srs-stage-0") >= 0
+                      and srs_mask1 is True and srs_term1 is False
+                      and srs_mask2 is False and srs_term2 is True
+                      and isinstance(srs_meta, str) and "50% first-pass" in srs_meta
+                      and "3 reviews" in srs_meta and "1 retried" in srs_meta
+                      and len(srs_reviews) == 3 and not srs_err)
+            print("SRS: stage1_mask=", srs_mask1, " stage1_term=", srs_term1,
+                  " stage2_mask=", srs_mask2, " stage2_term=", srs_term2,
+                  " meta=", repr(srs_meta), " reviews=", srs_reviews, " ok=", srs_ok, " err=", srs_err)
+
+            ok = ep_ok and study_ok and timeline_ok and settings_ok and srs_ok
             b.close()
     finally:
         srv.terminate()
@@ -779,6 +827,7 @@ def main() -> int:
         HARNESS.unlink(missing_ok=True)
         STUDY_HARNESS.unlink(missing_ok=True)
         TIMELINE_HARNESS.unlink(missing_ok=True)
+        SRS_HARNESS.unlink(missing_ok=True)
         SETTINGS_HARNESS.unlink(missing_ok=True)
         OFFLINE_MOCK.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")

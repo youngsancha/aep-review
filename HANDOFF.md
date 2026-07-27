@@ -91,7 +91,17 @@ Ranked by value. Pick up here if continuing the audit upgrade:
      (WAI-ARIA), so adopting it without that would swap one false contract for another.
    - **stale, already fixed elsewhere — do not re-do:** #3 (logout hidden) and #24 (inert version pill)
      were solved by the v1.42.0 Settings sheet; #27 (login branding) shipped in v1.45.2.
-   - remaining: #5 #7 #9–#23 #25 #26 (mostly 44px touch targets, SRS stage/metric issues, chrome copy).
+   - **batch 2 SHIPPED v1.45.4** (lows #11 #14 #15 #17 #18 #19 #22): SRS stage 2 no longer shows the
+     masked hint next to the revealed answer; swipe+trailing-click can no longer skip a stage (per-render
+     `advanced` flag); `% first-pass` now actually measures first attempts (`_gradedOnce` set) instead of
+     the overall got-it rate; the summary's "Review again" (which reloaded into an empty state, since the
+     queue was just drained) is now a Study link. 44px hit areas via the existing `::after` pattern for
+     `.study-x-tr`, `.theme-switch`, `.dm-know/.dm-study/.dm-x`, `.cont-script`.
+   - **NEW: `_harness_srs.html` + SRS harness section** — the SRS view had zero automated coverage. The
+     2-card mock lets a grade sequence (again → good → good) discriminate the metric fix: true first-pass
+     is 50%, the old formula reported 67%.
+   - **also stale:** #5 (`.tx-toggle` 44px) was already fixed by the v1.41.0 `::after` expander.
+   - remaining: #7 #9 #10 #12 #13 #16 #20 #21 #23 #25 #26.
 
 ## 5. OPEN DECISION — Android home-screen widget (user asked, awaiting choice)
 

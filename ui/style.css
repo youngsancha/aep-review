@@ -160,6 +160,9 @@ body.on-episode {
 /* 좌우로 슬라이드되는 테마 토글 스위치 (해=좌/달=우) */
 #topbar button.theme-switch { width: 52px; height: 28px; border-radius: 14px; padding: 0; }
 #topbar button.theme-switch:hover { background: transparent; }
+/* 히트 영역만 44px 로 확장(시각 크기 유지) — .tx-toggle/.np-extras .speed 와 동일 패턴. */
+#topbar button.theme-switch { position: relative; }
+#topbar button.theme-switch::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 .theme-switch .theme-track {
   position: relative; display: flex; align-items: center; justify-content: space-between;
   width: 52px; height: 28px; border-radius: 14px; box-sizing: border-box; padding: 0 7px;
@@ -295,7 +298,9 @@ body.on-episode {
   transition: transform 0.1s;
 }
 .cont-play:active { transform: scale(0.97); }
-.cont-script { color: var(--tint); font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.cont-script { position: relative; color: var(--tint); font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; }
+/* Today 카드의 인라인 링크 — 세로 패딩이 없어 히트 영역이 글자 높이(≈18px)뿐이었다. 시각은 그대로. */
+.cont-script::after { content: ''; position: absolute; left: -6px; right: -6px; top: 50%; transform: translateY(-50%); height: 44px; }
 
 
 /* ========== Section header ========== */
@@ -1620,6 +1625,9 @@ body.logged-out #app-version { display: none; }
 }
 .study-x.known .study-x-tr { margin-left: auto; }
 .study-x.known .study-x-known-badge { margin-left: 8px; }
+/* 히트 영역만 44px 로 확장(시각 크기 유지) — .tx-toggle/.np-extras .speed 와 동일 패턴. */
+.study-x-tr { position: relative; }
+.study-x-tr::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 .study-x-tr.on { background: var(--tint); color: #fff; }
 .study-x-tr:active { transform: scale(0.92); }
 .study-x-tr-out {
@@ -2411,6 +2419,9 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
 .dm-vmain span { display: block; font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dm-know, .dm-study { flex: none; border: 1px solid var(--border); background: none; border-radius: 999px; padding: 7px 12px; font-size: 13px; color: var(--text-2); min-height: 34px; }
 .dm-study { color: var(--tint-hover); border-color: var(--tint-hover); }
+/* 히트 영역만 44px 로 확장(시각 크기 유지) — .tx-toggle/.np-extras .speed 와 동일 패턴. */
+.dm-know, .dm-study, .dm-x { position: relative; }
+.dm-know::after, .dm-study::after, .dm-x::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 
 /* ========== Settings 시트 (v1.41.0 정밀진단 — 흩어진 설정 통합) ========== */
 #app-version { cursor: pointer; }
