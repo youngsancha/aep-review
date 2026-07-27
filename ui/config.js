@@ -13,8 +13,17 @@ export const R2_PUBLIC_BASE = 'https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.d
 export function hostedAudioUrl(id) { return `${R2_PUBLIC_BASE}/${id}.mp3`; }
 
 // MyMemory 번역 API 무료 한도 키. 익명은 하루 ~1천 단어로 금방 소진(429) → 이메일 지정 시
-// 하루 5만 단어. 이 repo 는 PRIVATE 이라 노출 위험 없음. 비우면 익명으로 동작(권장X).
+// 하루 5만 단어. 비우면 익명으로 동작(권장X).
+// ⚠ 2026-07-26 저장소가 PUBLIC 으로 전환됐다(GitHub Actions 분 한도 때문). 이 파일은 원래도
+// 브라우저로 서빙되는 클라이언트 모듈이라 이 주소는 예전부터 앱 사용자에게 보였지만, 이제는
+// 공개 저장소에서 스크래핑 대상이기도 하다. 바꾸려면 전용 별칭(yscha.roy+mymemory@)으로 교체할 것
+// — 비우면 한도가 하루 1천 단어로 떨어져 번역 품질이 실제로 나빠지므로 그냥 지우지는 말 것.
 export const TRANSLATE_EMAIL = 'yscha.roy@gmail.com';
+
+// 앱 이름(쇼 이름과 다르다) — 단일 출처. 쇼는 SHOWS[].name, 앱 전체는 이것.
+// media-session.js 는 node 단위테스트를 위해 의도적으로 import 가 없어 같은 문자열을 자체 보관하며,
+// tests/media_session.test.mjs 가 두 값이 어긋나지 않도록 고정한다.
+export const APP_NAME = 'E-Podcast';
 
 // ─────────────────────────── 멀티-쇼: 한 앱, 두 영어 팟캐스트 ───────────────────────────
 // cnpod-review(중국어 멀티-쇼)와 같은 패턴을 영어 두 쇼에 적용:

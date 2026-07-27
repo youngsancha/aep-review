@@ -10,7 +10,13 @@
 // 인앱 버튼과 동일(episode.js: back 15s / fwd 30s) → 컨트롤 간 일관.
 export const DEFAULT_BACK = 15;
 export const DEFAULT_FWD = 30;
-const SHOW = 'American English Podcast';
+// 앱 이름 — 트랙에 쇼 정보가 없을 때만 쓰는 폴백. 예전엔 'American English Podcast' 를 하드코딩해
+// artist/album 에 넣었는데, 멀티-쇼(All Ears English·White House Briefing) 이후로는 어떤 쇼를 틀어도
+// 잠금화면/차량 디스플레이에 AEP 로 표시되는 오표기였다. 실제 쇼 이름은 호출부가 track.show 로 준다.
+// ⚠ 이 모듈은 node 단위테스트에서 직접 import 하려고 의도적으로 import 가 없다(절대경로 '/config.js'
+// 는 node 에서 해석 불가). 그래서 config.js 의 APP_NAME 을 여기 복제하고, 두 값이 어긋나면
+// tests/media_session.test.mjs 가 실패한다.
+export const APP_NAME = 'E-Podcast';
 
 // 액션 핸들러 맵 — 차량/핸들/잠금화면의 표준 미디어 액션을 player 메서드로 변환.
 export function mediaSessionActions(player, cfg = {}) {
@@ -37,9 +43,9 @@ export function buildMetadata(track, MediaMetadataCtor) {
     ? [{ src: track.cover, sizes: '512x512', type: 'image/jpeg' }]
     : [];
   return new MediaMetadataCtor({
-    title: track.title || SHOW,
-    artist: track.show || SHOW,
-    album: SHOW,
+    title: track.title || APP_NAME,
+    artist: track.show || APP_NAME,
+    album: track.show || APP_NAME,   // 앨범 = 그 회차가 속한 쇼(고정 AEP 아님)
     artwork: art,
   });
 }

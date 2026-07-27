@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   mediaSessionActions, buildMetadata, updatePositionState, bindMediaSession,
-  DEFAULT_BACK, DEFAULT_FWD,
+  DEFAULT_BACK, DEFAULT_FWD, APP_NAME,
 } from '../ui/media-session.js';
 
 // 호출을 기록하는 player 스텁(인앱 player 의 표면만 흉내).
@@ -77,6 +77,35 @@ test('buildMetadata: 제목/쇼/아트워크 매핑', () => {
   assert.equal(captured.artist, 'AEP');
   assert.equal(captured.artwork.length, 1);
   assert.equal(captured.artwork[0].src, 'http://x/c.jpg');
+  assert.equal(captured.album, 'AEP', '앨범 = 그 회차의 쇼(고정 브랜드명 아님)');
+});
+
+// 멀티-쇼 오표기 회귀 방지: 예전엔 album 이 'American English Podcast' 로 고정이라, All Ears
+// English·White House Briefing 을 틀어도 잠금화면/차량 화면에 AEP 로 떴다.
+test('buildMetadata: 쇼가 바뀌면 artist/album 도 그 쇼를 따른다', () => {
+  let captured = null;
+  class MM { constructor(o) { captured = o; } }
+  buildMetadata({ title: 'Briefing', show: 'White House Briefing' }, MM);
+  assert.equal(captured.artist, 'White House Briefing');
+  assert.equal(captured.album, 'White House Briefing');
+});
+
+test('buildMetadata: 쇼 정보가 없으면 앱 이름으로 폴백', () => {
+  let captured = null;
+  class MM { constructor(o) { captured = o; } }
+  buildMetadata({ title: 'Untitled' }, MM);
+  assert.equal(captured.artist, APP_NAME);
+  assert.equal(captured.album, APP_NAME);
+});
+
+// 단일 출처 고정: media-session.js 는 node 테스트를 위해 import 가 없어 APP_NAME 을 복제한다.
+// 두 값이 갈라지면(예: 앱 이름 변경 시 한쪽만 수정) 여기서 잡는다.
+test('APP_NAME 은 config.js 와 media-session.js 가 동일해야 한다', async () => {
+  const { fileURLToPath, pathToFileURL } = await import('node:url');
+  const { dirname, join } = await import('node:path');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const cfg = await import(pathToFileURL(join(root, 'ui/config.js')).href);
+  assert.equal(APP_NAME, cfg.APP_NAME);
 });
 
 test('buildMetadata: cover 없으면 artwork 빈 배열, ctor 없으면 null', () => {

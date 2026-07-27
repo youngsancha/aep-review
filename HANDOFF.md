@@ -73,8 +73,13 @@ Ranked by value. Pick up here if continuing the audit upgrade:
    new `_pwtest` KIND-CHIP check: a marker set on `.study-kinds` must survive the switch (negative
    control confirmed: restoring the old `paintShell()` call makes the harness FAIL).
 3. **Mini-player −15s back button** — only +30s exists; asymmetric. Layout is tight (skipped as low value).
-4. **Brand-name unify** — login title + `media-session.js` say "American English Podcast" but the app is
-   "E-Podcast"; make config.js the single source. (low)
+4. ~~**Brand-name unify**~~ — **SHIPPED v1.45.2, and it was not cosmetic.** `media-session.js` hardcoded
+   `album: 'American English Podcast'`, so playing an All Ears English or White House briefing showed
+   "American English Podcast" on the lock screen / car display. Now `artist`/`album` follow `track.show`
+   (both callers already passed the right per-show name) and fall back to `APP_NAME`. `config.js` owns
+   `APP_NAME`; `media-session.js` keeps a copy because it is deliberately import-free for its node test,
+   and a new test pins the two values equal. Login header + `app.js` logged-out title + manifest
+   description also updated. Tests 84→87.
 5. **28 low-severity items** in `HANDOFF-menu-audit-2026-07-25.json` (`lows` array) — file:line + fix each.
 
 ## 5. OPEN DECISION — Android home-screen widget (user asked, awaiting choice)

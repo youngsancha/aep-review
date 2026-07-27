@@ -3,6 +3,7 @@
 // 것만 파싱하고 episode/study/srs/login(대형 모듈들)은 진입 시 로드해 초기 JS 파싱/평가를 줄인다.
 // SW SHELL 이 전부 캐시하므로 지연 로드여도 오프라인·재방문은 즉시(네트워크 아닌 파싱만 지연).
 import { supabase } from '/supabase.js';
+import { APP_NAME } from '/config.js';
 
 export const APP_VERSION = String(window.APP_VERSION || 'dev');
 
@@ -215,7 +216,7 @@ function showLogin() {
   authed = false;
   document.body.classList.add('logged-out');
   $back.hidden = true;
-  $title.textContent = 'American English Podcast';
+  $title.textContent = APP_NAME;   // 로그아웃 화면 헤더 = 앱 이름(특정 쇼 이름 아님)
   import('/views/login.js').then((m) => m.renderLogin($app, () => {
     authed = true;
     document.body.classList.remove('logged-out');
