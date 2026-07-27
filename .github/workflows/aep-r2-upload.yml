@@ -25,6 +25,9 @@ on:
       redo:
         description: "이미 있어도 다시 업로드(true/false)"
         default: "false"
+      retranscribe_ids:
+        description: "재STT 할 episode id 쉼표구분(지정 시 --recent 무시). 특정 회차 싱크 수리용."
+        default: ""
       retranscribe_recent:
         description: "재STT 후보 범위(최신 N개 안에서 고른다). 과거 회차를 잡으려면 크게."
         default: "12"
@@ -88,8 +91,17 @@ jobs:
           R2_PUBLIC_BASE: https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev
         # --recent(후보 범위)와 --limit(처리 상한)은 별개다. 예전엔 한 입력이 둘 다 채워서,
         # 범위를 넓히면 처리량도 같이 커져 job timeout 에 걸렸다. 실제 제동은 시간 예산이 건다.
-        run: >
-          python -m scripts.retranscribe --from-r2 --skip-hosted
-          --recent ${{ github.event.inputs.retranscribe_recent || '12' }}
-          --limit ${{ github.event.inputs.retranscribe_limit || '12' }}
-          --time-budget-min ${{ github.event.inputs.retranscribe_budget_min || '300' }}
+        # --recent 는 pub_date 최신순이라 오래된 특정 회차를 노리려면 ids 로 직접 준다.
+        env:
+          IDS: ${{ inputs.retranscribe_ids }}
+        run: |
+          # ids 와 recent 는 배타적이다. ${IDS:-...} 로는 이걸 표현할 수 없다 —
+          # IDS 가 설정돼 있으면 기본값이 아니라 IDS 값 자체가 튀어나와 인자가 중복된다.
+          if [ -n "$IDS" ]; then
+            sel=(--ids "$IDS")
+          else
+            sel=(--recent "${{ inputs.retranscribe_recent || '12' }}")
+          fi
+          python -m scripts.retranscribe --from-r2 --skip-hosted "${sel[@]}" \
+            --limit ${{ inputs.retranscribe_limit || '12' }} \
+            --time-budget-min ${{ inputs.retranscribe_budget_min || '300' }}
