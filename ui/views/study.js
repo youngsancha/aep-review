@@ -746,7 +746,12 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-prod')?.addEventListener('click', () => startProduction());
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
-    root.querySelector('#plan-level')?.addEventListener('click', startLevelCheck);
+    // role="button" 을 선언했으면 키보드도 동작해야 한다(.prof-axis·.study-x-ep 와 동일 패턴).
+    const $level = root.querySelector('#plan-level');
+    $level?.addEventListener('click', startLevelCheck);
+    $level?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startLevelCheck(); }
+    });
     // ⓘ 안내: 약점 축을 강조해 열기. 각 축 행을 탭하면 그 축으로 포커스.
     root.querySelector('#prof-info')?.addEventListener('click', () => openProfInfo(weakestAxis(prof.scores)));
     root.querySelectorAll('.prof-axis[data-axis]').forEach((el) => {
@@ -990,12 +995,15 @@ export async function renderStudy(root) {
     const seen = loadSeen();
     const withEx = all.filter((v) => v.example_sentence && v.example_sentence.trim());
     const unseen = withEx.filter((v) => !seen.has(v.id));
-    const pool = unseen.length >= 5 ? unseen : withEx;   // unseen 부족(첫 측정 등)하면 전체로 폴백
+    const enoughUnseen = unseen.length >= 5;
+    const pool = enoughUnseen ? unseen : withEx;   // unseen 부족(첫 측정 등)하면 전체로 폴백
     if (!pool.length) {
-      if (listEl) listEl.innerHTML = '<div class="empty">No material to test yet.</div>';
+      if (listEl) listEl.innerHTML = '<div class="empty">아직 측정할 문장이 없어요.</div>';
       return;
     }
-    startDictation(pool, true);   // unseen=true → listeningUnseen 으로 기록(axisScores 우선 채택)
+    // ⚠ 폴백(전체 풀)일 땐 이미 본 문장이 섞이므로 unseen 으로 기록하면 안 된다 — 예전엔 항상 true 라
+    // '처음 듣는 문장 이해도' 축이 이미 학습한 문장 점수로 부풀려졌다.
+    startDictation(pool, enoughUnseen);   // unseen=true 일 때만 listeningUnseen 축에 기록
   }
 
   // 서브화면(퀴즈·세션) 진입/이탈 — history 항목으로 '뒤로가기 = Study 홈'을 보장(Library 로 안 튕김).
@@ -1136,7 +1144,7 @@ export async function renderStudy(root) {
     const weak = all.filter((v) => !v.known && v.term && v.definition);
     const pool = weak.length >= 4 ? weak : all.filter((v) => v.term && v.definition);
     if (pool.length < 4) {
-      if (listEl) listEl.innerHTML = '<div class="empty">Not enough expressions for a quiz (need 4+).</div>';
+      if (listEl) listEl.innerHTML = '<div class="empty">퀴즈를 만들 표현이 부족해요 (4개 이상 필요).</div>';
       return;
     }
     startQuiz('read', pool);   // 4지선다 회상 — startQuiz 가 셔플·슬라이스

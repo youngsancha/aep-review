@@ -249,6 +249,15 @@ supabase.auth.onAuthStateChange((event, session) => {
 
 let _inAppNavs = 0;   // 앱 안에서 실제로 일어난 해시 이동 횟수 — 뒤로가기 폴백 판정용
 window.addEventListener('hashchange', () => { _inAppNavs++; if (authed) route(); });
+// 이미 열려 있는 탭을 다시 누르면 해시가 그대로라 hashchange 가 없어 아무 일도 일어나지 않았다.
+// 거의 모든 모바일 앱에서 '맨 위로'가 기대되는 동작이라 그것만 수행한다(라우팅은 기본 동작 유지).
+document.querySelectorAll('#tabbar a').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    if ((location.hash || '#/') === tab.getAttribute('href')) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+});
 window.addEventListener('load', boot);
 if (document.readyState !== 'loading') boot();
 
@@ -439,6 +448,6 @@ if ('serviceWorker' in navigator) {
 try {
   if (!window.isSecureContext && !localStorage.getItem('aep-hint-insecure')) {
     localStorage.setItem('aep-hint-insecure', '1');
-    setTimeout(() => toast('http 접속이라 음성은 브라우저 기본음으로 재생돼요 · https·설치앱 권장'), 1600);
+    setTimeout(() => toast('Browser voice over http · use https or the installed app for high-quality TTS'), 1600);
   }
 } catch (e) { /* no-storage/quota */ }

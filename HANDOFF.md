@@ -113,7 +113,17 @@ Ranked by value. Pick up here if continuing the audit upgrade:
    - **judgment call on #9:** the alternative fix — exposing the Transcript button without audio for
      read-only use — was rejected for now because the sheet's transport controls would become dead
      controls. Worth revisiting if read-without-audio is actually wanted.
-   - remaining: #7 #10 #12 #13 #16 #21 #23.
+   - **batch 4 SHIPPED v1.45.6 — the audit list is now closed** (lows #10 #12 #13 #16 #21 #23):
+     `#plan-level` declares `role="button"` and now actually responds to Enter/Space; Level check no
+     longer records fallback (already-seen) sentences as "unseen", which was inflating the unseen-
+     listening axis; SRS drag tags use `--chip-*-bg` tokens instead of hardcoded pastels (they were
+     unreadable in dark mode); the study empty states now read the same in both entry points (Korean,
+     per the learner-copy rule) while system/status toasts moved to English chrome (http-TTS warning,
+     long-press hint, SRS offline-save warning, plus the SRS offline/error screen); re-tapping the
+     already-active tab scrolls to top instead of doing nothing.
+   - **#7 is effectively closed too:** its aria half shipped in v1.42.1 (mode-specific `aria-label`).
+     What remains is a deliberate design choice — the code comments say the end-mode chip intentionally
+     shows no toast — so distinguishing repeat/once visually is a call for you, not a defect to autofix.
 
 ## 5. OPEN DECISION — Android home-screen widget (user asked, awaiting choice)
 

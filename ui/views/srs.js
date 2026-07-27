@@ -50,12 +50,12 @@ export async function renderSrs(root) {
     root.innerHTML = `
       <div class="empty srs-done">
         <div class="srs-done-emoji">${offline ? '📴' : '⚠️'}</div>
-        <p class="srs-done-title">${offline ? '오프라인이에요' : '불러오지 못했어요'}</p>
+        <p class="srs-done-title">${offline ? 'You are offline' : 'Could not load'}</p>
         <p class="srs-done-sub">${offline
-          ? '복습 큐는 온라인에서 불러와요. 연결되면 다시 시도해 주세요.'
+          ? 'The review queue loads online. Try again once you are connected.'
           : escapeHtml(e.message)}</p>
-        <button class="btn primary srs-done-cta" id="srs-retry">다시 시도</button>
-        <a class="btn srs-done-cta" href="#/study">📚 Study 로</a>
+        <button class="btn primary srs-done-cta" id="srs-retry">Try again</button>
+        <a class="btn srs-done-cta" href="#/study">📚 Study</a>
       </div>`;
     root.querySelector('#srs-retry')?.addEventListener('click', () => renderSrs(root));
     return;
@@ -275,7 +275,7 @@ export async function renderSrs(root) {
     // 저장된 줄 안다 → 정직하게 알린다(아직 오프라인 큐/재전송은 없음).
     srsReview(c.id, gradeKey).catch((e) => {
       console.warn('srs review failed', e);
-      if (!navigator.onLine) toast('오프라인 — 이 복습 결과는 저장되지 않았어요');
+      if (!navigator.onLine) toast('Offline — this review was not saved');
     });
 
     done++;

@@ -783,7 +783,7 @@ export async function renderEpisode(root, idStr, tStr) {
     try {
       if (!localStorage.getItem('aep-hint-wordpop')) {
         localStorage.setItem('aep-hint-wordpop', '1');
-        setTimeout(() => toast('💡 단어를 길게 누르면 뜻·발음이 나와요'), 1200);
+        setTimeout(() => toast('💡 Long-press a word for meaning and pronunciation'), 1200);
       }
     } catch (e) {}
     // Wipe ALL state and stale classes, then re-evaluate from current player time.

@@ -1417,12 +1417,12 @@ body.on-episode {
 .drag-tag-left {
   left: 18px; transform: rotate(-8deg) translateX(-4px);
   color: var(--chip-idiom-tx); border: 2px solid var(--chip-idiom-tx);
-  background: rgba(255, 228, 236, 0.95);
+  background: var(--chip-idiom-bg);   /* 하드코딩 파스텔 → 테마 토큰(다크모드 대비 확보) */
 }
 .drag-tag-right {
   right: 18px; transform: rotate(8deg) translateX(4px);
   color: var(--chip-coll-tx); border: 2px solid var(--chip-coll-tx);
-  background: rgba(229, 245, 240, 0.95);
+  background: var(--chip-coll-bg);
 }
 .srs-flashcard.drag-left .drag-tag-left   { opacity: 1; transform: rotate(-8deg) translateX(0); }
 .srs-flashcard.drag-right .drag-tag-right { opacity: 1; transform: rotate(8deg) translateX(0); }
