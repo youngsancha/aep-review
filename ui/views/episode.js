@@ -3,7 +3,7 @@ import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast } from '/app.js';
 import { getEpisode, episodeNav, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
-import { showCover, currentShow, showMeta } from '/config.js';
+import { showCover, currentShow, showMeta, hostedAudioUrl } from '/config.js';
 import { translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
 import { addShadowReps } from '/proficiency.js';
@@ -25,6 +25,10 @@ const SVG_PREV_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="cu
 const SVG_NEXT_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>';
 // 운전 캡처 칩 글리프 — END_MODES 와 동일하게 currentColor 단색(컬러 이모지 사각박스 회피).
 const SVG_CAR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.4-4.2A2 2 0 0 1 8.3 5.5h7.4a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v4h-2.2M3 16V12a1 1 0 0 1 1-1"/><circle cx="7.5" cy="16.5" r="1.7"/><circle cx="16.5" cy="16.5" r="1.7"/><path d="M9.2 16.5h5.6"/></svg>';
+
+// 오프라인 저장 칩 글리프 — 컬러 이모지(⬇/✅) 대신 currentColor 단색 SVG(안드로이드 사각박스 회피).
+const SVG_DL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M7.5 10l4.5 4.5L16.5 10"/><path d="M4.5 20h15"/></svg>';
+const SVG_DL_DONE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>';
 
 // 1× 에서 탭마다 1.25 → 1.5 → 0.5 → 0.75 → 1.0 → 1.25 … 순환 (사용자 지정 순서)
 const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
@@ -50,6 +54,10 @@ export async function renderEpisode(root, idStr, tStr) {
   const segments = ep.transcript?.segments || [];
   const sentences = resegment(segments);  // Whisper segment → 구두점 기준 진짜 문장
   const vocabs = ep.vocab || [];
+
+  // R2 호스팅 회차만 오프라인 저장 대상 — megaphone(DAI)은 세션마다 광고 적재가 달라 캐시가 무의미하고,
+  // 자막≡오디오 정합도 깨진다. db.js 가 r2_audio 회차의 audio_url 을 hostedAudioUrl 로 바꿔주므로 그걸로 판별.
+  const isHosted = !!ep.audio_url && ep.audio_url === hostedAudioUrl(ep.id);
 
   const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
   const txTitle = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
@@ -88,6 +96,9 @@ export async function renderEpisode(root, idStr, tStr) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
             <span>Transcript</span>
           </button>
+          ` : ''}
+          ${isHosted ? `
+          <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
           ` : ''}
         </div>
       ` : `<div class="empty">audio not downloaded yet</div>`}
@@ -200,6 +211,36 @@ export async function renderEpisode(root, idStr, tStr) {
   const $cur   = document.getElementById('np-cur');
   const $rem   = document.getElementById('np-rem');
   const $speed = document.getElementById('np-speed');
+
+  // ⬇ 오프라인 저장(수동) — 자동 프리페치는 '최근 N개'만 받는다. 통근 중 무신호 구간에서 들을
+  // 회차를 지금 직접 받아 두고, 핀으로 고정해 정리 루프가 지우지 못하게 한다(offline-pins.js).
+  // offline.js 는 app.js 와 동일하게 동적 import — 부팅/회차 진입 임계경로에 얹지 않는다.
+  // ⚠ 진행률: R2 버킷에 CORS 가 없으면 응답이 opaque 라 바이트 수를 읽을 수 없다 → 가짜 진행바를
+  // 그리지 않고 'Saving…' 상태만 정직하게 보여준다.
+  const $dl = document.getElementById('np-dl');
+  if ($dl) {
+    const paintDl = (cached) => {
+      $dl.classList.toggle('on', !!cached);
+      $dl.innerHTML = `${cached ? SVG_DL_DONE : SVG_DL}<span class="np-dl-txt">${cached ? 'Saved' : 'Offline'}</span>`;
+      $dl.setAttribute('aria-label', cached ? 'Remove offline download' : 'Download for offline listening');
+    };
+    import('/offline.js').then((m) => m.isEpisodeCached(id)).then(paintDl).catch(() => {});
+    $dl.addEventListener('click', async () => {
+      if ($dl.disabled) return;
+      const cached = $dl.classList.contains('on');
+      $dl.disabled = true;
+      if (!cached) $dl.innerHTML = `${SVG_DL}<span class="np-dl-txt">Saving…</span>`;
+      try {
+        const m = await import('/offline.js');
+        if (cached) { await m.removeEpisodeAudio(id); toast('Offline copy removed'); paintDl(false); }
+        else { await m.cacheEpisodeAudio(id); toast('Saved for offline'); paintDl(true); }
+      } catch (e) {
+        toast(cached ? 'Could not remove the download' : 'Download failed — check your connection');
+        paintDl(cached);
+      }
+      $dl.disabled = false;
+    });
+  }
   // 트랜스크립트 시트 시크 바(스와이프) 요소 — 시트가 닫혀 있어도 DOM 엔 존재한다.
   const $txSeekTrack  = document.getElementById('tx-seek-track');
   const $txSeekFill   = document.getElementById('tx-seek-fill');

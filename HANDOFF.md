@@ -59,9 +59,13 @@ Shipped batches (all gated green, all live):
 ## 4. Remaining backlog (confirmed, NOT yet shipped)
 
 Ranked by value. Pick up here if continuing the audit upgrade:
-1. **Per-episode manual "Download for offline" button** — `episode.js` ~line 92 shows a dead-end
-   "audio not downloaded yet"; wire an on-demand button → `offline.js` cacheAudio(hostedAudioUrl(id))
-   with progress/done feedback. (medium, user-facing on no-signal commute)
+1. ~~**Per-episode manual "Download for offline" button**~~ — **SHIPPED v1.45.0.** `Offline`/`Saved`
+   chip in `.np-extras`, R2-hosted episodes only. Found a latent trap while wiring it: the prune loop
+   at the end of `ensureOfflineCache()` deletes anything outside the auto top-N, so a manual download
+   would vanish on the next boot — hence the new pure module `ui/offline-pins.js` (pins survive the
+   prune, capped at 50) + `tests/offline_pins.test.mjs` (7) + `_pwtest` OFFLINE-CHIP assertions
+   (absent on megaphone / `Offline` on hosted / `Saved` when cached). No real progress bar: R2 has no
+   CORS so the response is opaque and byte counts are unreadable — shows `Saving…` instead of faking one.
 2. **Study kind-chip full repaint** — switching Idioms/Phrasal/etc. rebuilds the whole shell + Drive;
    should only toggle `.study-kind-chip.on` + re-render `#study-list`. (medium perf/UX, study.js loadKind)
 3. **Mini-player −15s back button** — only +30s exists; asymmetric. Layout is tight (skipped as low value).

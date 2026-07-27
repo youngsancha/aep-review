@@ -625,6 +625,12 @@ body.on-episode {
 .np-extras .speed:hover, .np-extras .speed.pressed { background: var(--tint-soft); color: var(--tint-hover); }
 /* 종료 동작 칩(np-endmode): 항상 1× 속도 칩과 동일한 회색 칩 + 텍스트색 글리프(회색/흰 조합) */
 .np-end-btn svg { display: block; }
+/* 오프라인 저장 칩 — 속도/종료모드 칩과 같은 회색 칩 톤. 아이콘+라벨이라 고정폭만 넓힌다.
+   .on = 저장 완료(브랜드 틴트) — 눌린 상태가 아니라 '이미 받아 둠'을 뜻한다. */
+.np-extras .np-dl-btn { gap: 5px; min-width: 94px; padding: 0 12px; }
+.np-extras .np-dl-btn.on { background: var(--tint-soft); color: var(--tint-hover); }
+.np-extras .np-dl-btn[disabled] { opacity: 0.6; cursor: default; }
+.np-dl-btn svg { display: block; }
 .np-tx-btn {
   background: var(--grad-brand);
   color: #fff;

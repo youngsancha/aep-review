@@ -73,8 +73,12 @@ export async function getEpisode(id){
   const vocab = [{ id:1, term:'fill in the gap', kind:'idiom',
     definition:'to provide a missing piece of information (빈칸을 채우다)',
     example_sentence:'fill in the gap', sentence_start_sec:70, sentence_end_sec:75 }];
+  // id 2 = R2 호스팅 회차(오프라인 저장 칩 대상), 그 외 = megaphone 회차(칩 없음).
+  // config.js 는 목으로 대체되지 않으므로 실제 hostedAudioUrl 를 그대로 쓴다.
+  const { hostedAudioUrl } = await import('/config.js');
+  const audioUrl = Number(id) === 2 ? hostedAudioUrl(2) : 'https://example.com/test.mp3';
   return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
-           duration_sec:1700, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01',
+           duration_sec:1700, audio_url:audioUrl, transcribed_at:'2026-01-01',
            description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
 }
 export async function episodeNav(id){ return { prevId:null, nextId:null }; }
@@ -165,6 +169,13 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
     {text:'So as I was saying, let us continue the lesson.', start:22},
     {text:'That is all for today, thanks for listening everyone.', start:30}
   ]);
+  // 오프라인 저장 칩 검증용 훅 — 임의 회차 재렌더 + 오디오 캐시 심기(네트워크 없이 '이미 받음' 상태 재현).
+  window.__renderEp = (id) => renderEpisode(document.getElementById('app'), String(id));
+  window.__seedAudio = async (id) => {
+    const { hostedAudioUrl } = await import('/config.js');
+    const c = await caches.open('aep-review-audio-v1');
+    await c.put(new Request(hostedAudioUrl(id)), new Response(new Blob(['x'], {type:'audio/mpeg'})));
+  };
   renderEpisode(document.getElementById('app'),'1').then(()=>{window.__ready=true;})
     .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
 </script></body></html>
@@ -402,10 +413,23 @@ def main() -> int:
                 vk_aria = pg.eval_on_selector(".vocab-card .vocab-known", "el=>el.getAttribute('aria-pressed')")
                 vk_ok = bool(vk_marked and vk_dim and vk_aria == "true")
             print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok, " seek_follow=", seek_follow, " vk_ok=", vk_ok)
+            # 오프라인 저장 칩(v1.45.0): ① megaphone 회차(id 1)엔 칩이 없어야 하고(캐시해도 광고가
+            # 매번 달라 무의미), ② R2 호스팅 회차(id 2)엔 'Offline' 로 뜨고, ③ 오디오가 이미 캐시에
+            # 있으면 재진입 시 'Saved' 로 그려져야 한다(다운로드 네트워크 없이 캐시만 심어 검증).
+            dl_none_mega = pg.query_selector("#np-dl") is None
+            pg.evaluate("window.__renderEp(2)"); time.sleep(0.45)
+            dl_idle = pg.eval_on_selector("#np-dl", "el=>el.textContent.trim()") if pg.query_selector("#np-dl") else None
+            pg.evaluate("window.__seedAudio(2)")
+            pg.evaluate("window.__renderEp(2)"); time.sleep(0.45)
+            dl_saved = pg.eval_on_selector("#np-dl", "el=>el.textContent.trim()") if pg.query_selector("#np-dl") else None
+            dl_aria = pg.eval_on_selector("#np-dl", "el=>el.getAttribute('aria-label')") if pg.query_selector("#np-dl") else None
+            print("OFFLINE-CHIP: none_on_megaphone=", dl_none_mega, " idle=", dl_idle, " saved=", dl_saved, " aria=", dl_aria)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
-            ep_ok = (n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
+            ep_ok = (dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved"
+                     and dl_aria == "Remove offline download"
+                     and n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and notes_no_vocab and about == 1
                      and isinstance(trans_ok, str) and trans_ok.startswith("[KO]")
                      and "fill in the gap" in trans_ok  # 번역이 현재 활성 문장과 대응(인덱스 mismatch 아님)

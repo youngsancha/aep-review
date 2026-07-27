@@ -8,6 +8,7 @@
 import { listEpisodes, getEpisode, episodeNav, hostedSet } from '/db.js';
 import { hostedAudioUrl } from '/config.js';
 import { toast } from '/app.js';
+import { loadPins, pinEpisode, unpinEpisode } from '/offline-pins.js';
 
 const AUDIO_CACHE = 'aep-review-audio-v1';   // service-worker.js 와 반드시 동일한 이름
 const META_KEY = 'aep-offline-meta';         // { [id]: transcribedAt } — 다운로드 당시 자막 버전
@@ -72,6 +73,34 @@ async function cacheAudio(url) {
   const res = await fetch(url, { mode: 'no-cors' });
   await cache.put(url, res);
   return true;
+}
+
+// ─────────────── 회차 1개 수동 다운로드(회차 화면 ⬇ 버튼) ───────────────
+// 자동 프리페치(최근 N개)와 별개로, 지금 보고 있는 회차를 즉시 받아 둔다. 받은 회차는 핀에
+// 올라가 정리 루프의 삭제 대상에서 빠진다(offline-pins.js 참고).
+
+/** 이 회차 오디오가 이미 캐시에 있는가. */
+export async function isEpisodeCached(id) {
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    return !!(await cache.match(hostedAudioUrl(id), { ignoreVary: true }));
+  } catch (e) { return false; }
+}
+
+/** 회차 오디오를 받아 캐시 + 핀. 이미 있으면 다운로드는 건너뛰되 핀은 보장한다. */
+export async function cacheEpisodeAudio(id) {
+  const fresh = await cacheAudio(hostedAudioUrl(id));
+  pinEpisode(id);          // 이미 캐시돼 있던 경우에도 '사용자가 원한 회차'로 고정
+  return fresh;
+}
+
+/** 회차 오디오를 캐시에서 제거 + 핀 해제(사용자가 저장공간을 되돌릴 때). */
+export async function removeEpisodeAudio(id) {
+  unpinEpisode(id);
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    return await cache.delete(hostedAudioUrl(id), { ignoreVary: true });
+  } catch (e) { return false; }
 }
 
 // 벤더 모듈(esm.sh) 워밍 — 최초 방문은 SW 미제어 로드라 캐시가 비어 있을 수 있다.
@@ -157,8 +186,13 @@ export async function ensureOfflineCache() {
   // 시퀀스라, 삭제를 '현재 쇼에 속한 id'로 한정하지 않으면 다른 쇼가 받아 둔 오디오까지 지운다
   // (쇼 전환→재실행 때마다 상대 쇼 캐시 수백 MB 증발). listEpisodes 는 현재 쇼 전체를 주므로
   // curIds 에 없는(=다른 쇼) 키는 건드리지 않는다.
+  // ⚠ 수동 다운로드(핀)는 자동 대상 밖이어도 보존한다 — 없으면 사용자가 손수 받아 둔 회차가
+  // 다음 부팅의 이 정리 루프에서 말없이 삭제된다(무신호 통근길에 재생 불가).
   const curIds = new Set(items.map((e) => Number(e.id)));
-  const keep = new Set(targets.map((e) => hostedAudioUrl(e.id)));
+  const keep = new Set([
+    ...targets.map((e) => hostedAudioUrl(e.id)),
+    ...loadPins().map((id) => hostedAudioUrl(id)),
+  ]);
   try {
     const keys = await cache.keys();
     for (const req of keys) {
