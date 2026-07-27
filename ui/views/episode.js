@@ -75,7 +75,7 @@ export async function renderEpisode(root, idStr, tStr) {
       </div>
       ${ep.audio_url ? `
         <div class="np-scrubber">
-          <input id="np-scrub" type="range" min="0" max="100" step="0.1" value="0" aria-label="탐색" aria-valuetext="0:00" />
+          <input id="np-scrub" type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek" aria-valuetext="0:00" />
           <div class="np-times">
             <span id="np-cur">0:00</span>
             <span id="np-rem">-0:00</span>
@@ -108,7 +108,7 @@ export async function renderEpisode(root, idStr, tStr) {
       <div class="np-about">
         <div class="section-h"><h2>About</h2></div>
         <p class="np-about-text" id="np-about-text">${escapeHtml(stripTags(ep.description))}</p>
-        <button class="np-about-toggle" id="np-about-toggle" hidden aria-expanded="false">더보기</button>
+        <button class="np-about-toggle" id="np-about-toggle" hidden aria-expanded="false">More</button>
       </div>
     ` : ''}
 
@@ -160,7 +160,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (overflowing) { $aboutToggle.hidden = false; $about.classList.add('clamped'); }
     const syncToggle = () => {
       const open = $about.classList.contains('expanded');
-      $aboutToggle.textContent = open ? '접기' : '더보기';
+      $aboutToggle.textContent = open ? 'Less' : 'More';
       $aboutToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     const toggle = () => { $about.classList.toggle('expanded'); syncToggle(); };
@@ -1240,7 +1240,10 @@ export async function renderEpisode(root, idStr, tStr) {
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
     clearTimeout(followTimer);   // 자동추적 복귀 예약 — 다음 회차 시트를 건드리지 않게 취소
-    clearTimeout(_lpTimer); document.removeEventListener('pointerdown', _wpOutside, true); _wpEl?.remove();  // 단어 사전 팝오버 정리
+    // 단어 사전 팝오버 정리. ⚠ hideWordPop() 을 거쳐야 한다 — 팝오버는 열릴 때 재생을 '잠시' 멈추는데
+    // (_lpWasPlaying), 예전엔 cleanup 이 엘리먼트만 지워서 팝오버를 연 채 화면을 벗어나면 재생이
+    // 멈춘 채로 남았다(미니플레이어가 정지 상태로 굳음). hideWordPop 이 이어재생까지 복원한다.
+    clearTimeout(_lpTimer); hideWordPop(); _wpEl?.remove();
     cancelEase();
     stopRaf();
     txScrub?.destroy();
@@ -1482,7 +1485,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync) {
             <button id="tx-ko-size" class="tx-toggle tx-ko-size-btn" aria-label="Translation text size">가</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="글자 크기">A</button>
+            <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="Text size">A</button>
             <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
           </div>
           ${(!perfectSync && adRanges.length) ? `

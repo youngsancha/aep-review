@@ -714,22 +714,31 @@ def main() -> int:
                 pg.eval_on_selector(".cont-script", "el=>{el.addEventListener('click',e=>e.preventDefault(),{once:true}); el.click();}")
                 tl_script_flag = pg.evaluate("sessionStorage.getItem('aep-open-script')")
             # 에피소드 검색(#15): 'older' 입력 시 1개로 필터
-            tl_search = None
+            tl_search = tl_clear_collapsed = None
             if pg.query_selector("#ep-search"):
                 pg.fill("#ep-search", "older")
                 time.sleep(0.25)
                 tl_search = pg.eval_on_selector_all("#ep-groups .ep-row", "els=>els.length")
+                # v1.45.3(low #1): 검색어를 지우면 시즌 접힘 기본값으로 돌아와야 한다.
+                # 예전엔 빈 쿼리도 openAll=true 로 렌더해서, 검색을 한 번 쓰면 모든 시즌이
+                # 펼쳐진 채 남았다(긴 목록이 다시 다 펼쳐짐).
+                pg.fill("#ep-search", "")
+                time.sleep(0.3)
+                tl_clear_collapsed = pg.evaluate(
+                    "[...document.querySelectorAll('.season-group')].some(d=>!d.open)")
             tl_err = pg.evaluate("window.__err||[]")
             print("TIMELINE: feat=", tl_feat, " rows=", tl_rows, " hero=", tl_hero, " feat_play=", tl_featplay,
                   " cont=", tl_cont, " contplay=", tl_contplay, " script_flag=", tl_script_flag,
                   " seasons=", tl_seasons, " first_open=", tl_first_open, " has_collapsed=", tl_has_collapsed,
                   " progress=", tl_progress, " done=", tl_done, " search_rows=", tl_search,
-                  " hero_h=", tl_hero_h, " compact=", tl_compact, " overflow_px=", tl_overflow, " err=", tl_err)
+                  " hero_h=", tl_hero_h, " compact=", tl_compact, " overflow_px=", tl_overflow,
+                  " clear_collapsed=", tl_clear_collapsed, " err=", tl_err)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
                            and tl_cont and tl_contplay is True and tl_script_flag == "1"
                            and tl_seasons >= 2 and tl_first_open is True and tl_has_collapsed is True
                            and tl_progress is True and tl_done is True and tl_compact is True
-                           and tl_search == 1 and tl_no_pan and not tl_err)
+                           and tl_search == 1 and tl_clear_collapsed is True
+                           and tl_no_pan and not tl_err)
 
             # === Settings 시트 회귀 (v1.41.0) ===
             pg.goto("http://localhost:8123/_harness_settings.html")

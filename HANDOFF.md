@@ -81,6 +81,17 @@ Ranked by value. Pick up here if continuing the audit upgrade:
    and a new test pins the two values equal. Login header + `app.js` logged-out title + manifest
    description also updated. Tests 84→87.
 5. **28 low-severity items** in `HANDOFF-menu-audit-2026-07-25.json` (`lows` array) — file:line + fix each.
+   - **batch 1 SHIPPED v1.45.3** (lows #0 #1 #2 #4 #6 #8): search-clear now restores the season-collapse
+     default (`groupsHtml(filtered, !!q)`, harness `clear_collapsed`); tapping the offline status bar
+     while offline no longer claims to be downloading (`ensureOfflineCache` early-returns when offline);
+     leaving the episode with the word popover open no longer strands playback paused (cleanup goes
+     through `hideWordPop()`); player chrome labels to English (More/Less, Seek, Text size); show
+     switcher dropped the bogus `role=tablist`/`role=tab` for `role="group"` + `aria-pressed` and an
+     English label. **Note `role=radio` was rejected on purpose** — it obliges arrow-key navigation
+     (WAI-ARIA), so adopting it without that would swap one false contract for another.
+   - **stale, already fixed elsewhere — do not re-do:** #3 (logout hidden) and #24 (inert version pill)
+     were solved by the v1.42.0 Settings sheet; #27 (login branding) shipped in v1.45.2.
+   - remaining: #5 #7 #9–#23 #25 #26 (mostly 44px touch targets, SRS stage/metric issues, chrome copy).
 
 ## 5. OPEN DECISION — Android home-screen widget (user asked, awaiting choice)
 

@@ -67,7 +67,8 @@ export async function renderTimeline(root) {
         const filtered = !q ? items : items.filter((e) =>
           (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
         const box = root.querySelector('#ep-groups');
-        box.innerHTML = filtered.length ? groupsHtml(filtered, true) : '<div class="empty">No results.</div>';
+        // openAll 은 검색 중일 때만 — q 를 지우면 최초 렌더의 접힘 기본값(최신 시즌만 펼침)으로 돌아온다.
+        box.innerHTML = filtered.length ? groupsHtml(filtered, !!q) : '<div class="empty">No results.</div>';
         wirePlay(box, items);
         markOfflineReady(box);
       }, 150);
@@ -107,7 +108,11 @@ function markOfflineReady(scope) {
           const i = CYCLE.indexOf(m.offlineCount());
           const next = CYCLE[(i + 1) % CYCLE.length];
           m.setOfflineCount(next);
-          if (next > 0) { toast(`Saving latest ${next} for offline…`); m.forceRun && m.forceRun(); }
+          // ⚠ 오프라인에선 ensureOfflineCache 가 navigator.onLine 검사로 즉시 반환한다 → 예전엔
+          // '받는 중…' 토스트만 뜨고 실제 다운로드는 0이라, 무신호 상황에서 기다리게 만들었다.
+          // 설정값은 그대로 저장하되(온라인 복귀 시 받아짐) 안내 문구를 사실대로 나눈다.
+          if (next > 0 && !navigator.onLine) toast(`Offline set to ${next} — starts when you're back online`);
+          else if (next > 0) { toast(`Saving latest ${next} for offline…`); m.forceRun && m.forceRun(); }
           else toast('Offline downloads off');
           setTimeout(() => markOfflineReady(scope), 400);   // 상태줄 즉시 반영
         };
@@ -175,7 +180,7 @@ function showSwitchHtml() {
   const opts = showOptions();
   if (opts.length < 2) return '';
   const segs = opts.map((s) => `
-    <button class="show-seg${s.active ? ' active' : ''}" data-show="${s.slug}" role="tab" aria-selected="${s.active}">
+    <button class="show-seg${s.active ? ' active' : ''}" data-show="${s.slug}" aria-pressed="${s.active}">
       <img class="show-seg-cover" src="${s.cover}&w=120&h=120" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
       <span class="show-seg-txt">
         <span class="show-seg-name">${escapeHtml(s.short || s.name)}</span>
@@ -183,7 +188,7 @@ function showSwitchHtml() {
       </span>
       <span class="show-seg-check" aria-hidden="true">✓</span>
     </button>`).join('');
-  return `<div class="show-switch" role="tablist" aria-label="팟캐스트 선택">${segs}</div>`;
+  return `<div class="show-switch" role="group" aria-label="Choose podcast">${segs}</div>`;
 }
 
 function wireShowSwitch(scope) {
