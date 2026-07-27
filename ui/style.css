@@ -2146,6 +2146,13 @@ a { color: var(--tint); }
   align-self: center;
 }
 
+/* 번역을 못 가져왔을 때 그 자리에 뜨는 사유 한 줄 — 번역문이 아니므로 작고 조용하게.
+   (예전엔 패널을 통째로 숨겼는데, 그러면 KR 토글이 고장난 것처럼 보였다.) */
+.tx-trans-ko.tx-trans-issue {
+  font-size: calc(15px * var(--ko-scale, 1)); font-weight: 400;
+  color: var(--text-3); font-style: italic;
+}
+
 /* 번역 토글 on 상태 */
 .tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }

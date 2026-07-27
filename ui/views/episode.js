@@ -4,7 +4,7 @@ import { getEpisode, episodeNav, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
 import { showCover, currentShow, showMeta, hostedAudioUrl } from '/config.js';
-import { translateEnKo } from '/translate.js';
+import { lastTrIssue, translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
 import { addShadowReps } from '/proficiency.js';
 import { initDriveCapture, setDrive, driveOn } from '/marks.js';
@@ -13,6 +13,13 @@ import { initDriveCapture, setDrive, driveOn } from '/marks.js';
 // (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
 const COVER = () => showCover(currentShow()) + '&w=720&h=720';
 const COVER_SM = () => showCover(currentShow()) + '&w=160&h=160';
+
+// 번역이 비었을 때 그 자리에 보여줄 사유. 시트 크롬이므로 영어(학습 카피만 한국어 — v1.39.2 규칙).
+const TR_ISSUE_TEXT = {
+  offline: 'Translation needs a connection',
+  quota: 'Translation limit reached — try again later',
+  error: 'Translation unavailable right now',
+};
 
 const SVG_PLAY  = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -424,7 +431,17 @@ export async function renderEpisode(root, idStr, tStr) {
       row = sel(); if (row) row.textContent = ko;
       _trCache[ck] = ko; saveTrCache(ep.id, _trCache);
     } else {
-      hideTransPanel();                     // 실패/한도 → 조용히 숨김
+      // 예전엔 여기서 조용히 패널을 숨겼다. 그러면 KR 을 켜도 아무 일도 안 일어나는 것처럼
+      // 보인다(사용자 신고 2026-07-27: 차량·오프라인에서 KR 켰는데 무반응). 사전번역
+      // (_ko.json)이 있는 회차는 12% 뿐이라 나머지는 전부 이 온디맨드 경로에 의존한다 →
+      // 실패가 정상 경로다. 숨기지 말고 이유를 말한다.
+      row = sel();
+      if (row) {
+        row.textContent = TR_ISSUE_TEXT[lastTrIssue()] || TR_ISSUE_TEXT.error;
+        row.classList.add('tx-trans-issue');
+      } else {
+        hideTransPanel();
+      }
     }
     // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만, 캐시에만 저장
     const nxt = idx + 1;

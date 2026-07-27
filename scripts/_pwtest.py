@@ -404,6 +404,41 @@ def main() -> int:
             trans_ok = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
             # 번역 폰트가 본문 글자크기(--tx-scale)와 함께 커지는지: 24px*scale 이어야
             trans_fs = pg.eval_on_selector(".tx-trans-ko", "el=>parseFloat(getComputedStyle(el).fontSize)") if pg.query_selector(".tx-trans-ko") else None
+            # 번역 실패를 '조용히 숨기지' 않는다 (사용자 신고 2026-07-27: 차량·오프라인에서 KR 을
+            # 켰는데 아무 일도 안 일어남). 사전번역(_ko.json)이 있는 회차는 12% 뿐이라 나머지는 전부
+            # 온디맨드 MyMemory 경로 → 오프라인이면 실패가 '정상 경로'다. 그 자리에 사유를 보여야 한다.
+            # 캐시 적중을 피해야 실제 네트워크 경로를 탄다. 여기까지의 seek(23/102/71)과 각 호출의
+            # '다음 문장 프리페치'로 22·35·68·82·95·110 은 이미 캐시됐다 → 미방문은 0·10·48·60.
+            # 48s 를 쓴다. (abort_hits 를 함께 단언하므로, 나중에 누가 앞에서 48s 를 건드리면
+            #  조용히 통과하지 않고 소리내어 실패한다.)
+            # set_offline 만으로는 안 된다 — pg.route 가 네트워크 계층보다 앞서서 모의 응답이 그대로
+            # 나간다. 라우트를 abort 로 갈아끼워야 fetch 가 실제로 throw 한다. offline 플래그는
+            # navigator.onLine=false 를 만들어 사유가 'offline' 로 잡히게 하는 용도.
+            _errs_before = len(errs)
+            pg.context.set_offline(True)
+            pg.unroute("**/api.mymemory.translated.net/**")   # 기존 성공 목을 먼저 걷어낸다
+            _mm_hits = []
+            pg.route("**/api.mymemory.translated.net/**", lambda r: (_mm_hits.append(1), r.abort()))
+            try:
+                pg.evaluate("window.__player.seek(50)")
+                time.sleep(0.6)
+                tr_iss_txt = pg.eval_on_selector(".tx-trans-ko", "el=>el.textContent") if pg.query_selector(".tx-trans-ko") else None
+                tr_iss_cls = pg.eval_on_selector(".tx-trans-ko", "el=>el.classList.contains('tx-trans-issue')") if pg.query_selector(".tx-trans-ko") else None
+                tr_iss_shown = pg.eval_on_selector(".tx-notes", "el=>el.classList.contains('show')") if pg.query_selector(".tx-notes") else None
+            finally:
+                pg.context.set_offline(False)
+                pg.unroute("**/api.mymemory.translated.net/**")
+                pg.route("**/api.mymemory.translated.net/**", _mm)
+            # abort 는 콘솔에 net::ERR_FAILED 를 남긴다 — 이 블록이 '의도적으로' 만든 실패이므로
+            # 걷어낸다. 같은 창에서 난 그 외 오류는 그대로 남겨 진짜 회귀를 놓치지 않는다.
+            _new_errs = errs[_errs_before:]
+            del errs[_errs_before:]
+            errs.extend(e for e in _new_errs if "ERR_FAILED" not in e)
+            # 오프라인이면 'connection' 문구여야 한다 — 사유를 잘못 잡으면 엉뚱한 안내가 나간다.
+            # abort_hits>0 이 없으면 '캐시 적중이라 네트워크를 안 탔다'를 성공으로 오인할 수 있다.
+            tr_issue_ok = bool(len(_mm_hits) > 0 and tr_iss_shown and tr_iss_cls
+                               and isinstance(tr_iss_txt, str)
+                               and "connection" in tr_iss_txt and "…" not in tr_iss_txt)
             # 광고-무관 싱크(#2): 수동 싱크 버튼은 제거됨. 문장 탭 → 그 data-start 로 정확히 seek
             # (offset 0 — transcript 시각 = audio 시각). 보정 UI 부재 + 1:1 매핑을 검증.
             calib_gone = pg.query_selector("#tx-calib") is None
@@ -472,6 +507,8 @@ def main() -> int:
                               and pg.query_selector(".tx-notes .tx-note-def") is None)
             print("notes_show=", notes_show, " notes_no_vocab=", notes_no_vocab)
             print("trans_default_on=", trans_default_on, " trans_ok=", trans_ok, " trans_fs=", trans_fs, " trans_fixed=", trans_fixed)
+            print("trans_issue_ok=", tr_issue_ok, " text=", repr(tr_iss_txt), " issue_cls=", tr_iss_cls,
+                  " panel_shown=", tr_iss_shown, " abort_hits=", len(_mm_hits))
             print("calib_gone=", calib_gone, " sync_ok=", sync_ok, " (sent0=", sent0_start, "→", seeked_to, ") ctrl_reveal=", ctrl_reveal, " fs_ok=", fs_ok, " sync_btn_gone=", sync_btn_gone)
             # Vocabulary '알아요' 학습 액션(v1.42.1): 버튼 존재 → 탭 → markKnown 호출 + 카드 .vknown 흐림
             vk_btn = pg.query_selector(".vocab-card .vocab-known")
@@ -519,6 +556,7 @@ def main() -> int:
                      and "fill in the gap" in trans_ok  # 번역이 현재 활성 문장과 대응(인덱스 mismatch 아님)
                      and trans_default_on is True
                      and trans_fs is not None and trans_fs >= 20 and trans_fixed is True
+                     and tr_issue_ok is True
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True

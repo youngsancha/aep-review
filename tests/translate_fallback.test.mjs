@@ -30,14 +30,21 @@ function grabFn(name) {
 }
 
 const BODY =
+  '"use strict";\n' +       // 선언 안 된 모듈 변수를 빠뜨리면 조용한 암묵적 전역이 되지 않게
   grabLine(/^const _TR_MEM = .*;/m) + '\n' +
   grabLine(/^let _trQuotaHit = .*;/m) + '\n' +
+  grabLine(/^let _lastIssue = .*;/m) + '\n' +
+  // 한 줄 함수라 grabFn(닫는 '}' 만 있는 줄을 찾는다)으로는 못 잡는다 — 줄째로 가져온다.
+  grabLine(/^export function lastTrIssue\(\).*$/m).replace(/^export\s+/, '') + '\n' +
   grabFn('translateEnKo') + '\n' +
-  'return translateEnKo;';
+  'return { translateEnKo, lastTrIssue };';
 
-// 새 인스턴스마다 모듈 상태(_TR_MEM/_trQuotaHit) 격리 → 시나리오 독립.
-function makeFn(fetchStub, email = '') {
+// 새 인스턴스마다 모듈 상태(_TR_MEM/_trQuotaHit/_lastIssue) 격리 → 시나리오 독립.
+function makeMod(fetchStub, email = '') {
   return new Function('fetch', 'TRANSLATE_EMAIL', BODY)(fetchStub, email);
+}
+function makeFn(fetchStub, email = '') {
+  return makeMod(fetchStub, email).translateEnKo;
 }
 // 응답 디스크립터: {status, ok?, body} 또는 {throw:true}. 호출수는 stub.count.
 function stubFetch(...responses) {
@@ -100,4 +107,79 @@ test('!ok(예: 500) → "" (래치 안 함)', async () => {
   const tr = makeFn(f);
   assert.equal(await tr('a'), '');
   assert.equal(await tr('b'), '정상');
+});
+
+// === 실패 사유 보고 (2026-07-27) ===
+// 신고: 차량·오프라인에서 KR 을 켰는데 아무 일도 안 일어남. 원인은 번역 실패 시 호출부가
+// 패널을 '조용히 숨긴' 것. 이제 translate.js 가 사유를 남기고 episode.js 가 그 자리에
+// 한 줄로 보여준다. 사유가 틀리면 사용자에게 엉뚱한 안내가 나가므로 계약으로 고정한다.
+
+test('성공하면 사유는 빈 문자열', async () => {
+  const m = makeMod(stubFetch(okBody('안녕')));
+  assert.equal(await m.translateEnKo('hi'), '안녕');
+  assert.equal(m.lastTrIssue(), '');
+});
+
+test('429 → 사유 quota, 래치 이후에도 quota 유지', async () => {
+  const m = makeMod(stubFetch({ status: 429 }));
+  await m.translateEnKo('a');
+  assert.equal(m.lastTrIssue(), 'quota');
+  await m.translateEnKo('b');           // 래치 경로(fetch 안 함)
+  assert.equal(m.lastTrIssue(), 'quota');
+});
+
+test('쿼터 경고 텍스트 → 사유 quota (200 응답이라도)', async () => {
+  const m = makeMod(stubFetch(okBody('MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS')));
+  await m.translateEnKo('a');
+  assert.equal(m.lastTrIssue(), 'quota');
+});
+
+test('!ok(500) → 사유 error (offline 아님 — 서버는 닿았다)', async () => {
+  const m = makeMod(stubFetch({ status: 500 }));
+  await m.translateEnKo('a');
+  assert.equal(m.lastTrIssue(), 'error');
+});
+
+// node 21+ 는 navigator 를 getter-only 전역으로 제공한다 → 대입이 아니라 defineProperty.
+// async: await 없이 return fn() 하면 finally 가 프라미스 '반환' 시점에 돌아 본문 실행 전에
+// navigator 를 되돌린다(실제로 이 테스트가 그렇게 거짓 실패했다).
+async function withOnLine(value, fn) {
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: value }, configurable: true });
+  try { return await fn(); } finally {
+    if (had) Object.defineProperty(globalThis, 'navigator', had);
+    else delete globalThis.navigator;
+  }
+}
+
+test('fetch throw + onLine 이 undefined → offline 로 단정하지 않고 error', async () => {
+  // node 의 실제 navigator 에는 onLine 이 없다 = "모른다". 모를 때 offline 이라 하면 오안내.
+  const m = makeMod(stubFetch({ throw: true }));
+  await m.translateEnKo('a');
+  assert.equal(m.lastTrIssue(), 'error');
+});
+
+test('fetch throw + navigator.onLine=false → offline', async () => {
+  await withOnLine(false, async () => {
+    const m = makeMod(stubFetch({ throw: true }));
+    await m.translateEnKo('a');
+    assert.equal(m.lastTrIssue(), 'offline');
+  });
+});
+
+test('fetch throw + navigator.onLine=true → error (onLine 은 true 일 때 못 믿는다)', async () => {
+  await withOnLine(true, async () => {
+    const m = makeMod(stubFetch({ throw: true }));
+    await m.translateEnKo('a');
+    assert.equal(m.lastTrIssue(), 'error');
+  });
+});
+
+test('캐시 적중은 이전 실패 사유를 지운다', async () => {
+  const m = makeMod(stubFetch(okBody('안녕'), { throw: true }));
+  await m.translateEnKo('hi');          // 성공 → 캐시
+  await m.translateEnKo('other');       // 실패 → 사유 남음
+  assert.notEqual(m.lastTrIssue(), '');
+  assert.equal(await m.translateEnKo('hi'), '안녕');   // 캐시 적중
+  assert.equal(m.lastTrIssue(), '', '캐시로 성공했는데 옛 실패 사유가 남으면 오안내가 나간다');
 });
