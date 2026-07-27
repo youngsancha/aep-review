@@ -1,0 +1,101 @@
+# 미전사 백로그를 병렬 샤드로 한 번에 소진한다 (수동 dispatch 전용).
+#
+# 왜 따로 있나: 일일 aep-sync 는 하루 1회 · 50분 예산이라 20분짜리 에피소드를 3개쯤만 처리한다.
+# 과거 에피소드를 대량 적재하면 소진에 며칠씩 걸린다. 이 워크플로는 pending 큐를 id 모듈로
+# 나눠 여러 러너에 동시에 태우므로, 벽시계 시간이 '가장 느린 샤드 하나' 로 줄어든다.
+# (레포가 public 이라 Actions 분은 무제한 — 러너를 늘리는 데 드는 비용은 없다.)
+#
+# 샤드 수 고르기: 50분 예산에 20분짜리 에피소드가 약 3개 들어간다 → shards ≈ pending/3.
+# (2026-07-26 실측: pending 19개 → 8샤드에서 벽시계 약 40분에 전부 소진, 1샤드면 3개만.)
+# 남으면 다시 dispatch 하면 된다 — 이미 끝난 에피소드는 transcribed_at 이 채워져 큐에서 빠진다.
+#
+# 사용:
+#   gh workflow run aep-backfill.yml                       # 기본 8샤드
+#   gh workflow run aep-backfill.yml -f shards=6 -f show=allears
+
+name: aep-backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "병렬 샤드 수 (러너 개수). 샤드당 ~3개가 예산 안에 들어가므로 대략 pending/3."
+        required: false
+        default: "8"
+      show:
+        description: "쇼 slug 로 한정 (빈 값 = 전체 pending)"
+        required: false
+        default: ""
+      time_budget_min:
+        description: "샤드당 STT 시간 예산(분). job timeout 보다 작게."
+        required: false
+        default: "50"
+
+permissions:
+  contents: read
+
+concurrency:
+  # aep-sync 와 같은 큐를 집는다 → 직렬화.
+  group: aep-stt
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.mk.outputs.shards }}
+    steps:
+      - name: Build shard list
+        id: mk
+        env:
+          N: ${{ inputs.shards }}
+        # matrix 는 정적 리스트가 필요하므로 [0,1,..,N-1] 을 만들어 fromJSON 으로 넘긴다.
+        run: |
+          python3 -c "
+          import json, os
+          n = max(1, min(20, int(os.environ['N'])))
+          print('shards=' + json.dumps(list(range(n))))
+          " >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  stt:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false          # 한 샤드가 죽어도 나머지는 끝까지 간다
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Cache whisper model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: faster-whisper-medium-en-v1
+
+      - name: Transcribe shard ${{ matrix.shard }}
+        env:
+          AEP_WHISPER_DEVICE: cpu
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SHOW: ${{ inputs.show }}
+        # --no-rss: 백로그 전용 (RSS 적재는 aep-sync 담당).
+        # --no-vocab: vocab 큐는 샤딩되지 않아 병렬 샤드가 중복 추출한다.
+        run: |
+          python -m ingest.cron_fetch \
+            --no-rss --no-vocab \
+            --time-budget-min "${{ inputs.time_budget_min }}" \
+            --shard "${{ matrix.shard }}" --shards "${{ strategy.job-total }}" \
+            ${SHOW:+--show "$SHOW"}

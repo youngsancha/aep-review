@@ -40,11 +40,20 @@ if sys.platform == "win32":
         os.environ["PATH"] = os.pathsep.join(_path_prepend + [os.environ.get("PATH", "")])
 
 import tempfile
+import time
 
 from ingest import store
 from ingest.audio_download import clean_audio_url, download_to
 
 log = logging.getLogger(__name__)
+
+# CI(ubuntu-latest, medium.en, int8 CPU) 실측: 20분 오디오 ≈ 13-14분 → 약 0.70x 실시간.
+# 예산 초과로 job 이 강제 종료되면 그 에피소드의 연산이 통째로 버려지므로, 시작 추정은
+# 실측보다 보수적으로 잡고(아래 SAFETY) 매 에피소드마다 실측값으로 보정한다.
+STT_RATE_GUESS = 0.75
+STT_RATE_SAFETY = 1.15
+# duration_sec 이 비어 있는 행의 대체값 (RSS 가 길이를 안 준 경우).
+UNKNOWN_DURATION_S = 1800.0
 
 _model = None  # lazy singleton — medium.en 로드 시간 5-10초
 
@@ -140,7 +149,55 @@ def transcribe_one(audio_path: Path) -> dict[str, Any]:
     return data
 
 
-def transcribe_pending(limit: int | None = None, show: str | None = None) -> int:
+class TimeBudget:
+    """이번 실행의 남은 벽시계 예산 안에 다음 에피소드 STT 가 들어가는지 판정한다.
+
+    순수 로직 — 경과시간을 호출자가 넘기므로 테스트에서 가짜 시계로 구동할 수 있다.
+    `limit`(건수) 대신 이걸 쓰는 이유: CI job 은 *시간* 으로 잘리는데 건수로 세면
+    마지막 에피소드가 STT 도중에 강제 종료돼 그 연산이 통째로 버려진다.
+    """
+
+    def __init__(self, budget_s: float | None = None, rate: float = STT_RATE_GUESS) -> None:
+        self.budget_s = budget_s
+        self.rate = rate
+        self._samples = 0
+
+    def estimate(self, duration_sec: float | None) -> float:
+        return float(duration_sec or UNKNOWN_DURATION_S) * self.rate * STT_RATE_SAFETY
+
+    def fits(self, duration_sec: float | None, elapsed_s: float, done: int) -> tuple[bool, str]:
+        """(진행할지, 사유). 예산 미설정이면 항상 True."""
+        if not self.budget_s:
+            return True, ""
+        est = self.estimate(duration_sec)
+        if elapsed_s + est <= self.budget_s:
+            return True, ""
+        if done == 0:
+            # 한 건도 못 하고 멈추면 이 에피소드가 영구히 큐를 막는다 → 예산을 넘겨서라도 시도.
+            return True, f"over budget (est {est:.0f}s > budget {self.budget_s:.0f}s) but nothing done yet — trying anyway"
+        return False, f"stopping cleanly: est {est:.0f}s + elapsed {elapsed_s:.0f}s > budget {self.budget_s:.0f}s"
+
+    def observe(self, duration_sec: float | None, took_s: float) -> None:
+        """실측으로 rate 보정 — 러너 성능/모델 편차를 실행 중에 흡수한다."""
+        dur = float(duration_sec or 0)
+        if dur <= 0 or took_s <= 0:
+            return
+        sample = took_s / dur
+        self._samples += 1
+        self.rate = sample if self._samples == 1 else (self.rate + sample) / 2
+
+
+def in_shard(ep_id: int, shard: int, shards: int) -> bool:
+    """id 모듈로 샤딩 — 쿼리 정렬에 의존하지 않으므로 병렬 job 간 겹침/누락이 없다.
+
+    (pub_date 동률이 실제로 존재해서 '목록 위치' 기반 스트라이핑은 안전하지 않다.)
+    """
+    return shards <= 1 or ep_id % shards == shard
+
+
+def transcribe_pending(limit: int | None = None, show: str | None = None,
+                       time_budget_s: float | None = None,
+                       shard: int = 0, shards: int = 1) -> int:
     """transcribed_at NULL 이고 audio_url 있는 episode 처리. show 지정 시 그 쇼만(None=전체).
 
     원본 CDN 에서 mp3 임시 다운 → STT → transcript JSON 을 Storage 업로드 →
@@ -148,13 +205,24 @@ def transcribe_pending(limit: int | None = None, show: str | None = None) -> int
     """
     count = 0
     rows = store.episodes_needing_transcription(show)
+    if shards > 1:
+        rows = [r for r in rows if in_shard(r["id"], shard, shards)]
+        log.info("shard %d/%d: %d of the pending episodes", shard, shards, len(rows))
+    budget = TimeBudget(time_budget_s)
+    started = time.monotonic()
 
     with tempfile.TemporaryDirectory(prefix="aep_stt_") as tmpdir:
         for row in rows:
             if limit and count >= limit:
                 break
+            ok, why = budget.fits(row.get("duration_sec"), time.monotonic() - started, count)
+            if why:
+                log.warning("budget ep=%s: %s", row["id"], why)
+            if not ok:
+                break
             ep_id = row["id"]
             apath = Path(tmpdir) / f"{ep_id}.mp3"
+            ep_started = time.monotonic()
             try:
                 # 앱이 스트리밍하는 것과 똑같은 clean URL 로 받아야 STT 타임스탬프가 스트림과 일치(#2)
                 download_to(clean_audio_url(row["audio_url"]), apath)
@@ -173,7 +241,11 @@ def transcribe_pending(limit: int | None = None, show: str | None = None) -> int
             store.upload_transcript(ep_id, data)
             store.mark_transcribed(ep_id, data.get("duration"))
             count += 1
-            log.info("transcribed ep=%s segments=%d", ep_id, len(data["segments"]))
+            # 실측은 다운로드+STT 전체(=예산이 실제로 소비되는 시간) 기준으로 잡는다.
+            took = time.monotonic() - ep_started
+            budget.observe(row.get("duration_sec") or data.get("duration"), took)
+            log.info("transcribed ep=%s segments=%d took=%.0fs rate=%.2fx",
+                     ep_id, len(data["segments"]), took, budget.rate)
     return count
 
 
@@ -182,6 +254,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     p = argparse.ArgumentParser()
     p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--show", default=None)
+    p.add_argument("--time-budget-min", type=float, default=None,
+                   help="이 시간 안에 끝날 만큼만 처리하고 깨끗이 종료 (CI job timeout 보다 작게)")
+    p.add_argument("--shard", type=int, default=0)
+    p.add_argument("--shards", type=int, default=1)
     args = p.parse_args()
-    n = transcribe_pending(limit=args.limit)
+    n = transcribe_pending(limit=args.limit, show=args.show,
+                           time_budget_s=(args.time_budget_min or 0) * 60 or None,
+                           shard=args.shard, shards=args.shards)
     log.info("transcribed=%d", n)

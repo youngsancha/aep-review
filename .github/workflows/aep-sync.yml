@@ -20,7 +20,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: aep-sync
+  # aep-backfill 과 같은 그룹 — 둘 다 'transcribed_at IS NULL' 큐를 집으므로
+  # 겹치면 같은 에피소드를 두 번 STT 한다. 취소 대신 직렬화한다.
+  group: aep-stt
   cancel-in-progress: false
 
 jobs:
@@ -52,4 +54,7 @@ jobs:
           AEP_WHISPER_DEVICE: cpu
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python -m ingest.cron_fetch --rss-limit 30 --limit 5 --no-vocab
+        # 건수(--limit)가 아니라 *시간* 으로 제한한다. CI job 은 시간으로 잘리므로 건수로 세면
+        # 마지막 에피소드가 STT 도중 강제 종료되고 그 연산이 통째로 버려진다(실측: 매일 발생).
+        # 예산 50분 + 셋업 ≈ 6분 < timeout 60분.
+        run: python -m ingest.cron_fetch --rss-limit 30 --time-budget-min 50 --no-vocab

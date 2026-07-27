@@ -168,7 +168,9 @@ def episodes_needing_transcription(show: str | None = None) -> list[dict[str, An
          .is_("transcribed_at", "null").not_.is_("audio_url", "null"))
     if show:                                  # 멀티-쇼: 해당 쇼의 pending 만(None=전체, 현행)
         q = q.eq("show", show)
-    return q.order("pub_date", desc=True).execute().data or []
+    # pub_date 동률이 실제로 존재한다 → id 를 2차 키로 넣어 전순서를 만든다.
+    # (샤딩된 병렬 실행이 같은 목록을 봐야 하고, 재실행 순서도 재현 가능해야 한다.)
+    return q.order("pub_date", desc=True).order("id", desc=True).execute().data or []
 
 
 def episodes_needing_vocab(show: str | None = None) -> list[dict[str, Any]]:
