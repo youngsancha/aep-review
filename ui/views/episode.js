@@ -128,13 +128,18 @@ export async function renderEpisode(root, idStr, tStr) {
     ` : ''}
 
     ${!sentences.length && !ep.transcribed_at ? `<div class="empty">transcript pending</div>` : ''}
+    ${(sentences.length && !ep.audio_url) ? `<div class="empty">Transcript opens once this episode's audio is ready.</div>` : ''}
   `;
 
   // Build transcript sheet (overlay) and attach to body — not inline.
   // Sheet must be in DOM BEFORE player wiring queries .tx-scroll/.tx-sent below.
   // Wrapped in try/catch so a broken transcript can't kill audio playback.
   let $sheet = null;
-  if (sentences.length) {
+  // ⚠ 여는 버튼(#np-tx-btn)은 audio_url 블록 안에서만 렌더된다. 오디오 없이 시트만 만들면
+  // 열 방법이 없는 고아 노드가 body 에 남고(cleanup 까지 상주) 사용자에겐 아무 안내도 없었다.
+  // → 오디오가 없으면 시트를 만들지 않고, 위에서 안내 문구를 대신 보여준다.
+  // (읽기 전용으로 열게 하는 대안은 시트의 트랜스포트가 죽은 컨트롤이 되는 문제가 있어 보류 — HANDOFF 참고.)
+  if (sentences.length && ep.audio_url) {
     try {
       const wrap = document.createElement('div');
       // r2_audio===true 회차만 완벽 자동싱크(자막≡서빙오디오). 아니면 광고 뒤 드리프트 가능 → 안내 바.

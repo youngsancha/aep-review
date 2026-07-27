@@ -101,7 +101,19 @@ Ranked by value. Pick up here if continuing the audit upgrade:
      2-card mock lets a grade sequence (again → good → good) discriminate the metric fix: true first-pass
      is 50%, the old formula reported 67%.
    - **also stale:** #5 (`.tx-toggle` 44px) was already fixed by the v1.41.0 `::after` expander.
-   - remaining: #7 #9 #10 #12 #13 #16 #20 #21 #23 #25 #26.
+   - **batch 3 SHIPPED v1.45.5** (lows #9 #20 #25 #26): an episode with a transcript but no `audio_url`
+     built a transcript sheet that had no button to open it (orphan node in `body`, no user-visible
+     explanation) — the sheet is now skipped and an honest note is shown instead; the Back button no
+     longer leaves the app on a cold deep-link (`_inAppNavs` counter → falls back to `#/`); the 404
+     branch resets the chrome it used to leave stale (back button, tab highlight, `_prevKey`); Sync ↻
+     on episode/SRS routes says "Nothing to refresh here" instead of falsely claiming "Synced to latest"
+     (those routes deliberately skip refetching). Harness gained `NO-AUDIO-EP` (mock episode id 3).
+   - ⚠ **#20/#25/#26 are unverified by the harness** — `_pwtest` mocks `/app.js`, so the router is never
+     exercised. An app-level harness (real app.js + stubbed views) is the missing coverage.
+   - **judgment call on #9:** the alternative fix — exposing the Transcript button without audio for
+     read-only use — was rejected for now because the sheet's transport controls would become dead
+     controls. Worth revisiting if read-without-audio is actually wanted.
+   - remaining: #7 #10 #12 #13 #16 #21 #23.
 
 ## 5. OPEN DECISION — Android home-screen widget (user asked, awaiting choice)
 

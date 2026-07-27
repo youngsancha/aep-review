@@ -76,7 +76,9 @@ export async function getEpisode(id){
   // id 2 = R2 호스팅 회차(오프라인 저장 칩 대상), 그 외 = megaphone 회차(칩 없음).
   // config.js 는 목으로 대체되지 않으므로 실제 hostedAudioUrl 를 그대로 쓴다.
   const { hostedAudioUrl } = await import('/config.js');
-  const audioUrl = Number(id) === 2 ? hostedAudioUrl(2) : 'https://example.com/test.mp3';
+  // id 3 = 자막만 있고 audio_url 이 없는 회차(아직 호스팅 전). 여는 버튼 없이 시트만 만들어지던
+  // 고아 노드 회귀를 잡는다.
+  const audioUrl = Number(id) === 3 ? '' : (Number(id) === 2 ? hostedAudioUrl(2) : 'https://example.com/test.mp3');
   return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
            duration_sec:1700, audio_url:audioUrl, transcribed_at:'2026-01-01',
            description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
@@ -438,10 +440,23 @@ def main() -> int:
             dl_saved = pg.eval_on_selector("#np-dl", "el=>el.textContent.trim()") if pg.query_selector("#np-dl") else None
             dl_aria = pg.eval_on_selector("#np-dl", "el=>el.getAttribute('aria-label')") if pg.query_selector("#np-dl") else None
             print("OFFLINE-CHIP: none_on_megaphone=", dl_none_mega, " idle=", dl_idle, " saved=", dl_saved, " aria=", dl_aria)
+            # v1.45.5(low #9): 자막은 있는데 오디오가 없는 회차 — 여는 버튼(#np-tx-btn)이 렌더되지
+            # 않으므로 시트를 만들면 열 수 없는 고아 노드가 body 에 남는다. 시트 수가 늘지 않아야 하고,
+            # 대신 사용자에게 안내 문구가 보여야 한다. (이전 렌더가 남긴 시트가 있으므로 증가분으로 판정.)
+            sheets_before = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
+            pg.evaluate("window.__renderEp(3)"); time.sleep(0.5)
+            sheets_after = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
+            noaudio_btn = pg.query_selector("#np-tx-btn") is None
+            noaudio_note = pg.evaluate(
+                "[...document.querySelectorAll('.empty')].some(e=>/Transcript opens once/.test(e.textContent))")
+            noaudio_ok = (sheets_after == sheets_before and noaudio_btn is True and noaudio_note is True)
+            print("NO-AUDIO-EP: sheets", sheets_before, "->", sheets_after, " no_tx_btn=", noaudio_btn,
+                  " note=", noaudio_note, " ok=", noaudio_ok)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
-            ep_ok = (dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved"
+            ep_ok = (noaudio_ok is True
+                     and dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved"
                      and dl_aria == "Remove offline download"
                      and n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
                      and notes_show is True and notes_no_vocab and about == 1

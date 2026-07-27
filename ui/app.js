@@ -79,6 +79,12 @@ async function route() {
       return;
     }
   }
+  // 매칭 라우트가 없을 때도 크롬을 초기화한다. 예전엔 이 갱신들이 전부 매칭 분기 안에만 있어,
+  // 에피소드 → 잘못된 해시로 가면 뒤로가기 버튼이 남고 직전 탭이 계속 강조됐다(_prevKey 도 잔존).
+  $title.textContent = APP_NAME;
+  $back.hidden = true;
+  document.querySelectorAll('#tabbar a').forEach((a) => a.removeAttribute('aria-current'));
+  _prevKey = null;
   $app.innerHTML = `<div class="empty">404 — ${escapeHtml(hash)} (v${APP_VERSION})</div>`;
 }
 
@@ -241,11 +247,14 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 });
 
-window.addEventListener('hashchange', () => { if (authed) route(); });
+let _inAppNavs = 0;   // 앱 안에서 실제로 일어난 해시 이동 횟수 — 뒤로가기 폴백 판정용
+window.addEventListener('hashchange', () => { _inAppNavs++; if (authed) route(); });
 window.addEventListener('load', boot);
 if (document.readyState !== 'loading') boot();
 
-$back.addEventListener('click', () => history.back());
+// 공유 링크(#/episode/5)로 바로 들어오거나 PWA 를 에피소드로 콜드 실행하면 앞선 앱 내 히스토리가
+// 없어 history.back() 이 앱을 벗어나거나 아무 일도 하지 않았다 → 그럴 땐 라이브러리로 보낸다.
+$back.addEventListener('click', () => { if (_inAppNavs > 0) history.back(); else location.hash = '#/'; });
 
 // 동기화 버튼 재활용 — 신규 에피소드는 GitHub Actions cron 이 Supabase 에 채운다.
 //   탭        = 현재 화면 데이터 새로고침
@@ -254,17 +263,19 @@ let _syncHold = null;
 function refreshData() {
   $sync.disabled = true;
   $sync.classList.add('syncing');
-  const done = () => setTimeout(() => {
+  const done = (msg = 'Synced to latest') => setTimeout(() => {
     $sync.disabled = false;
     $sync.classList.remove('syncing');
-    toast('Synced to latest');
+    toast(msg);
   }, 350);
   // 에피소드 화면에선 재라우팅 금지 — 같은 해시라 hashchange 없이 route()→renderEpisode 가 재실행되면
   // teardown(시트 제거·리스너 해제)이 안 돼 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다
   // (버그헌트 #1). 에피소드 데이터는 이미 로드돼 있어 새로고침 불필요 → 스핀 애니메이션만.
   // 복습(#/srs)도 재라우팅 금지 — renderSrs 재실행이 진행 중 카드 큐·점수를 처음부터 리셋해
   // 학습 데이터가 조용히 날아간다(정밀진단 수정). 에피소드와 동일하게 스핀 애니메이션만.
-  if (/^#\/(episode|srs)\b/.test(location.hash || '')) { done(); return; }
+  // 이 두 화면은 의도적으로 재라우팅하지 않는다(아래 사유) → 실제로는 아무것도 새로 받지 않으므로
+  // 'Synced to latest' 는 거짓 확인이었다. 사실대로 알린다.
+  if (/^#\/(episode|srs)\b/.test(location.hash || '')) { done('Nothing to refresh here'); return; }
   Promise.resolve(route()).finally(done);
 }
 async function signOut() {
