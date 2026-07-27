@@ -22,12 +22,13 @@ import logging
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 from ingest import store
 from ingest.audio_download import clean_audio_url, download_to
-from ingest.transcribe import transcribe_one
+from ingest.transcribe import TimeBudget, transcribe_one
 
 log = logging.getLogger(__name__)
 
@@ -255,6 +256,9 @@ def main() -> None:
                    help="recency 대신 vocab 많은(자주 학습) 회차 먼저 — 예문 정확도를 학습지점에 빨리 도달")
     p.add_argument("--remap-only", action="store_true",
                    help="STT 없이 기존 transcript 로 vocab 타임스탬프만 재매핑(예문 클립 잘림 일괄수정, GPU 불필요)")
+    p.add_argument("--time-budget-min", type=float, default=None,
+                   help="이 시간 안에 끝날 만큼만 처리하고 깨끗이 종료. CI job timeout 보다 작게 "
+                        "— 넘기면 job 이 STT 도중 강제 종료돼 그 회차 연산이 통째로 버려진다")
     p.add_argument("--skip-hosted", action="store_true",
                    help="이미 R2 호스팅된(매니페스트 등재) 회차는 건너뜀 — 매일 자동화가 '신규 회차만' 싸게 처리")
     args = p.parse_args()
@@ -294,12 +298,22 @@ def main() -> None:
 
     log.info("재정렬 시작: %d개 (done 누적 %d, skip %d)", len(ids), len(done), len(skip))
     rows = {r["id"]: r for r in store.episodes_by_recency()}
+    # --limit 은 건수지만 CI job 은 시간으로 잘린다 → 예산을 넘기기 전에 깨끗이 멈춘다.
+    # (넘기면 그 회차의 STT 연산이 통째로 버려진다 — ingest/transcribe.py 와 같은 이유.)
+    budget = TimeBudget((args.time_budget_min or 0) * 60 or None)
+    started = time.monotonic()
     ok = 0
     for ep_id in ids:
         row = rows.get(ep_id)
         if not row or not row.get("audio_url"):
             log.warning("skip ep=%s (no audio_url)", ep_id)
             continue
+        fits, why = budget.fits(row.get("duration_sec"), time.monotonic() - started, ok)
+        if why:
+            log.warning("budget ep=%s: %s", ep_id, why)
+        if not fits:
+            break
+        ep_started = time.monotonic()
         try:
             res = retranscribe_one(row, remap=not args.no_remap, from_r2=args.from_r2)
         except Exception:
@@ -308,8 +322,9 @@ def main() -> None:
         done.add(ep_id)
         save_done(done)
         ok += 1
+        budget.observe(row.get("duration_sec") or res.get("dur"), time.monotonic() - ep_started)
         log.info("✓ ep=%(ep)s dur=%(dur)ss seg=%(segments)d vocab재매핑=%(remap)d bytes=%(bytes)d", res)
-    log.info("완료: %d/%d 성공, done 누적=%d", ok, len(ids), len(done))
+    log.info("완료: %d/%d 성공, done 누적=%d (남은 대상 %d)", ok, len(ids), len(done), len(ids) - ok)
 
 
 if __name__ == "__main__":

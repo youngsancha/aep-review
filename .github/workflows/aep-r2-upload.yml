@@ -26,8 +26,14 @@ on:
         description: "이미 있어도 다시 업로드(true/false)"
         default: "false"
       retranscribe_recent:
-        description: "업로드 후 재STT 대상(최신 N개, 이미 호스팅된 회차는 자동 스킵)"
+        description: "재STT 후보 범위(최신 N개 안에서 고른다). 과거 회차를 잡으려면 크게."
         default: "12"
+      retranscribe_limit:
+        description: "재STT 실제 처리 상한(건수). 시간 예산이 먼저 걸리면 그 전에 멈춘다."
+        default: "12"
+      retranscribe_budget_min:
+        description: "재STT 시간 예산(분). job timeout(350) 보다 작게."
+        default: "300"
 
 permissions:
   contents: read
@@ -80,7 +86,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           R2_PUBLIC_BASE: https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev
+        # --recent(후보 범위)와 --limit(처리 상한)은 별개다. 예전엔 한 입력이 둘 다 채워서,
+        # 범위를 넓히면 처리량도 같이 커져 job timeout 에 걸렸다. 실제 제동은 시간 예산이 건다.
         run: >
           python -m scripts.retranscribe --from-r2 --skip-hosted
           --recent ${{ github.event.inputs.retranscribe_recent || '12' }}
-          --limit ${{ github.event.inputs.retranscribe_recent || '12' }}
+          --limit ${{ github.event.inputs.retranscribe_limit || '12' }}
+          --time-budget-min ${{ github.event.inputs.retranscribe_budget_min || '300' }}
