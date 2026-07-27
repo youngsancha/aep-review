@@ -210,6 +210,55 @@ TIMELINE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
+ROUTER_MOCK = UI / "_routermock.js"
+ROUTER_HARNESS = UI / "_harness_router.html"
+# 라우터(app.js)는 지금까지 전 하니스에서 목으로 대체돼 한 번도 실행되지 않았다.
+# 여기서는 app.js 를 '진짜'로 돌리고 supabase(인증)와 뷰 모듈만 스텁으로 바꾼다.
+ROUTER_MOCK_JS = r"""
+export const supabase = {
+  auth: {
+    getSession: async () => ({ data: { session: { user: { id: 'test' } } } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+    signOut: async () => {},
+  },
+};
+const rec = (name) => async (root, ...args) => {
+  (window.__renders = window.__renders || []).push([name, ...args]);
+  // 높이를 크게 줘서 '탭 재탭 → 맨 위로' 스크롤 동작을 검증할 수 있게 한다.
+  root.innerHTML = '<div class="stub-view" data-view="' + name + '" style="height:2400px"></div>';
+};
+export const renderTimeline = rec('timeline');
+export const renderEpisode  = rec('episode');
+export const renderStudy    = rec('study');
+export const renderSrs      = rec('srs');
+export const renderLogin    = () => {};
+export const ensureOfflineCache = async () => {};
+export const openSettings = () => {};
+"""
+ROUTER_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/supabase.js":"/_routermock.js",
+  "/views/timeline.js":"/_routermock.js","/views/episode.js":"/_routermock.js",
+  "/views/study.js":"/_routermock.js","/views/srs.js":"/_routermock.js",
+  "/views/login.js":"/_routermock.js","/offline.js":"/_routermock.js",
+  "/settings.js":"/_routermock.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body>
+<header id="topbar">
+  <button id="back-btn" hidden aria-label="Back">&lsaquo;</button>
+  <h1 id="page-title">E-Podcast</h1>
+  <span id="app-version">v?</span>
+  <button id="sync-btn" aria-label="Sync">&#8635;</button>
+</header>
+<main id="app"></main>
+<nav id="tabbar">
+  <a href="#/"      data-tab="timeline"><span class="label">Library</span></a>
+  <a href="#/study" data-tab="study"><span class="label">Study</span></a>
+</nav>
+<script>window.APP_VERSION='test';</script>
+<script type="module" src="/app.js"></script>
+</body></html>
+"""
+
 SRS_HARNESS = UI / "_harness_srs.html"
 SRS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
@@ -254,6 +303,8 @@ def main() -> int:
     STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
     SRS_HARNESS.write_text(SRS_HARNESS_HTML, encoding="utf-8")
+    ROUTER_MOCK.write_text(ROUTER_MOCK_JS, encoding="utf-8")
+    ROUTER_HARNESS.write_text(ROUTER_HARNESS_HTML, encoding="utf-8")
     SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
     OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
@@ -834,7 +885,57 @@ def main() -> int:
                   " stage2_mask=", srs_mask2, " stage2_term=", srs_term2,
                   " meta=", repr(srs_meta), " reviews=", srs_reviews, " ok=", srs_ok, " err=", srs_err)
 
-            ok = ep_ok and study_ok and timeline_ok and settings_ok and srs_ok
+            # === 라우터 (v1.45.7 — app.js 를 실제로 태우는 첫 하니스) ===
+            # 검증 대상: 콜드 딥링크 뒤로가기 폴백(#20) · 404 크롬 초기화(#25) ·
+            # 새로고침을 건너뛰는 경로의 정직한 토스트(#26) · 활성 탭 재탭 맨위로(#23).
+            pg.goto("http://localhost:8123/_harness_router.html#/episode/1")
+            pg.wait_for_function("(window.__renders||[]).length>0", timeout=10000)
+            rt_deep = pg.evaluate("window.__renders[0]")            # ['episode','1'] 로 콜드 진입
+            rt_back_shown = pg.eval_on_selector("#back-btn", "el=>!el.hidden")
+            # #26: 에피소드에서 ↻ 는 실제로 아무것도 새로 받지 않는다 → 문구가 사실이어야 한다
+            # ⚠ 이 하니스는 http://localhost 에서 돌아 app.js 의 'Browser voice over http…' 토스트가
+            # 부팅 1.6초 뒤 반드시 뜬다. #toast 는 단일 슬롯이라 '비어있지 않음'을 기다리면 그 토스트를
+            # 잡거나 확인 직전에 덮여 간헐 실패한다 → 먼저 지나가게 두고, 기대 문구와 '같아질 때'까지 기다린다.
+            time.sleep(2.2)
+            pg.click("#sync-btn")
+            try:
+                pg.wait_for_function(
+                    "() => { const t = document.getElementById('toast');"
+                    " return t && t.textContent.trim() === 'Nothing to refresh here'; }", timeout=8000)
+            except Exception:
+                pass
+            rt_toast_ep = pg.eval_on_selector("#toast", "el=>el.textContent.trim()") if pg.query_selector("#toast") else None
+            # #20: 앱 내 이동이 없었던 콜드 딥링크 → 뒤로가기가 앱을 벗어나지 않고 라이브러리로
+            pg.click("#back-btn"); time.sleep(0.5)
+            rt_back_hash = pg.evaluate("location.hash")
+            rt_still_alive = pg.evaluate("!!document.getElementById('tabbar')")
+            # #25: 404 는 뒤로가기 버튼·탭 강조·제목을 초기화해야 한다
+            pg.evaluate("location.hash='#/episode/1'"); time.sleep(0.4)
+            pg.evaluate("location.hash='#/nope'"); time.sleep(0.4)
+            rt_404_back = pg.eval_on_selector("#back-btn", "el=>el.hidden")
+            rt_404_tabs = pg.eval_on_selector_all("#tabbar a", "els=>els.filter(a=>a.hasAttribute('aria-current')).length")
+            rt_404_title = pg.eval_on_selector("#page-title", "el=>el.textContent")
+            # #23: 이미 활성인 탭 재탭 → 맨 위로
+            pg.evaluate("location.hash='#/'"); time.sleep(0.4)
+            # ⚠ 스크롤 컨테이너는 window 가 아니라 body 다(html/body 의 overflow-x:hidden 이 세로축을
+            # auto 로 승격 → body 가 자체 스크롤 박스). 실측: bodyScrollH 2600 vs htmlScrollH 844.
+            pg.evaluate("document.body.scrollTop = 900"); time.sleep(0.2)
+            rt_scroll_before = pg.evaluate("document.body.scrollTop")
+            pg.eval_on_selector('#tabbar a[data-tab="timeline"]', "el=>el.click()"); time.sleep(1.0)
+            rt_scroll_after = pg.evaluate("document.body.scrollTop")
+            rt_err = pg.evaluate("window.__err||[]")
+            router_ok = (isinstance(rt_deep, list) and rt_deep[0] == "episode"
+                         and rt_back_shown is True
+                         and rt_toast_ep == "Nothing to refresh here"
+                         and rt_back_hash == "#/" and rt_still_alive is True
+                         and rt_404_back is True and rt_404_tabs == 0 and rt_404_title == "E-Podcast"
+                         and rt_scroll_before > 100 and rt_scroll_after == 0)
+            print("ROUTER: deep=", rt_deep, " back_shown=", rt_back_shown, " sync_toast=", repr(rt_toast_ep),
+                  " back_hash=", rt_back_hash, " alive=", rt_still_alive,
+                  " 404[back_hidden=", rt_404_back, " tabs_lit=", rt_404_tabs, " title=", repr(rt_404_title), "]",
+                  " scroll", rt_scroll_before, "->", rt_scroll_after, " ok=", router_ok)
+
+            ok = ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
             b.close()
     finally:
         srv.terminate()
@@ -843,6 +944,8 @@ def main() -> int:
         STUDY_HARNESS.unlink(missing_ok=True)
         TIMELINE_HARNESS.unlink(missing_ok=True)
         SRS_HARNESS.unlink(missing_ok=True)
+        ROUTER_MOCK.unlink(missing_ok=True)
+        ROUTER_HARNESS.unlink(missing_ok=True)
         SETTINGS_HARNESS.unlink(missing_ok=True)
         OFFLINE_MOCK.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")

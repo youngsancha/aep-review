@@ -254,7 +254,13 @@ window.addEventListener('hashchange', () => { _inAppNavs++; if (authed) route();
 document.querySelectorAll('#tabbar a').forEach((tab) => {
   tab.addEventListener('click', () => {
     if ((location.hash || '#/') === tab.getAttribute('href')) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // ⚠ 이 앱의 스크롤 컨테이너는 window 가 아니라 body 다: html/body 의 overflow-x:hidden 이
+      // 세로축을 auto 로 승격시켜(CSS 규칙) body 가 자체 스크롤 박스가 된다 — 실측 bodyScrollH
+      // 2600 vs htmlScrollH 844. window.scrollTo 만 부르면 아무 일도 일어나지 않는다.
+      const top = { top: 0, behavior: 'smooth' };
+      document.body.scrollTo?.(top);
+      document.scrollingElement?.scrollTo?.(top);
+      window.scrollTo(top);
     }
   });
 });

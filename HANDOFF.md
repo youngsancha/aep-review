@@ -23,8 +23,11 @@ E-Podcast — English-podcast shadowing PWA for the user's daily commute (car) +
 1. Edit under `ui/`. Bump BOTH `ui/index.html` `window.APP_VERSION` AND `ui/service-worker.js` `const VERSION`
    (must match). New JS module → register in BOTH `ui/index.html` importmap AND `ui/service-worker.js` SHELL.
 2. Gates (all must pass): `node scripts/jscheck.mjs` · `npx eslint ui scripts tests` ·
-   `node --test tests/*.mjs` (77) · `.venv/bin/python -m pytest -q` (23) ·
+   `node --test tests/*.mjs` (87) · `.venv/bin/python -m pytest -q` (28) ·
    `.venv/bin/python scripts/_pwtest.py` → prints `RESULT: PASS`.
+   `_pwtest.py` now covers six surfaces: episode · study · timeline · settings · **SRS** · **router**.
+   The router harness runs the *real* `app.js` with only `/supabase.js` and the view modules stubbed —
+   it is the only place routing, the back button, 404 chrome and the sync toast are exercised.
 3. Commit (Korean commit msg OK; use `git commit -F <file>`, NOT `-m` with backticks) + `git push origin main`.
 4. Verify live: poll `curl -s https://aep-review.vercel.app/ | grep APP_VERSION` until it flips.
    Vercel git webhook OCCASIONALLY drops a push silently → if it doesn't flip in ~2min, run
