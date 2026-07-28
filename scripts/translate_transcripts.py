@@ -33,6 +33,19 @@ log = logging.getLogger("translate_transcripts")
 BATCH = 32          # 한 claude 호출에 묶는 문장 수(문맥 유지 + 응답 안정, 호출수 절감)
 CTX_BEFORE = 2      # 배치 앞에 붙여 줄 '맥락용' 직전 문장 수(번역 대상 아님)
 
+# 배치 실패는 '건너뛰고 계속'이 기본이다 — 일시적 오류엔 맞다. 하지만 claude 사용 한도에
+# 걸리면 이후 모든 호출이 즉시 실패하므로, 그대로 두면 남은 전 회차를 초고속으로 '시도만'
+# 하고 완주해 버린다. 실제로 2026-07-27 그렇게 됐다: 10:46 에 한도에 걸린 뒤 40분 동안
+# 5,368건을 실패시키며 목록을 소진하고 exit 0 으로 끝나 '완료'처럼 보였다.
+# 재시도는 '다시 하면 나아지는 실패'에만 의미가 있다. 한도는 아니다 → 연속 실패가 임계치를
+# 넘으면 멈춘다(멱등·체크포인트라 나중에 이어서 하면 된다).
+MAX_CONSECUTIVE_FAILS = 12
+_consec_fails = 0
+
+
+class ClaudeUnavailable(RuntimeError):
+    """연속 실패가 임계치 초과 — 재시도로 나아지지 않는 종류(대개 사용 한도)."""
+
 # ─────────────────────────── resegment (episode.js 포팅, 키 정합 필수) ───────────────────────────
 _ENDS = re.compile(r'[.!?…]["\')\]]?$')
 _COMMA = re.compile(r'[,;:]["\')\]]?$')
@@ -255,10 +268,18 @@ def translate_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int]:
             continue
         ctx = " ".join(sentences[max(0, idxs[0] - CTX_BEFORE):idxs[0]])
         lines = [sentences[k] for k in idxs]
+        global _consec_fails
         try:
             res = _call_claude(build_prompt(lines, ctx))
+            _consec_fails = 0
         except Exception:
-            log.exception("ep %s 배치 %d 실패 → 건너뜀", ep_id, bstart)
+            _consec_fails += 1
+            log.exception("ep %s 배치 %d 실패 → 건너뜀 (연속 %d)", ep_id, bstart, _consec_fails)
+            if _consec_fails >= MAX_CONSECUTIVE_FAILS:
+                raise ClaudeUnavailable(
+                    f"claude 호출이 연속 {_consec_fails}회 실패 — 사용 한도로 보인다. "
+                    f"여기서 멈춘다(체크포인트 저장됨, 나중에 같은 명령으로 이어서 진행)."
+                ) from None
             continue
         for local_i, k in enumerate(idxs):
             ko = res.get(str(local_i)) if isinstance(res, dict) else None
@@ -300,8 +321,17 @@ def main() -> None:
         ids = ids[: args.limit]
     log.info("대상 에피소드 %d개", len(ids))
     tot_sent = tot_added = 0
+    done_eps = 0
     for n, ep_id in enumerate(ids, 1):
-        sent, added = translate_episode(ep_id)
+        try:
+            sent, added = translate_episode(ep_id)
+        except ClaudeUnavailable as e:
+            # 조용히 '완주'하지 않는다 — 남은 회차를 실패로 태우는 대신 여기서 멈추고,
+            # 어디까지 했는지와 왜 멈췄는지를 분명히 남긴다.
+            log.error("중단: %s", e)
+            log.error("진행 상황: 에피소드 %d/%d 처리, 신규번역 %d문장", done_eps, len(ids), tot_added)
+            sys.exit(2)
+        done_eps += 1
         tot_sent += sent
         tot_added += added
         log.info("[%d/%d] ep %s 진행 — 누적 +%d문장", n, len(ids), ep_id, tot_added)
