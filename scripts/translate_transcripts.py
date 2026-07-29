@@ -41,6 +41,7 @@ CTX_BEFORE = 2      # 배치 앞에 붙여 줄 '맥락용' 직전 문장 수(번
 # 넘으면 멈춘다(멱등·체크포인트라 나중에 이어서 하면 된다).
 MAX_CONSECUTIVE_FAILS = 12
 _consec_fails = 0
+_MODEL = ""         # --model 로 설정. 빈 값이면 claude CLI 기본(=세션 모델).
 
 
 class ClaudeUnavailable(RuntimeError):
@@ -125,8 +126,13 @@ def trkey(text: str) -> str:
 
 # ─────────────────────────── claude (문맥 인지 번역) ───────────────────────────
 def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
+    # 모델을 지정하지 않으면 CLI 기본값(=세션 모델, 보통 opus)을 상속한다. 번역은 추론이 아니라
+    # 변환 작업이라 상위 모델이 꼭 필요하지 않다 → --model 로 낮춰 쿼터를 아낀다(_MODEL).
+    cmd = ["claude", "-p", "--output-format", "json"]
+    if _MODEL:
+        cmd += ["--model", _MODEL]
     proc = subprocess.run(
-        ["claude", "-p", "--output-format", "json"],
+        cmd,
         input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=timeout_sec,
     )
     if proc.returncode != 0:
@@ -305,8 +311,14 @@ def main() -> None:
     p.add_argument("--only", type=int, default=None, help="한 에피소드 id 만")
     p.add_argument("--limit", type=int, default=None, help="앞 N개 에피소드만")
     p.add_argument("--sample", type=int, default=None, help="해당 id 표본 번역 출력(저장 X)")
+    p.add_argument("--model", default="sonnet",
+                   help="claude CLI 모델 별칭(sonnet/haiku/opus). 번역은 변환 작업이라 상위 모델이 "
+                        "꼭 필요하지 않다 — 기본 sonnet 으로 쿼터를 아낀다. 빈 문자열이면 CLI 기본값.")
     p.add_argument("--shard", type=str, default=None, help="병렬 샤딩 'i/n' (예: 0/4) — ids[i::n] 만 처리")
     args = p.parse_args()
+    global _MODEL
+    _MODEL = args.model or ""
+    log.info("모델: %s", _MODEL or "(CLI 기본)")
 
     if args.sample:
         translate_episode(args.sample, dry=True)

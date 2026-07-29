@@ -23,6 +23,10 @@ PY="$ROOT/.venv/bin/python"
 CCSECRET="${CCSECRET:-$HOME/.local/bin/ccsecret}"
 PROJECT="aep-review"
 SHARDS="${1:-4}"
+# 번역은 추론이 아니라 변환 작업이라 상위 모델이 꼭 필요하지 않다. 실측(2026-07-29): haiku 는
+# STT 가 쪼갠 숫자("episode 26 15" → 2615화)를 복원 못 하고 "the math isn't mapping" 을 "수학"
+# 으로 직역했다 — 관용구를 문맥으로 살리는 게 이 잡의 존재 이유라 부적합. sonnet 은 둘 다 정확.
+MODEL="${MODEL:-sonnet}"
 
 [ -x "$PY" ] || { echo "translate_local: missing venv at $PY" >&2; exit 1; }
 command -v claude >/dev/null || { echo "translate_local: claude CLI not on PATH" >&2; exit 1; }
@@ -42,7 +46,7 @@ done
 cd "$ROOT"
 for i in $(seq 0 $((SHARDS - 1))); do
   log="$HOME/Library/Logs/aep-translate-$i.log"
-  nohup "$PY" -m scripts.translate_transcripts --shard "$i/$SHARDS" >>"$log" 2>&1 &
+  nohup "$PY" -m scripts.translate_transcripts --model "$MODEL" --shard "$i/$SHARDS" >>"$log" 2>&1 &
   echo "shard $i/$SHARDS → pid $! · log $log"
 done
 echo
