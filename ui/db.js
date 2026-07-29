@@ -11,6 +11,23 @@ const REVIEW_LIMIT = 50;
 // 찾는 getEpisode/markKnown/srsReview 는 id 가 전역 유일이라 쇼 필터 불필요.
 const withShow = (q) => (MULTISHOW ? q.eq('show', currentShow()) : q);
 
+// 네트워크 읽기는 '실패'할 수는 있어도 '끝나지 않아'서는 안 된다.
+// (사용자 신고 2026-07-29, 차량 오프라인: 라이브러리가 스켈레톤에 영구 고착. 원인은 supabase-js 가
+//  인증 요청을 navigator.locks 로 직렬화하는데, 오프라인에서 토큰 갱신이 재시도를 반복하며 락을
+//  쥐고 있어 뒤따르는 PostgREST 호출이 '요청조차 나가지 못한 채' 영원히 대기한 것. 실패가 아니라
+//  침묵이라 route() 의 catch 도, 뷰의 에러 상태도 발동하지 않았다.)
+// 거절시키면 기존 에러 경로(route catch·뷰 빈상태)가 정상 동작한다.
+const READ_DEADLINE_MS = 8000;
+export function withDeadline(promise, label, ms = READ_DEADLINE_MS) {
+  let t;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(t)),
+    new Promise((_, reject) => {
+      t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
+  ]);
+}
+
 // 로컬(폰) 기준 오늘 날짜 YYYY-MM-DD — srs due_date 비교용
 function todayStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -18,12 +35,47 @@ function todayStr(d = new Date()) {
 
 // ─────────────────────────── episodes ───────────────────────────
 // GET /api/episodes 대체
+// 라이브러리 목록 스냅샷 — 오프라인에서 목록을 '네트워크 없이' 그리기 위한 마지막 성공본.
+// SW 의 DATA_CACHE 에 의존하지 않는 이유: 오프라인에서는 supabase-js 가 실패하는 토큰 갱신을
+// navigator.locks 로 붙들고 있어 REST 요청이 아예 나가지 못한다(실측: auth 7회 / REST 0회).
+// 즉 SW 까지 도달을 못 하므로 캐시가 있어도 못 쓴다. 스냅샷은 그 경로를 통째로 우회한다.
+const EPS_SNAP_KEY = () => 'aep-eps-snap-' + (MULTISHOW ? currentShow() : '_');
+const EPS_SNAP_MAX = 300;
+function saveEpisodesSnapshot(rows) {
+  try {
+    // description 은 회차당 수 KB 라 목록엔 불필요 — 빼야 localStorage 한도에 안전하게 들어간다.
+    const slim = rows.slice(0, EPS_SNAP_MAX).map(({ description, ...r }) => r);
+    localStorage.setItem(EPS_SNAP_KEY(), JSON.stringify(slim));
+  } catch (e) { /* quota — 스냅샷은 있으면 좋은 것이지 필수는 아니다 */ }
+}
+export function loadEpisodesSnapshot() {
+  try {
+    const v = JSON.parse(localStorage.getItem(EPS_SNAP_KEY()) || 'null');
+    return Array.isArray(v) && v.length ? v : null;
+  } catch (e) { return null; }
+}
+
 export async function listEpisodes() {
-  const { data, error } = await withShow(
-    supabase.from('episodes_list').select('*'))
-    .order('pub_date', { ascending: false, nullsFirst: false });
-  if (error) throw new Error(error.message);
-  return data || [];
+  // 기다릴 가치는 '포기했을 때 잃는 것'에 비례한다. 스냅샷이 있으면 실패가 싸므로 빨리 포기하고
+  // 즉시 목록을 그린다. 스냅샷이 없으면 빈 화면뿐이라 느린 회선에도 끝까지 기다린다.
+  const snapFirst = loadEpisodesSnapshot();
+  try {
+    const { data, error } = await withDeadline(
+      withShow(supabase.from('episodes_list').select('*'))
+        .order('pub_date', { ascending: false, nullsFirst: false }),
+      'listEpisodes', snapFirst ? 2500 : READ_DEADLINE_MS);
+    if (error) throw new Error(error.message);
+    const rows = data || [];
+    if (rows.length) saveEpisodesSnapshot(rows);
+    return rows;
+  } catch (e) {
+    const snap = loadEpisodesSnapshot();
+    if (snap) {
+      console.warn('[db] listEpisodes failed → 스냅샷 사용:', e && e.message);
+      return snap;
+    }
+    throw e;
+  }
 }
 
 // 이전/다음 '에피소드'(곡) id — ⏮/⏭ 트랙 이동용. 라이브러리와 같은 쇼 안에서 시간순(pub_date asc)

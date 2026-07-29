@@ -178,8 +178,11 @@ async function boot() {
   const pendingOAuth = location.search.includes('code=') || location.hash.includes('access_token');
   let session = null;
   try {
+    // onLine 은 false 일 때만 믿을 수 있다(true 는 도달성을 보장하지 않는다). 확실히 오프라인이면
+    // 토큰 갱신이 성공할 가망이 없으니 오래 기다릴 이유가 없다 — 부팅 체감이 3.5s 만큼 짧아진다.
+    const budget = navigator.onLine === false ? 800 : SESSION_TIMEOUT_MS;
     const res = await withTimeout(
-      supabase.auth.getSession(), SESSION_TIMEOUT_MS, { data: { session: null } });
+      supabase.auth.getSession(), budget, { data: { session: null } });
     session = (res && res.data && res.data.session) || null;
   } catch (e) {
     console.error('auth getSession failed', e);
@@ -194,9 +197,20 @@ async function boot() {
     if (!consumeShortcut()) route();   // 바로가기 진입이면 hashchange 가 라우팅한다
     kickOfflineCache();
     prefetchViews();
-  } else if (!navigator.onLine && hasStoredSession()) {
+  } else if (hasStoredSession()) {
+    // 여기 오는 경우 = 저장된 세션은 있는데 getSession 이 세션을 못 돌려줬다(대개 오프라인에서
+    // 토큰 갱신 실패). 예전엔 `!navigator.onLine` 도 요구했는데, 그 값은 '도달 가능'을 뜻하지
+    // 않는다 — 차 안에서는 셀룰러 라디오가 붙어 있어 onLine=true 인 채 데이터만 안 통하는 게
+    // 흔하다. 그러면 우회가 건너뛰어져 로그인 화면으로 떨어졌다(= "앱이 안 켜짐").
+    // getSession 이 실패했다는 사실 자체가 판정 근거로 충분하다. 진짜 로그아웃이면 온라인 복귀
+    // 후 onAuthStateChange(SIGNED_OUT)가 바로잡는다.
     authed = true;
     document.body.classList.remove('logged-out');
+    // ⚠ 이게 없으면 입장은 해도 화면이 안 뜬다: supabase-js 는 인증 요청을 navigator.locks 로
+    // 직렬화하는데, 실패하는 토큰 갱신이 재시도를 반복하며 락을 쥐면 뒤따르는 모든 PostgREST
+    // 호출이 '요청조차 못 나간 채' 대기한다 → 라이브러리가 스켈레톤에 영구 고착(실측).
+    // 갱신을 멈추면 락이 풀려 읽기가 SW 캐시로 내려가 오프라인 목록이 실제로 그려진다.
+    try { supabase.auth.stopAutoRefresh?.(); } catch (e) {}
     if (!consumeShortcut()) route();
     toast('Offline — downloaded episodes only');
   } else if (pendingOAuth) {
@@ -264,6 +278,14 @@ document.querySelectorAll('#tabbar a').forEach((tab) => {
     }
   });
 });
+// 오프라인 부팅에서 멈춰 둔 토큰 자동갱신을 온라인 복귀 시 되살린다. 이게 없으면 세션이 영영
+// 갱신되지 않아, 앱을 껐다 켜기 전까지 읽기 전용에 갇힌다.
+window.addEventListener('online', () => {
+  try { supabase.auth.startAutoRefresh?.(); } catch (e) {}
+  // 갱신된 세션으로 실제 데이터를 다시 받아온다(스켈레톤/빈 목록에서 자동 회복).
+  if (authed) route();
+});
+
 window.addEventListener('load', boot);
 if (document.readyState !== 'loading') boot();
 
