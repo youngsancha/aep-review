@@ -371,9 +371,27 @@ def main() -> int:
                 pos_saved = pg.evaluate("!!localStorage.getItem('aep-fab-pos')")
                 nmarks2 = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
                 drag_ok = bool(pos_saved and abs(bb2["x"] - bb["x"]) > 60 and nmarks2 == nmarks)
-                pg.click("#tx-drive"); time.sleep(0.1)    # OFF 복귀(이후 단계·FAB 간섭 방지)
+                # 주행 중 신뢰성(v1.50.0): 칩이 click 에만 의존하면 차량 진동으로 손가락이 몇 px
+                # 밀릴 때 브라우저가 제스처로 판정해 click 을 아예 안 보낸다 → 드라이브 모드를 켤 수
+                # 없고 FAB 도 안 뜬다(사용자 신고 2026-07-30). FAB 은 2026-07-22 에 같은 이유로
+                # 포인터 캡처로 바꿨는데 '켜는 칩'만 남아 있었다.
+                # click 을 캡처 단계에서 죽여 그 상황을 모사한다 — 포인터 경로만으로 토글돼야 한다.
+                # 리로드로 되돌리면 이후 검사들의 누적 상태가 날아간다 → 플래그로 껐다 켠다.
+                pg.evaluate("""() => { const el = document.getElementById('tx-drive');
+                  window.__blockClick = true;
+                  el.addEventListener('click', (e) => {
+                    if (window.__blockClick) { e.stopImmediatePropagation(); e.preventDefault(); }
+                  }, true); }""")
+                pg.click("#tx-drive"); time.sleep(0.2)
+                drive_noclick = pg.evaluate("!document.body.classList.contains('drive-capture')")
+                pg.click("#tx-drive"); time.sleep(0.2)    # 다시 ON — 이중토글이 있으면 여기서 어긋난다
+                drive_noclick2 = pg.evaluate("document.body.classList.contains('drive-capture')")
+                pg.evaluate("() => { window.__blockClick = false; }")
+                pg.click("#tx-drive"); time.sleep(0.15)   # OFF 복귀(이후 단계·FAB 간섭 방지)
                 fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and drag_ok and fab_hidden)
+                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and drag_ok and fab_hidden
+                                and drive_noclick and drive_noclick2)
+                print("DRIVE-TAP: click 차단 상태에서 토글 off=", drive_noclick, " 재토글 on=", drive_noclick2)
             # 재생바 시크 = 자동추적 즉시 재개(v1.40.1): 컨트롤을 깨우는 탭(.tx-scroll touchstart,
             # 4s 보류)이 걸린 직후 시크해도 화면이 곧장 새 문단으로 이동해야 한다. 목 플레이어는
             # 자동 timeupdate 가 없어 '즉시 재앵커'가 아니면 scrollTop 이 영영 안 변한다(결정적).

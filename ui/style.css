@@ -2374,7 +2374,12 @@ a { color: var(--tint); }
 
 /* ========== 🚗 Drive capture — 운전 캡처(marks.js + Study 트리아지) ========== */
 /* 시트 툴바 칩(#tx-drive) — 켜지면 Shadow(tx-loop-toggle)와 같은 '모드 on' 채움 스타일 */
-.tx-drive-btn { padding: 6px 11px; }
+/* 주행 중 탭 신뢰성: 이 칩 위에서 시작한 터치는 브라우저가 스크롤/제스처로 가져가지 못하게 한다.
+   FAB(#drive-fab)과 같은 처방 — 차량 진동으로 손가락이 밀리면 click 이 아예 발화하지 않는다
+   (사용자 보고 2026-07-22 FAB, 2026-07-30 이 칩). 켜는 버튼이 안 눌리면 FAB 도 안 뜬다. */
+.tx-drive-btn { padding: 6px 11px; touch-action: none; }
+/* 히트 영역 확대(시각 크기 유지) — 조준 없이 누르는 버튼이라 좌우로도 넓힌다. */
+.tx-drive-btn::after { left: -8px; right: -8px; height: 48px; }
 .tx-drive-btn svg { display: block; }
 .tx-drive-btn[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-drive-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }

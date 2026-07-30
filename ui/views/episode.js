@@ -14,6 +14,42 @@ import { initDriveCapture, setDrive, driveOn } from '/marks.js';
 const COVER = () => showCover(currentShow()) + '&w=720&h=720';
 const COVER_SM = () => showCover(currentShow()) + '&w=160&h=160';
 
+// 주행 중에도 죽지 않는 탭 바인딩 — click 대신 포인터를 캡처해 끝까지 소유한다.
+// TAP_SLOP 미만으로 움직였으면 pointerup 이든 pointercancel 이든 '탭'으로 친다(브라우저가
+// 제스처로 가져가도 놓치지 않는다). click 은 키보드/보조기술 경로로 남기되, 포인터로 이미
+// 처리한 직후의 합성 click 은 삼켜 이중 토글을 막는다.
+const TAP_SLOP = 12;
+function bindReliableTap(el, handler) {
+  if (!el) return;
+  let pid = null, sx = 0, sy = 0, moved = false, handledAt = 0;
+  el.addEventListener('pointerdown', (e) => {
+    if (pid != null) return;                       // 멀티터치 두 번째 손가락 무시
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY; moved = false;
+    try { el.setPointerCapture(pid); } catch (err) { /* 캡처 불가 → 그래도 진행 */ }
+    e.stopPropagation();
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== pid) return;
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) > TAP_SLOP) moved = true;
+  });
+  const finish = (e) => {
+    if (e.pointerId !== pid) return;
+    try { el.releasePointerCapture(pid); } catch (err) { /* 이미 해제됨 */ }
+    pid = null;
+    e.stopPropagation();
+    if (moved) return;
+    handledAt = Date.now();
+    handler();
+  };
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', finish);    // 시스템이 제스처를 뺏어가도 탭은 살린다
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();                           // 시트 탭 리스너(컨트롤 표시 등)와 분리
+    if (Date.now() - handledAt < 700) return;      // 포인터 경로가 이미 처리 → 합성 click 무시
+    handler();
+  });
+}
+
 // 번역이 비었을 때 그 자리에 보여줄 사유. 시트 크롬이므로 영어(학습 카피만 한국어 — v1.39.2 규칙).
 const TR_ISSUE_TEXT = {
   offline: 'Translation needs a connection',
@@ -1141,13 +1177,18 @@ export async function renderEpisode(root, idStr, tStr) {
     $drive.setAttribute('aria-pressed', driveOn() ? 'true' : 'false');
   };
   syncDriveChip();
-  $drive?.addEventListener('click', (e) => {
-    e.stopPropagation();               // 시트 탭 리스너(컨트롤 표시 등)와 분리
+  const toggleDrive = () => {
     const on = !driveOn();
     setDrive(on);
     syncDriveChip();
     toast(on ? '🚗 Drive capture ON — 🔖 or car ⏭ saves this sentence' : 'Drive capture OFF — ⏭ skips +30s again');
-  });
+  };
+  // ⚠ click 만으로는 주행 중에 안 눌린다. 차량 진동으로 손가락이 몇 px 만 밀려도 브라우저가
+  // 스크롤 제스처로 판정해 click 을 아예 발화시키지 않는다 — FAB 에서 이미 겪고 고친 문제인데
+  // (2026-07-22) '켜는 칩'은 그대로였다. 켜는 버튼이 안 눌리면 FAB 도 안 뜨므로 기능 전체가
+  // 죽는다(사용자 신고 2026-07-30). FAB 과 같은 처방: 포인터를 캡처해 끝까지 우리가 소유하고,
+  // 12px 미만 이동이면 취소(pointercancel)돼도 토글한다. click 은 키보드·보조기술용으로 남긴다.
+  bindReliableTap($drive, toggleDrive);
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
   const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
