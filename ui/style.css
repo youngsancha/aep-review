@@ -481,13 +481,20 @@ body.on-episode {
 .np-cover-wrap {
   position: relative;
   display: flex; justify-content: center;
-  margin: 8px 0 22px;
+  margin: 8px 0 14px;
+  /* 아트워크 크기를 한 곳에서 정한다 — 커버와 글로우가 같은 값에서 파생돼야 관계가 안 어긋난다.
+     vh 항이 있는 이유: 폰이 짧거나 제목이 길면 아래 컨트롤이 탭바에 잘렸다(사용자 신고 2026-07-30).
+     실측(3줄 제목): 예전 min(82%,360px) 은 360x780 에서 -34px, 411x830 에서 -26px 로 잘렸다.
+     이 값이면 각각 +17px / +53px 여유. 넓은 화면에서는 여전히 크게 보인다. */
+  --np-art: min(70%, 310px, 26vh);
 }
 /* Apple Music식 앨범아트 앰비언트 글로우 — 커버 뒤 블러 헤일로 */
 .np-glow {
   position: absolute;
   top: 3%; left: 50%; transform: translateX(-50%);
-  width: min(98%, 430px); aspect-ratio: 1 / 1;
+  /* 커버보다 20% 크게 — 글로우가 아트워크 밖으로 번져야 헤일로로 보인다(v1.37.0).
+     커버와 같은 --np-art 에서 파생시켜 한쪽만 바뀌어 관계가 깨지는 일을 막는다. */
+  width: calc(var(--np-art) * 1.2); aspect-ratio: 1 / 1;
   background-size: cover; background-position: center;
   filter: blur(52px) saturate(1.6);
   opacity: 0.55;
@@ -496,7 +503,7 @@ body.on-episode {
 }
 .np-cover {
   position: relative; z-index: 1;
-  width: min(82%, 360px);
+  width: var(--np-art);
   aspect-ratio: 1 / 1;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-art);
@@ -531,6 +538,11 @@ body.on-episode {
   margin: 0 auto 5px;
   letter-spacing: -0.022em;
   max-width: 92%;
+  /* 제목은 길이 상한이 없어서, 커버를 줄여도 4줄 제목 + 짧은 화면(360x740)은 못 맞춘다
+     (실측: 커버 181px 까지 줄여도 -25px). 2줄로 묶어 레이아웃을 유계로 만든다.
+     전체 제목은 라이브러리 카드와 About 에 그대로 있다. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .np-subtitle {
   font-size: 13px; color: var(--text-3);
@@ -613,7 +625,7 @@ body.on-episode {
   display: flex; justify-content: center; gap: 12px;
   flex-wrap: wrap; row-gap: 10px;
   padding: 0 10px;
-  margin: 8px 0 22px;
+  margin: 8px 0 16px;
   font-size: 13px;
   align-items: center;
 }

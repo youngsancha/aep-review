@@ -551,6 +551,24 @@ def main() -> int:
                        labels: bad.map((e) => e.textContent.trim().slice(0, 12)) };
             }""")
             print("EXTRAS-FIT:", chips_fit)
+            # 세로도 봐야 한다: 고정 탭바(60px)가 칩 줄을 덮으면 재생 컨트롤을 누를 수 없다
+            # (사용자 신고 2026-07-30 — 3줄 제목에서 실측 -34px). 제목은 길이 상한이 없으므로
+            # 커버 축소만으로는 못 막는다 → .np-title 2줄 클램프가 레이아웃을 유계로 만든다.
+            # 하니스엔 탭바가 없으니 '뷰포트 하단 - 탭바 높이' 를 대신 기준으로 삼는다.
+            pg.evaluate("""(t) => { const h = document.querySelector('.np-title'); if (h) h.textContent = t; }""",
+                        "3 Must-Know Expressions for IELTS Speaking and Daily Life with Aubrey Carter "
+                        "and Even More Words Appended Here To Push It Further")
+            time.sleep(0.35)
+            np_fit = pg.evaluate("""() => {
+              const ex = document.querySelector('.np-extras');
+              const ti = document.querySelector('.np-title');
+              if (!ex || !ti) return null;
+              const TABBAR = 60;
+              return { titleH: Math.round(ti.getBoundingClientRect().height),
+                       clearance: Math.round(innerHeight - TABBAR - ex.getBoundingClientRect().bottom),
+                       vh: innerHeight };
+            }""")
+            print("NP-VERTICAL-FIT:", np_fit)
             pg.set_viewport_size(_vp_before)
             pg.evaluate("window.__renderEp(2)"); time.sleep(0.4)
             # v1.45.5(low #9): 자막은 있는데 오디오가 없는 회차 — 여는 버튼(#np-tx-btn)이 렌더되지
@@ -570,6 +588,8 @@ def main() -> int:
             print("episode: about_blocks=", about)
             ep_ok = (noaudio_ok is True
                      and isinstance(chips_fit, dict) and chips_fit["n"] >= 4 and chips_fit["offscreen"] == 0
+                     # titleH 상한 = 2줄(22px * 1.28 * 2 ≈ 57) + 여유. 클램프가 풀리면 여기서 걸린다.
+                     and isinstance(np_fit, dict) and np_fit["titleH"] <= 62 and np_fit["clearance"] >= 8
                      and dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved"
                      and dl_aria == "Remove offline download"
                      and n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)
