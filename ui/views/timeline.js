@@ -78,6 +78,13 @@ export async function renderTimeline(root) {
 
 // 오프라인 준비된(오디오 캐시 완료) 회차에 ⬇ 배지 부착 — 캐시 조회가 비동기라 렌더 후 처리.
 // 실패해도(캐시 미지원 등) 라이브러리는 평소대로 동작한다.
+// 프리페치 실행 상태가 '지금 얘기할 가치'가 있는가. setStatus 가 찍는 at(타임스탬프)을 쓴다.
+// 없으면 옛 실패가 영구히 현재 오류처럼 보인다(실측: 차 안에서 실패한 실행의 note 가 며칠 뒤에도 표시).
+const STATUS_FRESH_MS = 6 * 60 * 60 * 1000;   // 6시간
+function isFresh(st) {
+  return !!(st && st.at && Date.now() - st.at < STATUS_FRESH_MS);
+}
+
 function markOfflineReady(scope) {
   import('/offline.js').then(async (m) => {
     const ready = await m.offlineReadyIds();
@@ -89,11 +96,18 @@ function markOfflineReady(scope) {
       let txt = '';
       if (target > 0 && !navigator.onLine) txt = `⬇ ${ready.size} episodes available offline`;
       else if (target > 0) {
-        txt = `⬇ Offline: ${ready.size}/${target} ready`;
+        // ready 는 AUDIO_CACHE 전체(쇼 무관·수동 pin 포함)라 target(현재 실행분)보다 클 수 있다 —
+        // "60/30 ready" 처럼 분자가 분모보다 큰 표시가 나왔다(사용자 신고 2026-07-30).
+        // X/Y 는 X≤Y 를 함의하므로, 넘치면 분수를 쓰지 않고 총량만 말한다.
+        txt = ready.size > target
+          ? `⬇ Offline: ${ready.size} episodes ready`
+          : `⬇ Offline: ${ready.size}/${target} ready`;
         if (st && st.phase === 'running') txt += ' · downloading…';
         else if (st && st.phase === 'skipped') txt += ` · paused: ${st.note || ''}`;
-        else if (st && st.phase === 'error') txt += ` · error: ${st.note || ''}`;
-        else if (st && st.note) txt += ` · last issue: ${st.note}`;
+        // 실행 상태는 localStorage 에 남아 무기한 표시된다 → 차 안에서 실패한 옛 실행의 오류가
+        // 며칠 뒤까지 '현재 오류'처럼 보였다. 오래된 건 숨기고, 내부 문자열도 노출하지 않는다.
+        else if (st && st.phase === 'error' && isFresh(st)) txt += ' · last download failed · tap to retry';
+        else if (st && st.note && isFresh(st)) txt += ' · tap to retry';
       } else txt = '⬇ Offline downloads off · tap to enable';
       $st.textContent = txt;
       $st.classList.add('tappable');

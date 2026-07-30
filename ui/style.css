@@ -606,7 +606,13 @@ body.on-episode {
 .np-play-btn:active { transform: scale(0.96); }
 
 .np-extras {
+  /* ⚠ wrap 필수: 호스팅 회차에선 칩이 4개(1×·반복·Transcript·Offline)가 되고, 실측으로 폰 폭을
+     넘긴다(360px 화면에서 394px 필요 → 66px 넘침, 첫 칩 left:-17px, 마지막 칩이 화면 밖).
+     nowrap 이면 body 의 overflow-x:hidden 이 양쪽을 잘라 Offline 칩이 사라진다(사용자 신고
+     2026-07-30). 좁은 화면에서는 두 줄로 접히게 둔다. */
   display: flex; justify-content: center; gap: 12px;
+  flex-wrap: wrap; row-gap: 10px;
+  padding: 0 10px;
   margin: 8px 0 22px;
   font-size: 13px;
   align-items: center;

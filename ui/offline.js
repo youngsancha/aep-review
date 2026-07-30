@@ -146,7 +146,14 @@ export async function ensureOfflineCache() {
     return;
   }
   const targets = items.filter((e) => hosted.has(Number(e.id))).slice(0, n);
-  if (!targets.length) { setStatus({ phase: 'error', note: 'no hosted episodes in list' }); return; }
+  if (!targets.length) {
+    // 원인을 구분한다. 예전엔 둘 다 'no hosted episodes in list' 였는데, 오프라인에서 매니페스트를
+    // 못 받아 hosted 가 빈 집합이 된 경우까지 '이 쇼에 호스팅 회차가 없다'고 잘못 말했다.
+    const note = hosted.size === 0 ? 'hosted manifest unavailable (offline?)'
+      : 'this show has no hosted episodes yet';
+    setStatus({ phase: 'error', note });
+    return;
+  }
   try { await episodeNav(targets[0].id); } catch (e) {}   // ⏮/⏭ 용 id 목록도 DATA_CACHE 에
 
   const meta = loadMeta();

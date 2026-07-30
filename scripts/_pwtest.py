@@ -532,6 +532,27 @@ def main() -> int:
             dl_saved = pg.eval_on_selector("#np-dl", "el=>el.textContent.trim()") if pg.query_selector("#np-dl") else None
             dl_aria = pg.eval_on_selector("#np-dl", "el=>el.getAttribute('aria-label')") if pg.query_selector("#np-dl") else None
             print("OFFLINE-CHIP: none_on_megaphone=", dl_none_mega, " idle=", dl_idle, " saved=", dl_saved, " aria=", dl_aria)
+            # 호스팅 회차에선 extras 칩이 4개(1×·반복·Transcript·Offline)가 되고, 실측으로 폰 폭을
+            # 넘긴다(360px 화면에서 394px 필요). flex-wrap 이 없으면 body 의 overflow-x:hidden 이
+            # 양쪽을 잘라 Offline 칩이 화면 밖으로 사라졌다(사용자 신고 2026-07-30, v1.48.0 수정).
+            # 개수가 아니라 '전부 화면 안에 있는가'를 본다 — 칩이 더 늘어도 유효한 불변식이다.
+            # ⚠ 반드시 폰 폭에서 재야 한다. 기본 1280px 에서는 칩이 당연히 들어가므로 단언이
+            #   공허하게 통과한다(처음 이 검사를 넣었을 때 실제로 그랬다). 360px = Galaxy S23 급.
+            _vp_before = pg.viewport_size
+            pg.set_viewport_size({"width": 360, "height": 780})
+            pg.evaluate("window.__renderEp(2)"); time.sleep(0.5)
+            chips_fit = pg.evaluate("""() => {
+              const ex = document.querySelector('.np-extras');
+              if (!ex) return null;
+              const kids = [...ex.children];
+              const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
+                return r.left < -0.5 || r.right > innerWidth + 0.5; });
+              return { n: kids.length, offscreen: bad.length, vw: window.innerWidth,
+                       labels: bad.map((e) => e.textContent.trim().slice(0, 12)) };
+            }""")
+            print("EXTRAS-FIT:", chips_fit)
+            pg.set_viewport_size(_vp_before)
+            pg.evaluate("window.__renderEp(2)"); time.sleep(0.4)
             # v1.45.5(low #9): 자막은 있는데 오디오가 없는 회차 — 여는 버튼(#np-tx-btn)이 렌더되지
             # 않으므로 시트를 만들면 열 수 없는 고아 노드가 body 에 남는다. 시트 수가 늘지 않아야 하고,
             # 대신 사용자에게 안내 문구가 보여야 한다. (이전 렌더가 남긴 시트가 있으므로 증가분으로 판정.)
@@ -548,6 +569,7 @@ def main() -> int:
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
             ep_ok = (noaudio_ok is True
+                     and isinstance(chips_fit, dict) and chips_fit["n"] >= 4 and chips_fit["offscreen"] == 0
                      and dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved"
                      and dl_aria == "Remove offline download"
                      and n_sent > 0 and not werr and not errs and any(c[0] == "toggle" for c in calls)

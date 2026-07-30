@@ -44,7 +44,8 @@ const EPS_SNAP_MAX = 300;
 function saveEpisodesSnapshot(rows) {
   try {
     // description 은 회차당 수 KB 라 목록엔 불필요 — 빼야 localStorage 한도에 안전하게 들어간다.
-    const slim = rows.slice(0, EPS_SNAP_MAX).map(({ description, ...r }) => r);
+    // `_description` 로 받는 건 버리기 위해서다(eslint 는 `_` 접두 미사용 변수를 허용).
+    const slim = rows.slice(0, EPS_SNAP_MAX).map(({ description: _description, ...r }) => r);
     localStorage.setItem(EPS_SNAP_KEY(), JSON.stringify(slim));
   } catch (e) { /* quota — 스냅샷은 있으면 좋은 것이지 필수는 아니다 */ }
 }
