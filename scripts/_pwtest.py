@@ -350,6 +350,39 @@ def main() -> int:
             # 운전 캡처(v1.39.1): 칩은 transcript 시트 툴바(#tx-drive) — 시트를 연 뒤에만 클릭 가능
             # (닫힌 시트는 pointer-events:none). 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(aep-marks)
             # → 칩 OFF → FAB 숨김. 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
+            # 쉐도잉 순환 — 여태 커버리지가 없었다. 라벨과 실제 반복 배수가 서로 다른 곳에 있어
+            # (SHADOW 표 / smartRepsFor) 한쪽만 바꾸면 조용히 어긋난다. v1.51.0 에서 배수를
+            # SMART_MULT 로 라벨 옆에 모았고, 여기서 '라벨 순서'와 '반복이 단조 감소'를 고정한다.
+            shadow_ok = None
+            if sheet_open and pg.query_selector("#tx-shadow"):
+                cycle, widths = [], set()
+                for _ in range(9):
+                    st = pg.evaluate("""() => {
+                      const b = document.getElementById('tx-shadow');
+                      const badge = document.querySelector('.tx-loop-badge');
+                      return { label: b.textContent.trim(),
+                               w: Math.round(b.getBoundingClientRect().width),
+                               reps: badge ? parseInt(badge.textContent.replace(/\\D/g, ''), 10) : 0 };
+                    }""")
+                    cycle.append(st); widths.add(st["w"])
+                    if len(cycle) > 1 and st["label"] == "Shadow":
+                        break
+                    pg.click("#tx-shadow"); time.sleep(0.22)
+                labels = [c["label"] for c in cycle]
+                smart = [c["reps"] for c in cycle if c["label"].endswith("Smart")]
+                shadow_ok = bool(
+                    labels[:4] == ["Shadow", "3× Smart", "2× Smart", "1× Smart"]
+                    and labels[-1] == "Shadow"
+                    # Smart 는 3×>2×>1× 로 '반드시' 줄어야 한다 — 라벨만 바꾸고 배수를 안 바꾸면 여기서 걸린다
+                    and len(smart) == 3 and smart[0] > smart[1] > smart[2] >= 2
+                    # 고정폭(96px): 라벨 길이가 달라져도 버튼이 흔들리면 안 된다(v1.35.0)
+                    and len(widths) == 1)
+                print("SHADOW-CYCLE:", labels, " smart reps=", smart, " widths=", widths, " ok=", shadow_ok)
+                for _ in range(2):   # 'Shadow'(off) 로 확실히 되돌려 이후 단계와 간섭 없게
+                    if pg.evaluate("document.getElementById('tx-shadow').textContent.trim()") == "Shadow":
+                        break
+                    pg.click("#tx-shadow"); time.sleep(0.2)
+
             drive_ok = None
             if sheet_open and pg.query_selector("#tx-drive"):
                 # v1.39.3: 회차 진입 시 항상 OFF 로 시작(상태 비영속) — 칩 off + FAB 숨김이 초기값
@@ -620,6 +653,7 @@ def main() -> int:
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True
+                     and shadow_ok is True
                      and wordpop_ok is True and drive_ok is True and seek_follow is True
                      and vk_ok is True)
 

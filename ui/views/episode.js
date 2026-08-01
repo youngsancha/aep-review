@@ -297,11 +297,11 @@ export async function renderEpisode(root, idStr, tStr) {
   const $txSeekRem    = document.getElementById('tx-seek-rem');
   let txScrub = null;
   let speedIdx = 0;
-  let shadowMode = 'off';  // off | smart2(2× Smart) | smart(1× Smart) | auto5/auto10(고정 N회)
+  let shadowMode = 'off';  // off | smart3/smart2/smart1(문단 길이 비례) | auto2/3/5/10(고정 N회)
   let loopPara = -1, loopStart = 0, loopEnd = 0;  // 반복 대상 '문단'과 그 시작/끝(자막시각)
-  let loopCount = 0;       // smart2/smart/auto5/auto10: 현재 문단을 몇 번 반복했는지(0~N)
+  let loopCount = 0;       // 반복 모드 공통: 현재 문단을 몇 번 반복했는지(0~N)
   let loopTarget = 0;      // 이 문단의 목표 반복 횟수 — smart(2)는 문단마다 다름, autoN 은 고정
-  let shadowIdx = 0;       // 쉐도잉 버튼 단계(off→smart2→smart→auto5→auto10 순환) — refresh 에서 종료시 리셋하려 상위 선언
+  let shadowIdx = 0;       // 쉐도잉 버튼 단계(SHADOW 표 순서대로 순환) — refresh 에서 종료시 리셋하려 상위 선언
   const REPEAT_OF = { auto2: 2, auto3: 3, auto5: 5, auto10: 10 };  // N× Auto: 한 문단을 N번 반복 후 다음 문단으로
   // Smart: 문단 길이(초)에 비례해 반복 횟수를 유동 결정 — 짧은 문단 5회, 긴 문단 최대 12회.
   // (v1.19.0: 3~10 → 5~12 — 사용자 요청 2026-07-10. 비율(0~20s 선형 매핑)은 유지)
@@ -309,9 +309,16 @@ export async function renderEpisode(root, idStr, tStr) {
   // 분포가 0~20s(중앙값 10s) → 0~20s 에 5~12회를 선형 매핑(기본 5회 + 초당 0.35회):
   // 0~2s→5~6회, 6s→7회, 10s→9회, 16s→11회, 20s+→12회.
   const smartReps = (durSec) => Math.max(5, Math.min(12, Math.round(5 + durSec * 0.35)));
-  // 2× Smart = Smart 반복의 2배(사용자 요청 2026-07-17) — 상한도 2배(최대 24회).
-  const smartRepsFor = (durSec) => shadowMode === 'smart2' ? smartReps(durSec) * 2 : smartReps(durSec);
-  // 반복(쉐도잉) 모드 공통 게이트 — smart2/smart/auto5/auto10 전부.
+  // Smart 단계별 배수 — 라벨과 같은 곳에 둔다. 예전엔 배수가 smartRepsFor 안에 하드코딩돼 있고
+  // 라벨은 SHADOW 표에 따로 있어서, 한쪽만 바꾸면 조용히 어긋났다.
+  // ⚠ 라벨의 숫자는 '배수'가 아니라 '강도 단계'다(3=가장 많이 … 1=가장 적게). 사용자에겐 기본
+  // 반복수(smartReps)가 보이지 않으므로 배수를 그대로 노출해도 의미가 없다 — 단계로 읽히는 게 낫다.
+  // 실제 횟수(문단 5~12회 기준): 3× → 10~24, 2× → 5~12, 1× → 3~6.
+  const SMART_MULT = { smart3: 2, smart2: 1, smart1: 0.5 };
+  const isSmart = (m) => SMART_MULT[m] != null;
+  const smartRepsFor = (durSec) =>
+    Math.max(2, Math.round(smartReps(durSec) * (SMART_MULT[shadowMode] || 1)));
+  // 반복(쉐도잉) 모드 공통 게이트 — smart*/auto* 전부.
   function inRepeatMode() { return shadowMode !== 'off'; }
   let navPrevId = null, navNextId = null;  // 이전/다음 '에피소드'(곡) id — episodeNav 로 채움
   let lastPrevTap = 0;     // ⏮ 더블탭(연속 두 번) 판정용 — 처음엔 맨 앞, 빠르게 한 번 더면 이전 곡
@@ -916,14 +923,15 @@ export async function renderEpisode(root, idStr, tStr) {
       },
     });
   }
-  // 쉐도잉 버튼: off(Shadow) → 2× Smart → 1× Smart → 2× Auto → 3× Auto → 5× Auto → 10× Auto → off … 순환.
-  // (2026-07-17: Repeat∞ 제거, 2× Smart 추가, 고정폭 통일. 2026-07-25 사용자 요청: 2×/3× Auto 추가 —
-  //  적은 반복으로 빠르게 따라 말하고 다음 문단으로 넘어가고 싶을 때. auto 는 2→3→5→10 오름차순.)
-  // 2× Smart = 문단 길이 비례 반복(smart)의 2배. N× Auto = 문단을 고정 N회 반복 후 다음 문단으로.
+  // 쉐도잉 버튼: off(Shadow) → 3× Smart → 2× Smart → 1× Smart → 2× Auto → 3× Auto → 5× Auto → 10× Auto → off … 순환.
+  // (2026-07-17: Repeat∞ 제거·고정폭 통일. 2026-07-25: 2×/3× Auto 추가. 2026-07-31 사용자 요청:
+  //  Smart 라벨을 한 단계씩 올리고(2×→3×, 1×→2×) 더 가벼운 1× Smart 를 끝에 추가 — 기존 두 모드의
+  //  반복 횟수는 그대로다. 배수는 SMART_MULT 참조. N× Auto = 문단을 고정 N회 반복 후 다음 문단으로.)
   const SHADOW = [
     { mode: 'off',    label: 'Shadow',   on: false },
+    { mode: 'smart3', label: '3× Smart', on: true },
     { mode: 'smart2', label: '2× Smart', on: true },
-    { mode: 'smart',  label: '1× Smart', on: true },
+    { mode: 'smart1', label: '1× Smart', on: true },
     { mode: 'auto2',  label: '2× Auto',  on: true },
     { mode: 'auto3',  label: '3× Auto',  on: true },
     { mode: 'auto5',  label: '5× Auto',  on: true },
@@ -938,13 +946,13 @@ export async function renderEpisode(root, idStr, tStr) {
     const ps = sentRanges.filter((s) => s.paraEl === pEl);
     if (!ps.length) return false;
     loopPara = pIdx; loopStart = ps[0].start; loopEnd = ps[ps.length - 1].end;
-    loopTarget = (shadowMode === 'smart' || shadowMode === 'smart2')
+    loopTarget = isSmart(shadowMode)
       ? smartRepsFor(loopEnd - loopStart) : (REPEAT_OF[shadowMode] || 0);
     updateLoopBadge();
     return true;
   }
   // 반복 카운트다운 배지 — 반복 중인 문단 위에 남은 횟수를 표시. 모든 반복 모드
-  // (2× Smart / 1× Smart / 5× Auto / 10× Auto)가 "↻ N" 으로 남은 횟수 카운트다운(사용자 요청 2026-07-17).
+  // (3×/2×/1× Smart, N× Auto)가 "↻ N" 으로 남은 횟수 카운트다운(사용자 요청 2026-07-17).
   // 모드 종료/문단 이동 시 이전 배지는 제거된다.
   function updateLoopBadge() {
     document.querySelectorAll('.tx-loop-badge').forEach((b) => b.remove());
