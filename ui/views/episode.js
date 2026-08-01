@@ -1046,17 +1046,31 @@ export async function renderEpisode(root, idStr, tStr) {
   let txScale = FS_STEPS[fsIdx];
   const $scaleEl = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
   const $fs = document.getElementById('tx-fs');
-  function applyTxScale() {
+  // 화면 맨 위에 걸친 문장 찾기 — 문서 순서 = 화면 순서라 이진 탐색이 성립한다.
+  // 예전엔 [...querySelectorAll('.tx-sent')].find(el => el.getBoundingClientRect()...) 였는데,
+  // 실측 회차(문장 559개)에서 최악 559번의 강제 레이아웃 읽기였다. 이진 탐색이면 ~10번.
+  function firstVisibleSent(sc, cTop) {
+    const els = sc.querySelectorAll('.tx-sent');
+    let lo = 0, hi = els.length - 1, best = null;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (els[mid].getBoundingClientRect().bottom > cTop + 22) { best = els[mid]; hi = mid - 1; }
+      else lo = mid + 1;
+    }
+    return best;
+  }
+  // preserveAnchor=false: 첫 렌더용. 그 시점엔 scrollTop 이 0 이라 보존할 화면 위치가 없는데도
+  // 앵커 탐색·rAF 보정을 돌고 있었다(회차를 열 때마다 지불). CSS 변수만 세팅하면 충분하다.
+  function applyTxScale(preserveAnchor = true) {
     txScale = FS_STEPS[fsIdx];
     // 글자 크기 변경 시 '보던 문장 그대로'. 핵심: 자동 따라가기(easeScroll rAF 루프)가 변경 전 목표로
     // scrollTop 을 계속 끌어당겨 내 보정과 싸웠다(그래서 몇 문단씩 밀림). → ease 취소 + 자동추적 잠시
     // 보류 후, 레이아웃 정착(rAF)되면 앵커를 원래 화면 위치로 '딱 한 번' 되돌린다.
-    const sc = document.querySelector('.tx-scroll');
+    const sc = preserveAnchor ? document.querySelector('.tx-scroll') : null;
     let anchor = null, desired = 0;
     if (sc) {
       const cTop = sc.getBoundingClientRect().top;
-      anchor = sc.querySelector('.tx-sent.active')
-        || [...sc.querySelectorAll('.tx-sent')].find((el) => el.getBoundingClientRect().bottom > cTop + 22);
+      anchor = sc.querySelector('.tx-sent.active') || firstVisibleSent(sc, cTop);
       if (anchor) desired = anchor.getBoundingClientRect().top - cTop;
     }
     cancelEase();                          // 진행 중인 자동 스크롤 ease 중단(경쟁 제거)
@@ -1072,7 +1086,7 @@ export async function renderEpisode(root, idStr, tStr) {
       });
     }
   }
-  applyTxScale();
+  applyTxScale(false);   // 첫 렌더: 보존할 스크롤 위치가 없다
   $fs?.addEventListener('click', (e) => { e.stopPropagation(); fsIdx = (fsIdx + 1) % FS_STEPS.length; applyTxScale(); });
 
   // 한국어 번역 글자 크기 ('가' 칩) — A−/A＋(본문 --tx-scale)와 '완전 독립'. 별도 --ko-scale 을

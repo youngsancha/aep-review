@@ -350,6 +350,28 @@ def main() -> int:
             # 운전 캡처(v1.39.1): 칩은 transcript 시트 툴바(#tx-drive) — 시트를 연 뒤에만 클릭 가능
             # (닫힌 시트는 pointer-events:none). 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(aep-marks)
             # → 칩 OFF → FAB 숨김. 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
+            # ⚡ 성능 회귀 가드 — 닫힌 시트가 레이아웃되면 안 된다.
+            # 실측(2026-08-01, 자막 420문장·CPU 4x): 닫힌 시트도 transform 으로만 숨겨져 있어 span
+            # 11,650개가 매번 배치됐고, 회차 열기가 롱태스크 173ms 였다(트랜스크립트를 안 여는
+            # 사용자도 지불). content-visibility:hidden 으로 195ms→55ms, 롱태스크 소멸.
+            # 여기서는 '닫힌 시트의 자식이 실제로 렌더 대상에서 빠졌는가'를 본다 —
+            # content-visibility:hidden 서브트리의 자손은 레이아웃 박스가 0 이 된다.
+            cv_ok = None
+            if pg.query_selector(".tx-sheet"):
+                # 자손 지오메트리로 검증하려 했으나 신뢰할 수 없었다(cv:hidden 인데도 높이가 0 이
+                # 아니게 읽혔다) → 실제로 우리가 제어하는 것, 즉 '규칙이 살아 있는가'만 단언한다.
+                # 누가 지우거나 덮어쓰면 여기서 걸린다. 효과 수치는 커밋 메시지의 실측을 참조.
+                cv_ok = pg.evaluate("""() => {
+                  const sheet = document.querySelector('.tx-sheet');
+                  const card = sheet.querySelector('.tx-sheet-card');
+                  const wasOpen = sheet.classList.contains('open');
+                  sheet.classList.remove('open');
+                  const cv = getComputedStyle(card).contentVisibility;
+                  if (wasOpen) sheet.classList.add('open');
+                  return { cv };
+                }""")
+                print("PERF-CLOSED-SHEET:", cv_ok)
+
             # 쉐도잉 순환 — 여태 커버리지가 없었다. 라벨과 실제 반복 배수가 서로 다른 곳에 있어
             # (SHADOW 표 / smartRepsFor) 한쪽만 바꾸면 조용히 어긋난다. v1.51.0 에서 배수를
             # SMART_MULT 로 라벨 옆에 모았고, 여기서 '라벨 순서'와 '반복이 단조 감소'를 고정한다.
@@ -653,6 +675,7 @@ def main() -> int:
                      and calib_gone is True and sync_ok is True and ctrl_reveal is True
                      and fs_ok is True and dark_ok and ad_detect == 2 and ad_none is True
                      and ad_mid_ok is True and sync_btn_gone is True
+                     and isinstance(cv_ok, dict) and cv_ok["cv"] == "hidden"
                      and shadow_ok is True
                      and wordpop_ok is True and drive_ok is True and seek_follow is True
                      and vk_ok is True)

@@ -809,6 +809,13 @@ body.on-episode {
   transition: transform 0.1s;
 }
 .tx-mini-play:active { transform: scale(0.96); }
+/* ⚡ 닫힌 시트는 '화면 밖으로 밀려 있을 뿐' 여전히 레이아웃된다(transform 으로만 숨기므로).
+   실측(자막 420문장 회차, CPU 4x): 회차를 열 때마다 span 11,650개를 배치하느라 롱태스크 173ms —
+   트랜스크립트를 열지 않고 듣기만 하는 경우에도 매번 지불했다. HTML 생성 8ms + 파싱 19ms 라
+   비싼 쪽은 만드는 게 아니라 '배치'다. content-visibility 로 닫힌 동안 그 렌더를 통째로 건너뛴다.
+   ⚠ 전제: 시트가 닫힌 동안에는 전사 지오메트리를 재지 않아야 한다. v1.38.0 에서 _highlightImpl·
+   karaoke rAF 를 이미 sheet-open 게이트로 묶어 뒀기 때문에 성립한다. 그 게이트를 풀면 이것도 깨진다. */
+.tx-sheet:not(.open) .tx-sheet-card { content-visibility: hidden; }
 .tx-sheet.open { pointer-events: auto; }
 .tx-sheet.open .tx-sheet-backdrop { opacity: 1; }
 .tx-sheet.open .tx-sheet-card { transform: translateY(0); }
