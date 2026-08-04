@@ -232,7 +232,7 @@ export async function renderEpisode(root, idStr, tStr) {
       saveVKnown(vknown);
       if (card) card.classList.toggle('vknown', nowKnown);
       btn.setAttribute('aria-pressed', nowKnown ? 'true' : 'false');
-      btn.textContent = nowKnown ? '✓ 알아요' : '알아요';
+      btn.textContent = nowKnown ? '✓ Known' : 'Known';
     });
   });
   prefetch(vocabs.map((v) => v.term).filter(Boolean));
@@ -1810,7 +1810,7 @@ function vocabHtml(v, known) {
       </div>
       ${v.definition ? `<p class="def">${escapeHtml(v.definition)}</p>` : ''}
       ${ex}
-      <button class="vocab-known" data-id="${v.id}" aria-pressed="${isKnown ? 'true' : 'false'}">${isKnown ? '✓ 알아요' : '알아요'}</button>
+      <button class="vocab-known" data-id="${v.id}" aria-pressed="${isKnown ? 'true' : 'false'}">${isKnown ? '✓ Known' : 'Known'}</button>
     </li>
   `;
 }

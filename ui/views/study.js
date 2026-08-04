@@ -806,7 +806,9 @@ export async function renderStudy(root) {
   }
 
   function sessHeaderHtml(st, label, i, n) {
-    const segs = ['복습', '새 표현', ...st.drillModes.map(() => '드릴')];
+    // 드릴 세그먼트는 실제 모드 라벨(DRILL_LABEL)에서 이모지만 떼어 표시 — 예전엔 '드릴'이 중복돼
+    // 두 세그먼트가 구분이 안 됐다(예: Dictation/Cloze 가 둘 다 그냥 '드릴').
+    const segs = ['Review', 'New', ...st.drillModes.map((mode) => (DRILL_LABEL[mode] || mode).replace(/^\S+\s+/, ''))];
     const cur = st.stage === 'review' ? 0 : st.stage === 'new' ? 1 : 2 + st.drillIdx;
     return `
       <div class="quiz-bar sess-bar">
@@ -823,7 +825,10 @@ export async function renderStudy(root) {
     return sessSummary(st);
   }
 
-  // 1단계 복습 — 간이 플래시카드(뜻 → 정답 공개 → Again/알았어요). Again 은 덱 맨 뒤로 재투입.
+  // 1단계 복습 — 간이 플래시카드(뜻 → 정답 공개 → Again/Got it). Again 은 덱 맨 뒤로 재투입.
+  // 카드는 화면 중앙, 액션은 하단(.sess-stage/.sess-body — reading-booster Review 덱 UX 이식).
+  // 비공개 상태에서 카드 탭 = 정답 공개 only(음성 재생 없음) — 예전엔 카드 탭이 곧장 speak(term) 이라
+  // 뜻만 보고 정답(단어)을 아직 안 눌렀는데도 정답 발음이 새 나갔다(v1.41.0 급 정답유출 버그와 동류).
   function sessReview(st, queue) {
     const caps = SESS_CAPS[st.size] || SESS_CAPS.M;
     const cards = queue.filter((c) => (c.reps || 0) > 0).slice(0, caps.review);
@@ -838,28 +843,44 @@ export async function renderStudy(root) {
       const term = c.front || c.term || '';
       const definition = splitBack(c.back).def || c.definition || '';
       root.innerHTML = `
-        ${sessHeaderHtml(st, '복습', Math.min(done + 1, total), total)}
-        <div class="sent-card sess-flash" id="sess-flash">
-          <div class="quiz-def">${escapeHtml(definition)}</div>
-          <div class="sent-reveal" id="sess-rev" hidden>
-            <div class="sent-term">${escapeHtml(term)} <span class="sent-spk">🔊</span></div>
-            ${c.example_sentence ? `<div class="sent-def">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
+        ${sessHeaderHtml(st, 'Review', Math.min(done + 1, total), total)}
+        <div class="sess-stage">
+          <div class="sess-body">
+            <div class="sent-card sess-flash" id="sess-flash">
+              <div class="quiz-def">${escapeHtml(definition)}</div>
+              <div class="sent-reveal" id="sess-rev" hidden>
+                <div class="sess-term-lg">${escapeHtml(term)}</div>
+                ${c.example_sentence ? `<div class="sess-ex-lg">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
+                <button class="sess-listen" id="sess-listen">🔊 Listen</button>
+              </div>
+              <div class="sess-hint" id="sess-hint">Tap to see the answer</div>
+            </div>
           </div>
-        </div>
-        <button class="study-cta-btn" id="sess-reveal">정답 보기</button>
-        <div class="dict-actions" id="sess-grades" hidden>
-          <button class="study-cta-btn secondary" id="sess-again">↺ Again</button>
-          <button class="study-cta-btn" id="sess-good">알았어요 ✓</button>
-        </div>
-        <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
+          <div class="sess-actions">
+            <button class="study-cta-btn" id="sess-reveal">Show answer</button>
+            <div class="sess-legend" id="sess-legend" hidden><span class="again">↺ Again</span> · tap = replay · <span class="good">Got it →</span></div>
+            <div class="dict-actions" id="sess-grades" hidden>
+              <button class="study-cta-btn grade-again" id="sess-again">↺ Again</button>
+              <button class="study-cta-btn grade-good" id="sess-good">Got it ✓</button>
+            </div>
+            <button class="quiz-exit" id="sess-exit">✕ Save & exit</button>
+          </div>
+        </div>`;
       root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); exitToStudyHome(); });
-      root.querySelector('#sess-flash').addEventListener('click', () => speak(term));
-      root.querySelector('#sess-reveal').addEventListener('click', (e) => {
-        e.currentTarget.hidden = true;
+      const reveal = () => {
+        root.querySelector('#sess-hint').hidden = true;
         root.querySelector('#sess-rev').hidden = false;
+        root.querySelector('#sess-reveal').hidden = true;
+        root.querySelector('#sess-legend').hidden = false;
         root.querySelector('#sess-grades').hidden = false;
         speak(term);
+      };
+      // 비공개: 탭 = 공개(정답 음성 없음). 공개 후: 탭 = 정답 다시 듣기(Listen 알약과 동일 동작).
+      root.querySelector('#sess-flash').addEventListener('click', () => {
+        if (root.querySelector('#sess-rev').hidden) reveal(); else speak(term);
       });
+      root.querySelector('#sess-reveal').addEventListener('click', reveal);
+      root.querySelector('#sess-listen').addEventListener('click', (e) => { e.stopPropagation(); speak(term); });
       const grade = (g) => {
         srsReview(c.id, g).catch(() => {});   // fire-and-forget(오프라인이어도 흐름 유지)
         if (g === 'again') { st.stats.reviewAgain++; cards.push(cards.shift()); }
@@ -873,7 +894,8 @@ export async function renderStudy(root) {
     paint();
   }
 
-  // 2단계 새 표현 — 오디오 퍼스트 소개 카드. 이미 알아요=markKnown / 학습 시작=SM-2 진입(내일 due).
+  // 2단계 새 표현 — 오디오 퍼스트 소개 카드(용어가 처음부터 보임 → Listen 알약도 처음부터 표시).
+  // Know it=markKnown / Start learning=SM-2 진입(내일 due).
   function sessNew(st, queue) {
     const caps = SESS_CAPS[st.size] || SESS_CAPS.M;
     const cards = queue.filter((c) => (c.reps || 0) === 0).slice(0, caps.fresh);
@@ -885,20 +907,28 @@ export async function renderStudy(root) {
       const term = c.front || c.term || '';
       const definition = splitBack(c.back).def || c.definition || '';
       root.innerHTML = `
-        ${sessHeaderHtml(st, '새 표현', i + 1, cards.length)}
-        <div class="sent-card sess-flash" id="sess-flash">
-          <div class="sent-term">${escapeHtml(term)} <span class="sent-spk">🔊</span></div>
-          ${definition ? `<div class="sent-def">${escapeHtml(definition)}</div>` : ''}
-          ${c.example_sentence ? `<div class="sent-def sess-ex">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
-        </div>
-        <div class="dict-actions">
-          <button class="study-cta-btn secondary" id="sess-know">이미 알아요 ✓</button>
-          <button class="study-cta-btn" id="sess-learn">학습 시작 ▸</button>
-        </div>
-        <button class="quiz-exit" id="sess-exit">✕ 저장하고 나가기</button>`;
+        ${sessHeaderHtml(st, 'New', i + 1, cards.length)}
+        <div class="sess-stage">
+          <div class="sess-body">
+            <div class="sent-card sess-flash" id="sess-flash">
+              <div class="sess-term-lg">${escapeHtml(term)}</div>
+              ${definition ? `<div class="sent-def">${escapeHtml(definition)}</div>` : ''}
+              ${c.example_sentence ? `<div class="sess-ex-lg">“${highlightTerm(c.example_sentence, term)}”</div>` : ''}
+              <button class="sess-listen" id="sess-listen">🔊 Listen</button>
+            </div>
+          </div>
+          <div class="sess-actions">
+            <div class="dict-actions">
+              <button class="study-cta-btn secondary" id="sess-know">Know it ✓</button>
+              <button class="study-cta-btn" id="sess-learn">Start learning ▸</button>
+            </div>
+            <button class="quiz-exit" id="sess-exit">✕ Save & exit</button>
+          </div>
+        </div>`;
       requestAnimationFrame(() => playExample(c));   // 뜻을 읽기 전에 실제 음성부터(오디오 퍼스트)
       if (cards[i + 1] && cards[i + 1].example_sentence) prefetch([cards[i + 1].example_sentence]);  // 다음 카드 미리
       root.querySelector('#sess-flash').addEventListener('click', () => playExample(c));
+      root.querySelector('#sess-listen').addEventListener('click', (e) => { e.stopPropagation(); playExample(c); });
       root.querySelector('#sess-exit').addEventListener('click', () => { saveSess(st); exitToStudyHome(); });
       root.querySelector('#sess-know').addEventListener('click', () => {
         if (c.vocab_id != null) markKnown(c.vocab_id).catch(() => {});

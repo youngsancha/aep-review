@@ -7,6 +7,7 @@ renderEpisode 를 띄운 뒤, 런타임 에러·문장수·재생 버튼 동작�
     python scripts/_pwtest.py
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -18,6 +19,23 @@ MOCKS = UI / "_mocks.js"
 HARNESS = UI / "_harness.html"
 STUDY_HARNESS = UI / "_harness_study.html"
 TIMELINE_HARNESS = UI / "_harness_timeline.html"
+
+# 시각 변경(레이아웃/타이포)은 어서션으로 못 잡는다. 하니스 페이지는 이 스크립트가 실행 중에만
+# 생성되므로 밖에서 따로 띄울 수 없어, 매번 일회용 스크립트를 다시 만드는 대신 여기에 훅을 둔다.
+# 기본은 완전 무동작 — AEP_SHOTS=<디렉터리> 를 줄 때만 찍는다(게이트 성능/결과에 영향 없음).
+SHOT_DIR = os.environ.get("AEP_SHOTS")
+
+
+def _shot(pg, name: str) -> None:
+    if not SHOT_DIR:
+        return
+    d = Path(SHOT_DIR)
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        pg.screenshot(path=str(d / f"{name}.png"))
+    except Exception as e:                     # 스크린샷 실패가 게이트를 죽이면 안 된다
+        print("  shot failed", name, e)
+
 
 MOCKS_JS = r"""
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -830,10 +848,13 @@ def main() -> int:
                 pg.evaluate("localStorage.removeItem('aep-session'); localStorage.removeItem('aep-study-days'); localStorage.removeItem('aep-measure-log')")
                 sizes = pg.eval_on_selector_all(".sess-size button", "els=>els.length")
                 pg.click("#sess-go"); time.sleep(0.5)
+                _shot(pg, "sess-prompt")
                 has_rev = bool(pg.query_selector("#sess-reveal"))
                 if has_rev:
                     pg.click("#sess-reveal"); time.sleep(0.1)
+                    _shot(pg, "sess-revealed")
                     pg.click("#sess-good"); time.sleep(0.3)
+                    _shot(pg, "sess-new")
                 graded = pg.evaluate("(window.__reviews||[]).length") >= 1
                 has_new = bool(pg.query_selector("#sess-learn"))
                 if has_new:
