@@ -51,10 +51,13 @@ class ClaudeUnavailable(RuntimeError):
 _ENDS = re.compile(r'[.!?…]["\')\]]?$')
 _COMMA = re.compile(r'[,;:]["\')\]]?$')
 _CONJ = re.compile(r'^(and|but|so|or|because|when|while|if|since|though|although|unless)$', re.I)
+# The/My 는 episode.js 와 동일하게 실측(53 회차, 470-522) 기반으로 추가 — 그 근거는
+# episode.js 의 STARTER 주석 참고. A/An/Our/Their/His/Her 는 오탐(작품명·스폰서 철자코드) 또는
+# 근거 부족으로 제외.
 _STARTER = re.compile(
     r"^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|"
     r"He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|"
-    r"Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also)$"
+    r"Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also|The|My)$"
 )
 _LEAD_STRIP = re.compile(r"^[^A-Za-z']+")
 
@@ -82,9 +85,13 @@ def resegment(segments) -> list[str]:
     cur = None
     prev_end = None
 
-    def close():
+    def close(force_period=False):
         nonlocal cur
         cur["text"] = "".join(x["word"] for x in cur["words"]).strip()
+        # STARTER 분할은 종결 구두점 자체가 빠진 경계라, 보충하지 않으면 trkey 쪽(_ko.json 조회)과
+        # groupIntoParagraphs 쪽(endsSentence) 양쪽에서 문장이 안 끝난 것처럼 보인다.
+        if force_period and cur["text"] and not _ENDS.search(cur["text"]):
+            cur["text"] += "."
         out.append(cur["text"])
         cur = None
 
@@ -100,7 +107,7 @@ def resegment(segments) -> list[str]:
         if cur and len(cur["words"]) >= 3:
             raw = _LEAD_STRIP.sub("", (w.get("word") or "").strip())
             if raw[:1].isupper() and _STARTER.match(raw.split("'")[0]):
-                close()
+                close(force_period=True)
         if not cur:
             cur = {"start": ws, "end": _num(w.get("end")), "words": []}
         cur["words"].append(w)
@@ -120,8 +127,14 @@ def resegment(segments) -> list[str]:
 
 
 def trkey(text: str) -> str:
-    """episode.js trKey 와 동일: 소문자·공백정규화·trim·180자."""
-    return re.sub(r"\s+", " ", str(text or "")).strip().lower()[:180]
+    """episode.js trKey 와 동일: 소문자·공백정규화·trim·종결구두점 제거·180자.
+
+    종결 구두점을 떼는 이유: resegment 가 마침표 빠진 문장에 '.' 을 보충하게 되면서 문장
+    텍스트가 바뀌는데, 이미 만들어 둔 521회차 분량의 `_ko.json` 키는 보충 전 텍스트다.
+    키에서 구두점을 빼면 재생성 없이 옛 키가 그대로 다시 맞는다(실측 미스 14.6%→1.1%).
+    """
+    s = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    return re.sub(r"[.!?…]+$", "", s)[:180]
 
 
 # ─────────────────────────── claude (문맥 인지 번역) ───────────────────────────

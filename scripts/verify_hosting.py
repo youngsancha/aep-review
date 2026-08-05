@@ -82,7 +82,10 @@ ENDS = re.compile(r'[.!?…]["\')\]]?$')
 COMMA = re.compile(r'[,;:]["\')\]]?$')
 CONJ = re.compile(r"^(and|but|so|or|because|when|while|if|since|though|although|unless)$", re.I)
 _LEAD = re.compile(r"^[^A-Za-z']+")
-STARTER = re.compile(r"^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also)$")
+# The/My 는 episode.js STARTER 와 동일하게 실측 기반으로 추가(근거는 episode.js 주석 참고).
+# 이 파일은 문장의 .text 를 만들지 않고 경계(word 수·구간)만 쓰므로 마침표 보충 로직은 해당 없음
+# — 그래도 문장 '경계' 자체는 episode.js 와 일치해야 seg_quality 통계가 실제 앱과 맞는다.
+STARTER = re.compile(r"^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also|The|My)$")
 
 
 def resegment(segments):

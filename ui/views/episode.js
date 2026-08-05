@@ -342,7 +342,11 @@ export async function renderEpisode(root, idStr, tStr) {
   const TRANS_KEY = 'aep-tx-trans';
   let showTrans = localStorage.getItem(TRANS_KEY) !== '0';
   const _trCache = loadTrCache(ep.id);
-  const _preKo = ep.transcript_ko || {};   // trKey(문장)→ko 문맥 인지 사전번역(있으면 직역 MyMemory 대체)
+  // trKey(문장)→ko 문맥 인지 사전번역(있으면 직역 MyMemory 대체). 파일의 키는 '예전' trKey 로
+  // 굳어 있으므로 적재 시 현재 trKey 로 한 번 더 정규화한다(멱등) — 안 하면 종결 구두점을 떼는
+  // 새 키가 파일의 옛 키와 어긋나 사전번역이 통째로 미스난다.
+  const _preKo = {};
+  for (const [k, v] of Object.entries(ep.transcript_ko || {})) _preKo[trKey(k)] = v;
   let _trSeq = 0;
 
   function refresh() {
@@ -1652,7 +1656,12 @@ function easyByWords(text) {
 // 번역 캐시 키 = '문장 텍스트'(정규화). 인덱스 기준이면 resegment/광고 슬라이스로 문장 경계가 바뀔 때
 // 같은 인덱스가 다른 문장을 가리켜 번역이 엉뚱한 문장에 붙는다(영↔한 mismatch). 텍스트 기준이면 안전.
 function trKey(text) {
-  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 180);
+  // 종결 구두점은 키에서 제외한다. resegment 가 마침표가 빠진 문장에 '.' 을 보충하게 되면서
+  // 문장 텍스트가 바뀌는데, 사전번역 `_ko.json`(521회차 전량, 비싼 Claude 배치 산출물)의 키는
+  // 보충 전 텍스트로 굳어 있다. 실측: 그 변화의 92% 가 '마침표 하나 추가'뿐이었다 —
+  // 키에서 종결 구두점을 떼면 재생성 없이 그 92% 가 그대로 다시 맞는다.
+  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    .replace(/[.!?…]+$/, '').slice(0, 180);
 }
 function loadTrCache(epId) {
   try { localStorage.removeItem('aep-tr-' + epId); } catch (e) {}  // 구버전(인덱스 기반) 캐시 폐기 → mismatch 원인 제거
@@ -1688,12 +1697,20 @@ function resegment(segments) {
   const CONJ = /^(and|but|so|or|because|when|while|if|since|though|although|unless)$/i;
   // 종결 구두점이 빠진(소형 STT) 자막에서도 문장 경계를 잡는 대문자 '문장-시작어'. 절이 ≥3단어
   // 찼고 다음 단어가 대문자 시작어(But/They/If/He…)면 그 앞에서 끊는다('I'·고유명사는 목록에 없어 제외).
-  const STARTER = /^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also)$/;
+  // The/My 추가(실측): 53 회차(470-522) 전수 스캔에서 My 는 4/4 진짜 문장 경계(오탐 0). The 는
+  // 14건 중 다수가 진짜 경계지만 "I enjoyed The Time Traveler's Wife"류 작품명 오탐도 섞여있다 —
+  // 그래도 요구사항(원본 버그 사례)이라 포함. A/An/Our/His/Her 는 보류: A 는 50건 중 대부분이
+  // "Shopify.com slash A-E-E"처럼 철자 나열(스폰서 코드)로 오탐, Their 는 실측 2/2 모두
+  // "The Game of Their Lives"(작품명) 오탐이라 제외. An/Our/His/Her 는 표본에 0건이라 근거 없음.
+  const STARTER = /^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also|The|My)$/;
   const out = [];
   let cur = null;
   let prevEnd = null;
-  const close = () => {
+  const close = (forcePeriod) => {
     cur.text = cur.words.map((x) => x.word).join('').trim();
+    // STARTER 분할은 Whisper 가 종결 구두점 자체를 빠뜨린 경계라, 문장이 구두점 없이 끝나면
+    // groupIntoParagraphs()의 endsSentence()가 이 경계를 못 읽어 문단 분할이 오작동한다 → 보충.
+    if (forcePeriod && cur.text && !ENDS.test(cur.text)) cur.text += '.';
     out.push(cur); cur = null;
   };
   for (const w of words) {
@@ -1710,9 +1727,10 @@ function resegment(segments) {
       if (CONJ.test(lead)) close();
     }
     // ②'' 대문자 문장-시작어 앞 분할 — 구두점이 빠진 자막의 문장 경계 복원(절이 ≥3단어일 때).
+    // 여기서 닫히는 문장은 구두점이 없는 채로 끝나는 경우가 흔해 forcePeriod=true 로 보충한다.
     if (cur && cur.words.length >= 3) {
       const raw = (w.word || '').trim().replace(/^[^A-Za-z']+/, '');
-      if (/^[A-Z]/.test(raw) && STARTER.test(raw.split("'")[0])) close();
+      if (/^[A-Z]/.test(raw) && STARTER.test(raw.split("'")[0])) close(true);
     }
     if (!cur) cur = { start: w.start, end: w.end, words: [] };
     cur.words.push(w);
@@ -1731,6 +1749,16 @@ function resegment(segments) {
   return out;
 }
 
+// 문단 최소 길이(초) — resegment()가 문장 하나당 세그먼트 하나를 내놓게 되면서 _sents(문장수)가
+// 짧은 맞장구("Yeah." "Sleep in." "So good.")만으로도 금방 2에 도달해 ~1초짜리 문단이 쏟아졌다.
+// 그 상태로 shadow-loop 반복재생을 하면 경계마다 뚝뚝 끊겨 들린다(#버그: "문단이 너무 짧다").
+// 실측(509/517/521/522, groupIntoParagraphs(resegment(segments))): MIN 미적용 시 2초 미만 문단이
+// 12.6%, 중앙값 6.14s. MIN=4 로 올리면 9.0%로 줄고 중앙값 6.51s로 목표 구간(6~12s) 안쪽에 든다.
+// MIN 을 5~7까지 더 올려도 2초 미만 비율은 8~9%대에서 더 안 줄어든다 — 남는 절반 이상은 gap 규칙
+// (진짜 침묵으로 갈리는 맞장구 한마디짜리 문단, 예: "Thank you.")이라 MIN 을 더 올려도 안 잡히고
+// 중앙값만 불필요하게 밀려 올라간다. 그래서 4에서 수확체감 — MIN_PARA_SEC=4.
+const MIN_PARA_SEC = 4;
+
 function groupIntoParagraphs(segments) {
   const out = [];
   let cur = null;
@@ -1743,9 +1771,14 @@ function groupIntoParagraphs(segments) {
     const paraLen = cur && prev ? prev.end - cur.start : 0;
 
     // 자연스러운 단락: 문장 끝에서 2~3문장마다, 또는 큰 쉼에서만 끊는다(절 중간 금지).
+    // 문장수 규칙(_sents>=2)은 문단이 MIN_PARA_SEC 이상 찼을 때만 발동 — 그래야 대화체 맞장구
+    // 두 개가 이어져도 그것만으로 문단이 끊기지 않는다. paraLen>9 안전판은 그대로 무조건 발동
+    // (9 > MIN_PARA_SEC 이라 이미 상위호환) — 문단이 하염없이 길어지는 걸 막는 역할은 안 건드림.
+    // gap 기반 분할(아래 두 줄)은 MIN_PARA_SEC 과 무관하게 그대로 둔다 — 진짜 침묵(pause)은
+    // 문단이 짧아도 진짜 경계이므로 계속 끊겨야 한다.
     let brk = false;
     if (!cur) brk = true;
-    else if (prevEnds && (cur._sents >= 2 || paraLen > 9)) brk = true;
+    else if (prevEnds && ((cur._sents >= 2 && paraLen >= MIN_PARA_SEC) || paraLen > 9)) brk = true;
     else if (prevEnds && gap > 0.5) brk = true;
     else if (gap > 1.6) brk = true;
     else if (paraLen > 16) brk = true;  // 안전 상한
