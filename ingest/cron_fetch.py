@@ -18,7 +18,7 @@ import logging
 from typing import Any
 
 from ingest.rss_fetch import fetch_feed, upsert_episodes
-from ingest.shows import DEFAULT_SHOW, rss_for
+from ingest.shows import DEFAULT_SHOW, SHOW_BY_SLUG, rss_for, show_slugs
 from ingest.transcribe import transcribe_pending
 
 log = logging.getLogger(__name__)
@@ -35,6 +35,19 @@ def run(rss_limit: int | None = 30, work_limit: int | None = None,
         items = fetch_feed(limit=rss_limit, rss_url=rss_for(show or DEFAULT_SHOW))
         added, skipped = upsert_episodes(items, show)
         log.info("rss[%s]: fetched=%d added=%d skipped=%d", show or DEFAULT_SHOW, len(items), added, skipped)
+        if show is None:
+            # ⛔ 이 루프가 없으면 일일 cron 은 영원히 DEFAULT_SHOW 피드 하나만 읽는다.
+            # 실제로 그렇게 돌았다: aep-sync 는 매일 success 인데 All Ears English 는
+            # 2026-06-24 이후 6주간 한 편도 안 들어왔다(그날은 사람이 --show 로 수동 실행).
+            # RSS 소스가 있는 쇼는 전부 훑는다(wh 는 rss=None → 전용 wh-sync 워크플로).
+            for slug in show_slugs():
+                if slug == DEFAULT_SHOW or not (SHOW_BY_SLUG.get(slug) or {}).get("rss"):
+                    continue
+                extra = fetch_feed(limit=rss_limit, rss_url=rss_for(slug))
+                a, s = upsert_episodes(extra, slug)
+                added += a
+                skipped += s
+                log.info("rss[%s]: fetched=%d added=%d skipped=%d", slug, len(extra), a, s)
 
     transcribed = transcribe_pending(limit=work_limit, show=show,
                                      time_budget_s=time_budget_s, shard=shard, shards=shards)
