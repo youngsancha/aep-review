@@ -144,6 +144,9 @@ export async function expressionsByKind(kind) {
 export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
 export async function markUnknown(id) { window.__unknown = (window.__unknown || []).concat(id); }
 export function cleanAudioUrl(u) { return u; }
+// offline.js 가 doc 캐시(회차행+자막 핀) 준비여부 확인에 쓰는 URL 빌더 — 실제 db.js 와 동일한
+// 계약(순수 문자열 템플릿, id+transcribedAt 만으로 결정)만 지키면 되고 실제 STORAGE_URL 은 무관.
+export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }
 export async function listEpisodes() {

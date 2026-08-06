@@ -1,21 +1,53 @@
 // aep-review service worker — 오프라인 지원.
 //  ① 동일 출처 앱 셸 → stale-while-revalidate (버전 캐시).
-//  ② Supabase 데이터/Storage(자막·번역·vocab·essentials·소형 TTS) → network-first + 캐시 폴백
+//  ② Supabase 데이터/Storage(자막·번역·vocab·essentials) → network-first + 캐시 폴백
 //     (온라인=항상 최신, 오프라인=마지막으로 본 자료 열람). 데이터 캐시는 버전과 분리·상한 트림.
+//     · 하위 규칙 ②a: 사전생성 TTS mp3(/storage/.../tts/) 는 여기서 갈라져 별도 캐시로 간다
+//       (아래 TTS_CACHE) — study.js 의 prefetch() 가 세션당 수십~수백 개를 받아 DATA_CACHE 를
+//       쓰면 그 트래픽이 자막·회차 메타를 FIFO 로 밀어냈다(사용자 신고: 오디오는 오프라인에
+//       살아있는데 자막만 사라짐 — 원인이 이것).
+//     · 하위 규칙 ②b: '핀(자동 프리페치 대상 + 수동 다운로드)' 회차의 회차행(REST)·자막 응답은
+//       DOC_CACHE 에도 함께 저장돼 DATA_CACHE 의 무관한 트래픽에 밀려도 살아남는다(아래 참고).
 //  ③ esm.sh 벤더 모듈(supabase-js) → stale-while-revalidate — 이게 없으면 오프라인 부팅 불가.
 //  ④ R2 회차 오디오 → 캐시 우선(offline.js 가 최근 회차를 미리 저장). CORS(읽기가능) 캐시는
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.56.0';
+const VERSION = '1.57.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
-// 데이터/벤더/오디오/이미지 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
+// 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
 const VENDOR_CACHE = 'aep-review-vendor-v1';
 const AUDIO_CACHE = 'aep-review-audio-v1';
 const IMG_CACHE = 'aep-review-img-v1';
+// 사전생성 TTS mp3 전용 캐시 — 파일명이 sha1(voice|rate|text) 라 히트는 절대 stale 일 수 없다
+// (tts.js::ttsUrl). DATA_CACHE 오염(위 ②a) 방지 + Study 오프라인 발화를 실제로 안정화한다.
+const TTS_CACHE = 'aep-review-tts-v1';
+// 오프라인으로 받은(핀된) 회차의 '읽기 자료'(회차행+자막) 전용 캐시 — 오디오와 같은 생명주기로
+// offline.js 가 명시적으로 채우고 지운다. DATA_CACHE 처럼 무관한 트래픽에 밀려 트림되지 않는다
+// (아래 KEEP 에도 등록 — 없으면 다음 activate 에서 통째로 삭제된다).
+const DOC_CACHE = 'aep-review-doc-v1';
 const DATA_MAX = 400;   // 회차 프리페치(최근 N개 행+자막+번역)가 들어가도록 160→400
 const IMG_MAX = 30;
+const TTS_MAX = 800;    // 9,110개 사전생성 TTS 중 최근 사용분만 — study.js 세션당 prefetch 30개 상당 여유
+
+// 오프라인 '핀' 회차 id 집합(회차 상세 REST + 자막 응답을 DOC_CACHE 에도 미러링할 대상) — SW 는
+// 상태를 갖지 않으므로 offline.js 가 postMessage 로 채운다(ADD_PINNED_EPISODES, 아래 message
+// 리스너). SW 재시작 시 비워지지만 무해하다 — Cache Storage 자체는 origin 에 영속하므로 이미
+// 써 둔 DOC_CACHE 항목은 그대로 남고, 다음 ensureOfflineCache() 실행이 다시 채워 준다.
+let pinnedEpisodeIds = new Set();
+
+// 이 요청이 어떤 회차 id 에 속하는지 판별 — DOC_CACHE 기록/조회 대상 판별용.
+//  · REST 회차 상세: /rest/v1/episodes?...&id=eq.N        (db.js::getEpisode 의 단일 요청)
+//  · Storage 자막:   /storage/v1/object/public/transcripts/N.json · N_ko.json
+function pinnedEpisodeIdFor(url) {
+  if (url.pathname === '/rest/v1/episodes') {
+    const m = /^eq\.(\d+)$/.exec(url.searchParams.get('id') || '');
+    return m ? Number(m[1]) : null;
+  }
+  const m2 = /\/storage\/v1\/object\/public\/transcripts\/(\d+)(?:_ko)?\.json$/.exec(url.pathname);
+  return m2 ? Number(m2[1]) : null;
+}
 const Q = '?v=' + VERSION;
 const SHELL = [
   '/', '/index.html', '/manifest.json',
@@ -47,7 +79,7 @@ self.addEventListener('activate', (e) => {
     caches.keys()
       // 현재 셸 + 영속 캐시(데이터/벤더/오디오/이미지)만 남기고 옛 셸 캐시 제거.
       .then((keys) => {
-        const KEEP = new Set([CACHE, DATA_CACHE, VENDOR_CACHE, AUDIO_CACHE, IMG_CACHE]);
+        const KEEP = new Set([CACHE, DATA_CACHE, VENDOR_CACHE, AUDIO_CACHE, IMG_CACHE, TTS_CACHE, DOC_CACHE]);
         return Promise.all(keys.filter((k) => !KEEP.has(k)).map((k) => caches.delete(k)));
       })
       .then(() => self.clients.claim())
@@ -67,22 +99,59 @@ async function trimCache(name, max) {
   for (const req of keys.slice(0, keys.length - max)) await cache.delete(req);
 }
 
-// network-first: 온라인이면 항상 최신을 받고 캐시에 갱신, 오프라인이면 마지막으로 본 응답을 돌려준다.
-async function networkFirst(req) {
+// network-first: 온라인이면 항상 최신을 받고 DATA_CACHE 에 갱신, 오프라인이면 마지막으로 본
+// 응답을 돌려준다. pinId 가 있고(=이 요청이 회차 id 에 속함) 그 id 가 pinnedEpisodeIds 에 있으면
+// (=offline.js 가 다운로드/핀한 회차) 응답을 DOC_CACHE 에도 함께 남긴다 — DATA_CACHE 는 무관한
+// 트래픽(TTS 등)에 밀려 트림될 수 있지만 DOC_CACHE 는 offline.js 가 명시적으로만 지운다.
+// 오프라인 폴백은 DOC_CACHE 를 먼저 본다(핀 회차는 절대 놓치면 안 됨) → 그다음 DATA_CACHE.
+// event.waitUntil(docPut): DOC_CACHE 기록은 fire-and-forget 이면 안 된다 — respondWith 가 res 를
+// 반환하는 순간 SW 가 유휴로 판단돼 종료될 수 있고, 그러면 이 백그라운드 put 이 디스크에 채 쓰이기
+// 전에 잘려 '핀했는데 doc 캐시가 비어 있다' 는 바로 이 기능이 고치려는 버그가 재발한다(실측:
+// networkFirst 콘솔 로그로는 write 가 시작됐는데 caches.open(DOC_CACHE) 가 끝내 비어 있었음).
+// DATA_CACHE 트림은 소프트 캐시라 기존처럼 fire-and-forget 으로 둬도 무해(최악=몇 번 더 트림 지연).
+async function networkFirst(req, pinId, event) {
   const cache = await caches.open(DATA_CACHE);
   try {
     const res = await fetch(req);
     // 부분응답(206)·오류는 캐시 불가/부적합 → 그대로 반환. 정상 200 만 저장.
     if (res && res.status === 200 && (res.type === 'cors' || res.type === 'basic')) {
-      cache.put(req, res.clone()).then(() => trimCache(DATA_CACHE, DATA_MAX)).catch(() => {});
+      // ⚠ clone() 은 반드시 여기서(비동기 틈 없이, 같은 tick 에) 필요한 개수만큼 한 번에 다 떠 둬야
+      // 한다. cache.put() 에 넘긴 clone 이 백그라운드에서 스트림을 읽기 시작한 '뒤' caches.open().then()
+      // 안에서 또 clone() 하면(예전 코드) "Response body is already used" 로 던진다(실측 — DOC_CACHE 가
+      // 항상 비어 있던 진짜 원인은 이거였다: pinnedEpisodeIds 매칭도, waitUntil 도 맞았는데 clone 이
+      // 조용히 실패해 .catch(()=>{}) 에 먹혔다).
+      const forData = res.clone();
+      const forDoc = (pinId != null && pinnedEpisodeIds.has(pinId)) ? res.clone() : null;
+      cache.put(req, forData).then(() => trimCache(DATA_CACHE, DATA_MAX)).catch(() => {});
+      if (forDoc) {
+        const docPut = caches.open(DOC_CACHE).then((c) => c.put(req, forDoc)).catch(() => {});
+        if (event) { try { event.waitUntil(docPut); } catch (_) { /* 이미 settle 된 이벤트 — 무시 */ } }
+      }
     }
     return res;
   } catch (err) {
     // ignoreVary: 저장 응답의 Vary(Accept-Encoding 등) 때문에 오프라인 매칭이 어긋나지 않게.
+    if (pinId != null) {
+      const doc = await caches.open(DOC_CACHE).then((c) => c.match(req, { ignoreVary: true }));
+      if (doc) return doc;
+    }
     const cached = await cache.match(req, { ignoreVary: true });
     if (cached) return cached;
     throw err;   // 오프라인 + 미캐시 → 호출부가 빈 데이터로 처리(앱은 graceful degrade)
   }
+}
+
+// 사전생성 TTS mp3(voice|rate|text 의 sha1 이 파일명) → cache-first. 히트는 절대 stale 일 수
+// 없으므로 network-first 로 매번 왕복할 이유가 없고, DATA_CACHE 에도 넣지 않는다(설명은 상단 ②a).
+async function ttsCacheFirst(req) {
+  const cache = await caches.open(TTS_CACHE);
+  const cached = await cache.match(req.url, { ignoreVary: true });
+  if (cached) return cached;
+  const res = await fetch(req);   // 실패(오프라인+미캐시)는 그대로 던진다 — tts.js 가 다음 보이스로 강등
+  if (res && res.status === 200) {
+    cache.put(req.url, res.clone()).then(() => trimCache(TTS_CACHE, TTS_MAX)).catch(() => {});
+  }
+  return res;
 }
 
 // esm.sh 벤더 모듈(supabase-js 등): stale-while-revalidate.
@@ -151,7 +220,18 @@ async function serveAudio(req) {
 }
 
 self.addEventListener('message', (e) => {
-  if (e.data === 'SKIP_WAITING') self.skipWaiting();
+  if (e.data === 'SKIP_WAITING') { self.skipWaiting(); return; }
+  // offline.js 가 '이 회차들은 다운로드/핀 대상' 이라고 알려줄 때(누적 — 교체 아님, 세션 중
+  // 여러 소스(자동 프리페치·수동 다운로드)가 겹쳐 보내도 서로를 지우지 않게). MessageChannel
+  // 로 왔으면 ack 해서 offline.js 가 '이 회차의 getEpisode() 호출부터는 DOC_CACHE 에 반영된다'
+  // 는 순서를 보장받을 수 있게 한다(경합 방지).
+  if (e.data && e.data.type === 'ADD_PINNED_EPISODES' && Array.isArray(e.data.ids)) {
+    for (const id of e.data.ids) {
+      const n = Number(id);
+      if (Number.isFinite(n)) pinnedEpisodeIds.add(n);
+    }
+    if (e.ports && e.ports[0]) e.ports[0].postMessage('ok');
+  }
 });
 
 self.addEventListener('fetch', (e) => {
@@ -163,7 +243,15 @@ self.addEventListener('fetch', (e) => {
   //    REST(/rest/v1/) + Storage 객체(/storage/v1/object/). 대용량 오디오는 별도 CDN(R2)이라 제외.
   if (url.hostname.endsWith('.supabase.co') &&
       (url.pathname.includes('/rest/v1/') || url.pathname.includes('/storage/v1/object/'))) {
-    e.respondWith(networkFirst(req));
+    // ②a 사전생성 TTS mp3 은 완전히 별도 캐시(cache-first) — DATA_CACHE 오염 방지(상단 설명).
+    if (url.pathname.includes('/storage/v1/object/public/tts/')) {
+      e.respondWith(ttsCacheFirst(req));
+      return;
+    }
+    // ②b 회차 상세/자막이 '핀' 회차에 속하면 networkFirst 가 DOC_CACHE 도 함께 채우고,
+    //    오프라인 폴백도 DOC_CACHE 를 먼저 본다(pinnedEpisodeIdFor 가 null 이면 평소와 동일).
+    //    event(=e) 를 넘겨야 DOC_CACHE 기록을 waitUntil 로 살릴 수 있다(위 networkFirst 주석).
+    e.respondWith(networkFirst(req, pinnedEpisodeIdFor(url), e));
     return;
   }
 

@@ -155,13 +155,24 @@ export async function examplesKo() {
   }
   return _exKoP;
 }
+// 자막 Storage URL — 단일 출처. offline.js 가 오프라인 doc 캐시(transcript pin) 준비여부를
+// 확인·정리할 때도 이 함수로 만든 URL 을 그대로 써야 SW 가 실제로 캐시한 요청과 정확히 일치한다
+// (postgrest-js 의 select 인코딩과 달리 이건 우리 코드의 순수 문자열 템플릿이라 손으로 재현해도
+// 안전 — 그래도 드리프트를 원천 차단하려면 여기서 export 한 걸 그대로 재사용하는 편이 낫다).
+export function transcriptUrl(id, transcribedAt) {
+  return `${STORAGE_URL}/transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`;
+}
+export function transcriptKoUrl(id, transcribedAt) {
+  return `${STORAGE_URL}/transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`;
+}
+
 // 자막 문장 한국어 사전번역 맵(trKey(문장) → ko). episode.js 가 재생 중 즉시 조회(직역 MyMemory 대체).
 // transcribed_at 으로 버전키 → 재싱크로 자막이 바뀌면 새 번역을 받는다. 회차별 메모리 캐시.
 const _trKoCache = new Map();
 export async function transcriptKo(id, transcribedAt) {
   if (!transcribedAt) return {};
   if (_trKoCache.has(id)) return _trKoCache.get(id);
-  const p = fetch(`${STORAGE_URL}/transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`, { cache: 'force-cache' })
+  const p = fetch(transcriptKoUrl(id, transcribedAt), { cache: 'force-cache' })
     .then((r) => (r.ok ? r.json() : {}))
     .then((m) => m || {})
     .catch(() => ({}));
@@ -224,7 +235,7 @@ async function fetchTranscript(id, transcribedAt) {
     // 캐시버스트: transcribed_at 을 URL 버전키로 → 재싱크(--from-r2)로 transcript 가 바뀌면
     // URL 이 달라져 항상 새 자막을 받는다. force-cache 는 '버전별 불변 URL' 이라 그대로 유지
     // (한 번 받은 버전은 영구 캐시 → 빠름). 이게 없으면 옛 자막이 새 R2 오디오와 ~1s 어긋나던 버그.
-    const r = await fetch(`${STORAGE_URL}/transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`, { cache: 'force-cache' });
+    const r = await fetch(transcriptUrl(id, transcribedAt), { cache: 'force-cache' });
     if (!r.ok) return null;
     return await r.json();
   } catch {

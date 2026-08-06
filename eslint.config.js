@@ -12,7 +12,7 @@ const browser = {
   // 저장/캐시/네트워크
   localStorage: 'readonly', sessionStorage: 'readonly', caches: 'readonly', indexedDB: 'readonly',
   fetch: 'readonly', Request: 'readonly', Response: 'readonly', Headers: 'readonly',
-  AbortController: 'readonly', URL: 'readonly', URLSearchParams: 'readonly',
+  AbortController: 'readonly', URL: 'readonly', URLSearchParams: 'readonly', MessageChannel: 'readonly',
   // 미디어/파일
   Audio: 'readonly', Image: 'readonly', Blob: 'readonly', File: 'readonly', FileReader: 'readonly',
   MediaRecorder: 'readonly', MediaMetadata: 'readonly', MediaSource: 'readonly',
