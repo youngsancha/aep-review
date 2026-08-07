@@ -31,21 +31,30 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 log = logging.getLogger("wh_fetch")
 
 SHOW = "wh"
 LISTING_URL = "https://www.whitehouse.gov/videos/?query-inherit-playlist_term=press-briefings"
+# 목록은 WordPress 페이지네이션: 2페이지부터 '/videos/page/N/' 이 경로에 끼어든다(쿼리스트링은 그대로).
+LISTING_PAGE_URL = "https://www.whitehouse.gov/videos/page/{page}/?query-inherit-playlist_term=press-briefings"
 PAGE_URL = "https://www.whitehouse.gov/videos/{slug}/"
 _UA = "Mozilla/5.0 (compatible; epodcast-ingest/1.0)"
+_MAX_PAGES = 40          # 폭주 방지 하드캡(실측 6페이지+종료 페이지 = 7 호출로 끝남)
+_PAGE_DELAY_SEC = 0.4    # 페이지 간 예의상 지연
 
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
-# 슬러그 끝의 날짜: '...-jul-23-2026' / '...-mar-4-2026'
-_DATE_RE = re.compile(r"-([a-z]{3})-(\d{1,2})-(\d{4})$")
+# 슬러그 끝의 날짜: '...-jul-23-2026' / '...-mar-4-2026' / '...-july-31-2025'
+# ⚠ 월 이름은 3글자 약어와 풀네임이 섞여 있다. 약어만 받던 때는 64편 중 9편이 '날짜 없음'으로
+# 떨어져 yt-dlp 의 upload_date 폴백으로 넘어갔는데, 그건 YouTube 업로드 시각이라 브리핑 날짜와
+# 다를 수 있다. 슬러그에 적힌 날짜가 더 권위 있는 출처다.
+_DATE_RE = re.compile(r"-([a-z]{3,9})-(\d{1,2})-(\d{4})$")
 # 목록 HTML 에서 브리핑 페이지 슬러그 — 실제 패턴 '...brief(s)-members-of-the-media-DATE'.
 # 'brief' 만 매칭하면 'not-a-briefing' 같은 비-브리핑도 걸리므로 'members-of-the-media' 까지 요구.
 _SLUG_RE = re.compile(r"/videos/([a-z0-9-]*brief[a-z0-9-]*members-of-the-media[a-z0-9-]*)/")
@@ -72,7 +81,7 @@ def slug_to_pubdate(slug: str) -> str | None:
     m = _DATE_RE.search(slug)
     if not m:
         return None
-    mon = _MONTHS.get(m.group(1))
+    mon = _MONTHS.get(m.group(1)[:3])   # 'july' → 'jul' (약어·풀네임 혼용)
     if not mon:
         return None
     return f"{int(m.group(3)):04d}-{mon:02d}-{int(m.group(2)):02d}"
@@ -138,9 +147,31 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
 # ─────────────────────────── 신규 발견 ───────────────────────────
 
 def discover_all() -> list[str]:
-    """목록 스크레이프만(DB·자격증명 불필요) → 발견된 전체 슬러그. 소스가 살아있는지,
-    whitehouse.gov HTML 변경으로 _SLUG_RE 가 깨졌는지 확인하는 무자격증명 점검용."""
-    return parse_slugs(_fetch(LISTING_URL))
+    """목록 스크레이프(전 페이지 순회, DB·자격증명 불필요) → 발견된 전체 슬러그, 최신순·중복 제거.
+    소스가 살아있는지, whitehouse.gov HTML 변경으로 _SLUG_RE 가 깨졌는지 확인하는 무자격증명 점검용.
+
+    1페이지는 LISTING_URL, 2페이지부터 LISTING_PAGE_URL('/page/N/'). 종료 조건(셋 중 하나면 멈춤):
+      ① _fetch 가 HTTP/네트워크 오류(URLError, 자연스러운 끝 — 다음 페이지가 없음),
+      ② 그 페이지의 슬러그가 0건, ③ 그 페이지의 슬러그가 전부 이미 본 것(중복 페이지 = 끝 도달).
+    _MAX_PAGES 는 위 조건이 실수로 안 걸릴 때의 폭주 방지 하드캡일 뿐, 정상 종료 경로가 아니다."""
+    seen: dict[str, None] = {}
+    for page in range(1, _MAX_PAGES + 1):
+        url = LISTING_URL if page == 1 else LISTING_PAGE_URL.format(page=page)
+        try:
+            html = _fetch(url)
+        except URLError:
+            break
+        slugs = parse_slugs(html)
+        if not slugs:
+            break
+        fresh = [s for s in slugs if s not in seen]
+        if not fresh:
+            break
+        for s in fresh:
+            seen[s] = None
+        if page < _MAX_PAGES:
+            time.sleep(_PAGE_DELAY_SEC)
+    return list(seen.keys())
 
 
 def discover_new(limit: int | None) -> list[str]:
@@ -254,7 +285,7 @@ def main() -> int:
         found = discover_all()
         for s in found:
             print(s, "→", slug_to_pubdate(s))
-        print(f"({len(found)} briefing(s) on the listing page)")
+        print(f"({len(found)} briefing(s) total across the paginated listing)")
         return 0 if found else 1   # 0건 = 스크레이프 깨짐 신호(HTML 변경 등)
     if args.list_only:
         for s in discover_new(None if args.all else args.limit):
