@@ -233,9 +233,23 @@ async function fetchTranscript(id, transcribedAt) {
   if (!transcribedAt) return null;
   try {
     // 캐시버스트: transcribed_at 을 URL 버전키로 → 재싱크(--from-r2)로 transcript 가 바뀌면
-    // URL 이 달라져 항상 새 자막을 받는다. force-cache 는 '버전별 불변 URL' 이라 그대로 유지
-    // (한 번 받은 버전은 영구 캐시 → 빠름). 이게 없으면 옛 자막이 새 R2 오디오와 ~1s 어긋나던 버그.
-    const r = await fetch(transcriptUrl(id, transcribedAt), { cache: 'force-cache' });
+    // URL 이 달라져 항상 새 자막을 받는다.
+    // ⚠ force-cache 를 다시 쓰지 말 것(v1.59.0 실기기 버그, 2026-08-07 수정). 예전 가정은 "버전별
+    // URL 은 불변이라 한 번 받으면 영구 캐시해도 된다" 였다 — 틀렸다. 그 URL(=transcribed_at) 은
+    // 'STT 를 다시 돌리지 않는 한' 안 바뀐다는 뜻이었지, 'JSON 내용이 안 바뀐다'는 보장이 아니었다.
+    // scripts/wh_backfill_video_ids.py 가 기존 transcript JSON 에 video_id 를 제자리(in-place)로
+    // 패치하면서 transcribed_at 은 일부러 안 건드린다(건드리면 aep-offline-meta 캐시 키가 깨져
+    // 오프라인 저장해 둔 오디오가 전부 다시 받아진다) — 즉 같은 URL 에서 내용이 바뀔 수 있다. 오늘은
+    // video_id, 앞으로 다른 필드도 같은 방식(제자리 패치)으로 늘어날 수 있다.
+    // force-cache 는 "신선도 무관, 캐시에 뭐라도 있으면 그걸 씀 — 네트워크 왕복조차 안 함" 이라, 이미
+    // 받아 간 기기는 백필 이후에도 옛 JSON 을 영구히 서빙했다(실기기 v1.59.0: 📺 토글이 영영 안 뜸,
+    // 원인은 transcript.video_id 가 undefined 로 굳어 있던 것 — 서버는 이미 최신이었다). Storage
+    // 응답이 이미 `cache-control: no-cache` 를 보내므로(실측 확인) 캐시 옵션 없는 기본 fetch 도 매번
+    // 오리진에 재검증(조건부 GET, 대개 값싼 304)한다 — audio_hosted.json/examples_ko.json 과 같은
+    // 이 파일의 다른 fetch 들과 동일한 패턴(no-cache)으로 맞춘다. 오프라인 동작은 그대로다: 이 fetch
+    // 가 실패(offline)하면 그대로 던지고, 그 reject 는 service-worker.js::networkFirst() 의
+    // DOC_CACHE/DATA_CACHE 폴백이 받는다 — 캐시 모드는 '온라인일 때 최신을 받는지'에만 영향한다.
+    const r = await fetch(transcriptUrl(id, transcribedAt), { cache: 'no-cache' });
     if (!r.ok) return null;
     return await r.json();
   } catch {

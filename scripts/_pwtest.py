@@ -19,6 +19,8 @@ MOCKS = UI / "_mocks.js"
 HARNESS = UI / "_harness.html"
 STUDY_HARNESS = UI / "_harness_study.html"
 TIMELINE_HARNESS = UI / "_harness_timeline.html"
+DBCACHE_MOCK = UI / "_dbcachemock.js"
+DBCACHE_HARNESS = UI / "_harness_dbcache.html"
 
 # 시각 변경(레이아웃/타이포)은 어서션으로 못 잡는다. 하니스 페이지는 이 스크립트가 실행 중에만
 # 생성되므로 밖에서 따로 띄울 수 없어, 매번 일회용 스크립트를 다시 만드는 대신 여기에 훅을 둔다.
@@ -481,6 +483,38 @@ SETTINGS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 </script></body></html>
 """
 
+# === CACHE-REGRESSION: ui/db.js::fetchTranscript() 이 patched-in-place transcript 를 실제로
+# 다시 받아 오는지(v1.59.0 실기기 버그, 2026-08-07 수정) ==========================================
+# 위 하니스들은 전부 /db.js 자체를 목으로 갈아 끼워서(getEpisode 가 canned 데이터를 그대로 반환)
+# db.js 안의 실제 fetch()/cache 옵션은 지금까지 단 한 번도 실행된 적이 없었다 — 이 버그는 바로 그
+# fetch() 의 cache 모드에 있었으므로 여기서만은 db.js 를 진짜로 돌려야 한다. /supabase.js 만 목한다
+# (진짜 supabase-js 는 esm.sh 네트워크 + 실 프로젝트가 필요해 하니스에 안 맞는다) — REST(episodes
+# 단건조회)만 손으로 흉내낸 최소 체이닝으로 답하고, 나머지(Storage 자막·매니페스트)는 db.js 의 진짜
+# fetch() 가 그대로 나가되 Playwright page.route() 가 가로챈다(실제 인터넷 접속 0). 브라우저의 진짜
+# HTTP 디스크 캐시가 관여해야 이 버그가 재현되므로(Node fetch 엔 그런 캐시가 없다) 반드시 Playwright.
+DBCACHE_MOCK_JS = r"""
+function chain(getRow) {
+  return { select() { return this; }, eq() { return this; }, single: async () => ({ data: getRow(), error: null }) };
+}
+let _row = null;
+window.__setEpisodeRow = (row) => { _row = row; };
+export const supabase = { from: () => chain(() => _row) };
+// db.js 는 `${STORAGE_URL}/transcripts/...` 로 자막을 받는다 — 실제 프로젝트 호스트 대신 같은 출처
+// 상대경로를 써서, page.route() 가 실제 supabase.co 를 흉내낼 필요 없이 같은 서버(8123)에서 가로챈다.
+export const STORAGE_URL = '/storage/v1/object/public';
+"""
+DBCACHE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{ "/supabase.js":"/_dbcachemock.js" }}</script>
+</head><body>
+<script type="module">
+  // db.js 자체는 실제(목 아님) — 오직 이걸로 fetchTranscript() 의 실제 cache 옵션을 검증한다.
+  import { getEpisode } from '/db.js';
+  window.__getEpisode = (id) => getEpisode(id);
+  window.__ready = true;
+</script>
+</body></html>
+"""
+
 
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
@@ -494,6 +528,8 @@ def main() -> int:
     REALVIDEO_HARNESS.write_text(REALVIDEO_HARNESS_HTML, encoding="utf-8")
     SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
     OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
+    DBCACHE_MOCK.write_text(DBCACHE_MOCK_JS, encoding="utf-8")
+    DBCACHE_HARNESS.write_text(DBCACHE_HARNESS_HTML, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
@@ -841,29 +877,113 @@ def main() -> int:
             print("NO-AUDIO-EP: sheets", sheets_before, "->", sheets_after, " no_tx_btn=", noaudio_btn,
                   " note=", noaudio_note, " ok=", noaudio_ok)
             # 📺 Video 모드 토글(v1.58.0): ep.transcript.video_id 가 있고 온라인일 때만 시트 툴바에
-            # 뜬다. id 1 = video_id 없음(기존 목 회차) → 없어야 한다. id 4 = wh + video_id 있는 목
-            # 회차 → 있어야 하고, wh 전용 외부 링크 칩(.wh-video-chip, .np-extras 로 옮겨온 "Watch
-            # video")도 같이 뜨며, About 텍스트는 stripTrailingUrl 이 원본 URL 을 걷어낸 뒤라야
-            # 한다(요구사항 #1 위치 이동 + #2 URL 노이즈 제거 회귀). 실제 YouTube iframe 은 절대
-            # 로드하지 않는다(토글을 클릭하지 않음 — 과제 요구사항).
+            # 뜬다. id 1 = video_id 없음(기존 목 회차, non-wh) → 시트 토글도, 메인 화면 1차 Video
+            # 버튼(#np-video-btn)도 없어야 하고 Transcript 칩은 예전 그대로 .np-extras 안에 직접
+            # 있어야 한다(v1.60.0 요구사항: 비-wh 화면은 오늘과 100% 동일 — .np-primary-row 자체가
+            # 안 생겨야 함). id 4 = wh + video_id 있는 목 회차 → 시트 토글도, 메인 화면 1차 Video
+            # 버튼(#np-video-btn, Transcript 와 동급으로 나란히)도 있어야 하고, 외부 원본 링크
+            # (.np-ext-video-link, About 옆으로 격하)도 같이 뜨며, About 텍스트는 stripTrailingUrl 이
+            # 원본 URL 을 걷어낸 뒤라야 한다(요구사항 #1 위치 이동 + #2 URL 노이즈 제거 회귀). 시트
+            # 토글 자체는 실제 YouTube iframe 을 절대 로드하지 않지만(안 누름), 메인 Video 버튼은
+            # turnVideoOn() 을 곧장 태우므로(요구사항: Library 진입과 정확히 같은 메커니즘 재사용)
+            # 하니스가 심어 둔 가짜 YT 스텁으로 실제 마운트까지 확인한다(네트워크 0).
             # ⚠ __renderEp() 는 hashchange 를 안 태우므로 이전 렌더의 시트(body 직속, position:fixed
-            # 풀스크린)가 안 지워진 채 쌓인다 — 이미 위(#np-tx-btn 최초 클릭)에서 하나 열어 뒀으므로
-            # pg.click() 은 그 스테일 오버레이에 막혀 타임아웃난다. eval_on_selector 로 실제 DOM
-            # click() 을 직접 호출해 포인터-가시성 시뮬레이션을 우회한다(이 파일의 기존 관례,
-            # 예: .study-x/.cont-play 재렌더 후 클릭도 전부 이 패턴).
+            # 풀스크린)가 안 지워진 채 쌓인다 → id=4 는 이 블록에서 딱 한 번만 렌더한다(두 번 렌더하면
+            # body 에 #tx-video-toggle id 가 중복돼 document.getElementById 가 옛 스테일 시트를 집어
+            # 검증이 엉뚱한 노드를 본다). eval_on_selector 로 실제 DOM click() 을 직접 호출해
+            # 포인터-가시성 시뮬레이션을 우회한다(이 파일의 기존 관례, 예: .study-x/.cont-play
+            # 재렌더 후 클릭도 전부 이 패턴).
             pg.evaluate("window.__renderEp(1)"); time.sleep(0.4)
+            no_video_btn_id1 = pg.query_selector("#np-video-btn") is None
+            tx_btn_in_extras_id1 = bool(pg.evaluate("!!document.querySelector('.np-extras > #np-tx-btn')"))
+            no_primary_row_id1 = pg.query_selector(".np-primary-row") is None
             if pg.query_selector("#np-tx-btn"):
                 pg.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.3)
             video_toggle_hidden = pg.query_selector("#tx-video-toggle") is None
             pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)
-            wh_chip_shown = bool(pg.query_selector(".wh-video-chip"))
+            np_video_btn_present = pg.query_selector("#np-video-btn") is not None
+            wh_chip_shown = bool(pg.query_selector(".np-ext-video-link"))
             about_txt = pg.eval_on_selector("#np-about-text", "el=>el.textContent") if pg.query_selector("#np-about-text") else None
             about_no_url = bool(about_txt) and "http" not in about_txt and "White House press briefing" in about_txt
-            if pg.query_selector("#np-tx-btn"):
-                pg.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.3)
+            # 메인 화면 Video 버튼을 직접 클릭 — 시트가 열리고 그 자리에서 곧장 Video 모드까지 켜져야
+            # 한다(Transcript 버튼처럼 시트만 여는 게 아니라, Library 의 📺 Video › 와 같은 결과).
+            pg.evaluate("window.__ytCalls=[]; window.__ytMounts=[];")
+            if pg.query_selector("#np-video-btn"):
+                pg.eval_on_selector("#np-video-btn", "el=>el.click()"); time.sleep(0.3)
             video_toggle_shown = pg.query_selector("#tx-video-toggle") is not None
+            # ⚠ document.querySelector('.tx-sheet')(단수) 는 이전 섹션들(chips_fit 의 id=2, NO-AUDIO-EP
+            # 의 id=3 등)이 남긴 스테일 시트 중 '문서상 첫 번째'를 집어(hashchange 청소를 아직 안 거쳤다)
+            # 방금 연 id=4 시트가 아닐 수 있다 — 반드시 '.open' 이 붙은 것만 골라야 한다(열린 시트는
+            # 항상 하나뿐).
+            npvid_sheet_open = pg.query_selector(".tx-sheet.open") is not None
+            npvid_toggle_on = pg.eval_on_selector("#tx-video-toggle", "el=>el.classList.contains('on')") if pg.query_selector("#tx-video-toggle") else None
+            npvid_wrap_visible = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden===false") if pg.query_selector("#tx-video-wrap") else None
+            npvid_yt_mounted = pg.evaluate("(window.__ytMounts||[]).length")
+            # 툴바 순서(사용자 요청, 이번 라운드): KR·가·A·Shadow·1×·🚗(·📺 는 wh 전용이라 맨 끝 유지) —
+            # 가/A(두 텍스트 크기 칩)를 나란히 붙인다. 나머지 칩은 전부 id 로만 동작(#tx-shadow 등)
+            # 하므로 마크업 '순서만' 바꿔도 안전(behaviour·id·cycling·자체 폭 불변). 360px 에서 화면
+            # 밖으로 밀려나는 칩이 없는지도 함께 확인(.tx-toolbar 는 flex-wrap 이라 넘치면 줄바꿈만
+            # 되지만, 그래도 실측으로 확인한다).
+            # ⚠ 여기서도 같은 스테일-시트 문제(위 npvid_sheet_open 주석 참고) — 이 시점엔 아직 옛 시트를
+            # 안 닫아서 '.tx-sheet.open' 이 둘이다. '#tx-video-toggle' 은 id=4 시트에만 존재하는
+            # 유일한 앵커라 거기서 .closest('.tx-sheet') 로 정확히 그 시트만 스코프한다.
+            tx_toolbar_order = pg.evaluate("""() => {
+              const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
+              return sheet ? [...sheet.querySelectorAll('.tx-toolbar .tx-toggle')].map(el => el.id) : [];
+            }""")
+            _vp_before_toolbar = pg.viewport_size
+            pg.set_viewport_size({"width": 360, "height": 780}); time.sleep(0.2)
+            tx_toolbar_fit = pg.evaluate("""() => {
+              const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
+              const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
+              if (!tb) return null;
+              const kids = [...tb.querySelectorAll('.tx-toggle')];
+              const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
+                return r.left < -0.5 || r.right > innerWidth + 0.5; });
+              return { n: kids.length, offscreen: bad.length };
+            }""")
+            _shot(pg, "tx-toolbar-order-360")
+            pg.set_viewport_size(_vp_before_toolbar); time.sleep(0.2)
+            print("TX-TOOLBAR-ORDER:", tx_toolbar_order, " fit=", tx_toolbar_fit)
+            tx_toolbar_order_ok = (tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow',
+                                                          'tx-speed', 'tx-drive', 'tx-video-toggle']
+                                    and isinstance(tx_toolbar_fit, dict) and tx_toolbar_fit["offscreen"] == 0)
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
+            print("PRIMARY-VIDEO-BTN: absent_no_id=", no_video_btn_id1, " tx_in_extras_no_id=", tx_btn_in_extras_id1,
+                  " no_primary_row_no_id=", no_primary_row_id1, " present_with_id=", np_video_btn_present,
+                  " click->sheet_open=", npvid_sheet_open, " toggle_on=", npvid_toggle_on,
+                  " wrap_visible=", npvid_wrap_visible, " yt_mounted=", npvid_yt_mounted)
+            primary_video_btn_ok = (no_video_btn_id1 is True and tx_btn_in_extras_id1 is True
+                                     and no_primary_row_id1 is True and np_video_btn_present is True
+                                     and npvid_sheet_open is True and npvid_toggle_on is True
+                                     and npvid_wrap_visible is True and npvid_yt_mounted == 1)
+            # 시트를 닫아 메인 화면(1차 액션 버튼들)이 다시 보이게 한다 — 실제 닫기 버튼을 눌러
+            # closeSheet()(videoOn 이면 turnVideoOff() 도 같이) 를 정상 경로로 태운다. 안 닫으면
+            # 방금 켠 Video 시트(풀스크린 오버레이)가 아래 스크린샷을 덮어 버튼 줄이 안 보인다.
+            # ⚠ 위 npvid_sheet_open 과 같은 이유로 반드시 '.tx-sheet.open' 스코프 안에서만 닫기
+            # 버튼을 찾는다 — 스코프 없는 '.tx-sheet-close' 는 이전 섹션들의 스테일 시트 중 문서상
+            # 첫 번째를 집어(이미 닫혀 있어 클릭이 무의미) 지금 열려 있는 id=4 시트를 안 닫힌 채로 둔다.
+            # ⚠ 실측: 이 시점에 열린('.open') 시트가 하나가 아니라 '둘' 이었다 — 맨 위(하니스 로드 시
+            # 최초 렌더)에서 연 뒤 한 번도 안 닫은 시트가 여태 살아 있고(그 섹션은 닫기를 검증하지
+            # 않아 무해했다), 방금 내가 연 id=4 시트가 그 위에 하나 더. 단수 '.tx-sheet.open
+            # .tx-sheet-close' 는 문서상 첫 번째(=옛날 그 시트)를 집어 그걸 닫고, 정작 방금 연 시트는
+            # 그대로 열린 채 남아 스크린샷을 덮었다 — forEach 로 열려 있는 시트를 전부 닫는다.
+            pg.evaluate("document.querySelectorAll('.tx-sheet.open .tx-sheet-close').forEach(el => el.click())")
+            time.sleep(0.3)
+            # 시각 회귀(요구사항 — 추론이 아니라 실제로 봐야 한다): 두 케이스 모두 폰 뷰포트에서 찍는다.
+            # id=4(video_id 있음) = Transcript+Video 두 버튼 나란히, id=1(없음) = Transcript 단독
+            # (오늘과 동일). 390/360 두 폭에서 줄바꿈·잘림이 없는지 눈으로 확인.
+            _vp_before_primary = pg.viewport_size
+            for _vw in (390, 360):
+                pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
+                _shot(pg, f"primary-actions-wh-video-{_vw}")
+            pg.evaluate("window.__renderEp(1)"); time.sleep(0.4)
+            for _vw in (390, 360):
+                pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
+                _shot(pg, f"primary-actions-no-video-{_vw}")
+            pg.set_viewport_size(_vp_before_primary); time.sleep(0.2)
+            pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)   # 아래 LIBRARY-VIDEO-DEEPLINK 블록은 id=4 상태를 이어받는다
             # 📺 Library 진입 체인 회귀(실기기 v1.58.0 신고): Continue/Latest Episode 카드나 목록 행의
             # 📺 Video 버튼 → aep-open-video 플래그 → hashchange → 회차 진입에서 Video 모드까지 자동으로
             # 켜져야 한다("시트만 열리고 영상은 안 켜짐" 신고). __renderEp() 직접호출(위의 다른 검증들이
@@ -976,6 +1096,7 @@ def main() -> int:
                      and vk_ok is True
                      and video_toggle_hidden is True and video_toggle_shown is True
                      and wh_chip_shown is True and about_no_url is True
+                     and primary_video_btn_ok is True and tx_toolbar_order_ok is True
                      and libvideo_ok is True)
 
             # === Study 뷰 회귀 ===
@@ -1529,8 +1650,60 @@ def main() -> int:
             ytblocked_ok = (fail_toast is True and fail_wrap_hidden is True and fail_toggle_pressed == "false"
                             and retry_pressed == "true" and retry_mounted == 1)
 
+            # === CACHE-REGRESSION: ui/db.js::fetchTranscript() 이 제자리 패치(같은 URL, 다른 내용)를
+            # 실제로 다시 받아 오는지 (v1.59.0 실기기 버그, 2026-08-07 수정) ============================
+            # scripts/wh_backfill_video_ids.py 는 기존 transcript JSON 에 video_id 를 in-place 로
+            # 패치하면서 transcribed_at(=URL 버전키) 은 일부러 안 건드린다 — 즉 '같은 URL, 다른 바디'가
+            # 실제로 일어난다. force-cache 였을 때(고친 버그)는 첫 fetch 가 브라우저 HTTP 캐시에 항목을
+            # 남기면, no-cache 오리진 헤더와 무관하게 두 번째 fetch 가 신선도 확인도 네트워크 왕복도
+            # 없이 그 캐시를 그대로 돌려줬다 — 여기서 같은 URL 에 다른 바디를 두 번 서빙해 재현하고,
+            # 두 번째 getEpisode() 가 새 내용(video_id)을 보는지 + 실제로 두 번 다 네트워크(라우트)를
+            # 탔는지(=캐시로 조용히 짧게 끝나지 않았는지) 함께 단언한다. `cache-control: no-cache` 는
+            # 실측(curl) 으로 확인한 실제 Storage 오리진 응답 헤더를 그대로 재현한 것.
+            dbcache_hits = {"transcript": 0}
+            TRANSCRIPT_BODIES = [
+                {"language": "en", "duration": 100, "segments": []},                              # 최초: video_id 없음
+                {"language": "en", "duration": 100, "segments": [], "video_id": "PATCHED-BY-BACKFILL"},  # 백필 후 제자리 패치
+            ]
+
+            def _dbcache_route(route):
+                url = route.request.url
+                path = url.split("?")[0]
+                if path.endswith("audio_hosted.json"):
+                    route.fulfill(status=200, content_type="application/json", body="[]")
+                elif path.endswith("_ko.json"):
+                    route.fulfill(status=200, content_type="application/json", body="{}")
+                elif "/transcripts/" in path and path.endswith(".json"):
+                    i = min(dbcache_hits["transcript"], len(TRANSCRIPT_BODIES) - 1)
+                    dbcache_hits["transcript"] += 1
+                    route.fulfill(status=200, content_type="application/json",
+                                  headers={"cache-control": "no-cache", "etag": f'"v{i}"'},
+                                  body=json.dumps(TRANSCRIPT_BODIES[i]))
+                else:
+                    route.fulfill(status=404, body="not found")
+
+            pg2 = b.new_page()
+            pg2.route("**/storage/v1/object/public/**", _dbcache_route)
+            pg2.goto("http://localhost:8123/_harness_dbcache.html")
+            pg2.wait_for_function("window.__ready===true", timeout=10000)
+            pg2.evaluate("""() => window.__setEpisodeRow({
+              id: 999, title: 'Cache Regression', season: 1, episode_no: 1, pub_date: '2026-01-01',
+              duration_sec: 100, audio_url: 'https://traffic.megaphone.fm/ABC.mp3',
+              transcribed_at: '2026-01-01', show: 'wh', guid: 'cache-regression-test',
+              description: '', vocab: [],
+            })""")
+            ep1 = pg2.evaluate("async () => await window.__getEpisode(999)")
+            ep2 = pg2.evaluate("async () => await window.__getEpisode(999)")
+            vid1 = ((ep1 or {}).get("transcript") or {}).get("video_id")
+            vid2 = ((ep2 or {}).get("transcript") or {}).get("video_id")
+            print("CACHE-REGRESSION: 1st video_id=", vid1, " 2nd video_id=", vid2,
+                  " transcript_fetch_hits=", dbcache_hits["transcript"])
+            dbcache_ok = (vid1 is None and vid2 == "PATCHED-BY-BACKFILL"
+                          and dbcache_hits["transcript"] == 2)
+            pg2.close()
+
             ok = (ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
-                  and realvideo_ok and ytblocked_ok)
+                  and realvideo_ok and ytblocked_ok and dbcache_ok)
             b.close()
     finally:
         srv.terminate()
@@ -1545,6 +1718,8 @@ def main() -> int:
         REALVIDEO_HARNESS.unlink(missing_ok=True)
         SETTINGS_HARNESS.unlink(missing_ok=True)
         OFFLINE_MOCK.unlink(missing_ok=True)
+        DBCACHE_MOCK.unlink(missing_ok=True)
+        DBCACHE_HARNESS.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

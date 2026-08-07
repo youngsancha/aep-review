@@ -696,6 +696,17 @@ body.on-episode {
 .np-tx-btn:active { transform: scale(0.97); }
 .np-tx-btn svg { display: block; }
 
+/* row 2 — Transcript 와 Video 를 동급 1차 액션으로(v1.60.0, 사용자 요청: Video 를 Transcript 와
+   같은 크기·존재감으로). wh(video_id 있는 회차)에서만 렌더 — 그 외 전부(AEP/AAE 포함)는 위
+   .np-tx-btn 이 .np-extras 안에서 오늘과 똑같이 혼자 그려진다(레이아웃 자체가 안 쓰임). */
+.np-primary-row { display: flex; gap: 10px; padding: 0 10px; margin: 4px 0 16px; }
+.np-primary-row .np-tx-btn { flex: 1 1 0; justify-content: center; }
+/* Video 는 .np-tx-btn 의 크기·라운드·폰트 토큰을 그대로 물려받아(하드코딩 카피 없음) 배경만
+   surface 틴트로 바꾼다 — 그라디언트 두 개를 나란히 두면 하나가 둘로 쪼개진 것처럼 읽히므로
+   (사용자 판단), '같은 크기의 다른 액션'으로 구분되게 브랜드 그라디언트 대신 은은한 틴트를 쓴다. */
+.np-video-btn { background: var(--tint-soft); color: var(--tint-hover); box-shadow: none; }
+.np-video-btn:hover { background: var(--tint-soft-2); filter: none; }
+
 /* ========== Transcript bottom sheet (Apple Podcasts) ========== */
 .tx-sheet {
   position: fixed; inset: 0;
@@ -2590,7 +2601,13 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
 .set-ver { text-align: center; font-size: 11.5px; color: var(--text-3); margin-top: 12px; font-variant-numeric: tabular-nums; }
 
 /* White House 회차 전용 — 영상 보기(외부 링크, whitehouse.gov). 앱 내 📺 Video 모드(트랜스크립트
-   시트)와는 별개 — 이건 항상 존재하는 '진짜 원본' 바로가기다. v1.58.0: About 밑(스크롤 필요)에서
-   .np-extras 칩 줄로 옮겨 스크롤 없이 바로 보이게 했다(1×/반복/Transcript/Offline 과 같은 자리). */
-.np-extras .wh-video-chip { gap: 5px; min-width: 0; padding: 0 14px; text-decoration: none; }
-.wh-video-chip-go { color: var(--text-2); }
+   시트, .np-video-btn)와는 별개 — 이건 항상 존재하는 '진짜 원본' 바로가기다. v1.60.0: 화면의 주
+   액션은 이제 Transcript/Video(.np-primary-row) 두 개고, 이 외부 링크는 셋 중 가치가 가장 낮은
+   경로(광고·자체 자막 없는 whitehouse.gov 재생기)라 그 둘과 경쟁하면 안 된다 — About 옆의 조용한
+   텍스트 링크로 격하(사용자 요청: 존재는 유지하되 눈에 띄지 않게). .np-about 안에서 렌더된다. */
+.np-ext-video-link {
+  display: inline-block; margin-top: 10px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-3);
+  text-decoration: none;
+}
+.np-ext-video-link:hover { color: var(--tint); }

@@ -157,12 +157,25 @@ export async function renderEpisode(root, idStr, tStr) {
   // 자막≡오디오 정합도 깨진다. db.js 가 r2_audio 회차의 audio_url 을 hostedAudioUrl 로 바꿔주므로 그걸로 판별.
   const isHosted = !!ep.audio_url && ep.audio_url === hostedAudioUrl(ep.id);
 
+  // 📺 Video 를 Transcript 와 동급 1차 액션으로 승격(v1.60.0, 사용자 요청) — wh(백악관 브리핑)
+  // 회차 중 transcript.video_id 가 있고 온라인일 때만. 시트 툴바의 📺 토글(아래 showVideoToggle)과
+  // 완전히 같은 게이트를 여기 한 번만 계산해 재사용한다 — 진입점 두 곳(메인 화면 버튼 + 시트 토글)이
+  // 서로 다른 조건으로 갈라지면(둘 중 하나만 고치는 실수) '버튼은 있는데 눌러도 못 켜짐' 류 버그가 난다.
+  const showPrimaryVideo = !!(ep.transcript?.video_id) && navigator.onLine !== false;
+  // wh 전용 외부 링크(whitehouse.gov) 노출 여부 — video_id 유무와 무관(guid 만 있으면 된다: 백필 전
+  // 회차·오프라인이어도 외부 링크는 그대로 살아 있어야 한다). 이 값이 true 인 회차만 아래 2-row
+  // 레이아웃(Transcript+Video 나란히, 외부링크는 About 옆으로 격하)을 쓴다 — 그 외(AEP/AAE 전부,
+  // guid 없는 wh)는 오늘과 100% 동일한 단일 Transcript 칩 레이아웃을 그대로 쓴다(요구사항: 비-wh
+  // 화면은 손대지 않는다).
+  const hasExternalVideoLink = ep.show === 'wh' && !!ep.guid;
+  const useVideoLayout = showPrimaryVideo || hasExternalVideoLink;
+
   const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
   const txTitle = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   // wh(백악관 브리핑) description 은 'White House press briefing — https://…/' 형태로 원본 링크를
-  // 그대로 끝에 박아 넣는다 — 이제 그 링크는 위 .np-extras 칩(📺 Video)이 대신하므로 화면에서는
-  // 중복+노이즈일 뿐이다. 저장된 값(ep.description)은 안 건드리고 표시용으로만 걷어낸다. 다른
-  // 쇼는 손대지 않는다(show==='wh' 게이트). 걷어내고 남는 게 없으면 About 자체를 안 그린다.
+  // 그대로 끝에 박아 넣는다 — 이제 그 링크는 아래 About 옆 조용한 링크(np-ext-video-link)가 대신하므로
+  // 화면에서는 중복+노이즈일 뿐이다. 저장된 값(ep.description)은 안 건드리고 표시용으로만 걷어낸다.
+  // 다른 쇼는 손대지 않는다(show==='wh' 게이트). 걷어내고 남는 게 없으면 About 자체를 안 그린다.
   const aboutText = ep.show === 'wh'
     ? stripTrailingUrl(stripTags(ep.description || ''))
     : stripTags(ep.description || '');
@@ -196,29 +209,43 @@ export async function renderEpisode(root, idStr, tStr) {
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
           <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends"></button>
-          ${sentences.length ? `
+          ${(sentences.length && !useVideoLayout) ? `
           <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
             <span>Transcript</span>
           </button>
           ` : ''}
-          ${(ep.show === 'wh' && ep.guid) ? `
-          <a class="speed wh-video-chip" href="https://www.whitehouse.gov/videos/${encodeURIComponent(ep.guid)}/" target="_blank" rel="noopener noreferrer">
-            📺 Video<span class="wh-video-chip-go">↗</span>
-          </a>
-          ` : ''}
           ${isHosted ? `
           <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
           ` : ''}
         </div>
+        ${(sentences.length && useVideoLayout) ? `
+        <div class="np-primary-row">
+          <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+            <span>Transcript</span>
+          </button>
+          ${showPrimaryVideo ? `
+          <button class="np-tx-btn np-video-btn" id="np-video-btn" aria-label="Watch video">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><polygon points="23 7 16 12 23 17 23 7"/></svg>
+            <span>Video</span>
+          </button>
+          ` : ''}
+        </div>
+        ` : ''}
       ` : `<div class="empty">audio not downloaded yet</div>`}
     </div>
 
-    ${aboutText ? `
+    ${(aboutText || hasExternalVideoLink) ? `
       <div class="np-about">
+        ${aboutText ? `
         <div class="section-h"><h2>About</h2></div>
         <p class="np-about-text" id="np-about-text">${escapeHtml(aboutText)}</p>
         <button class="np-about-toggle" id="np-about-toggle" hidden aria-expanded="false">More</button>
+        ` : ''}
+        ${hasExternalVideoLink ? `
+        <a class="np-ext-video-link" href="https://www.whitehouse.gov/videos/${encodeURIComponent(ep.guid)}/" target="_blank" rel="noopener noreferrer">Watch full video on WhiteHouse.gov ↗</a>
+        ` : ''}
       </div>
     ` : ''}
 
@@ -248,9 +275,10 @@ export async function renderEpisode(root, idStr, tStr) {
       const perfectSync = ep.transcript?.r2_audio === true;
       // 📺 Video 모드 토글: wh(백악관 브리핑) 회차 중 transcript 에 video_id 가 있고(Part A 백필/신규
       // 인제스트가 채움) 온라인일 때만 노출 — 영상 없는 회차에 죽은 버튼을 보이지 않게, 오프라인에선
-      // '이용 불가'로 아예 안 보이게(요구사항: 고장이 아니라 이용불가).
-      const showVideoToggle = !!(ep.transcript?.video_id) && navigator.onLine !== false;
-      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel, perfectSync, showVideoToggle).trim();
+      // '이용 불가'로 아예 안 보이게(요구사항: 고장이 아니라 이용불가). showPrimaryVideo(위에서 이미
+      // 계산, 메인 화면 Video 버튼과 같은 게이트)를 그대로 재사용 — 여기서 다시 계산하면 두 곳이
+      // 조용히 어긋날 수 있다.
+      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel, perfectSync, showPrimaryVideo).trim();
       $sheet = wrap.firstElementChild;
       document.body.appendChild($sheet);
     } catch (err) {
@@ -1346,6 +1374,19 @@ export async function renderEpisode(root, idStr, tStr) {
     if (videoBusy) return;
     if (videoOn) turnVideoOff(); else turnVideoOn();
   });
+  // 메인 화면 1차 Video 버튼(#np-video-btn, useVideoLayout 블록) — Library 의 📺 Video ›(timeline.js)
+  // 와 정확히 같은 결과(시트 열기 + Video 모드 on)를 같은 함수(openSheet/turnVideoOn)로 낸다. Library
+  // 쪽은 다른 화면에서 넘어오므로 aep-open-video 세션플래그 + hashchange 로 이 회차 렌더까지 데려온
+  // 뒤 그 플래그를 여기(아래 wantVideo)서 읽어 트리거하지만, 이 버튼은 '이미 이 회차 화면'이라 그
+  // 왕복이 필요 없다 — 같은 함수를 직접 부른다(route() 를 부르지 않음, 새 메커니즘을 만들지 않음).
+  // 진행 중이던 오디오 재생 상태는 turnVideoOn() 이 그대로 이어받는다(강제 자동재생 없음) — Library
+  // 진입과 달리 사용자가 이미 이 화면에 머물러 있으므로 재생 여부를 임의로 바꾸지 않는 편이 맞다.
+  document.getElementById('np-video-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (videoBusy) return;
+    openSheet();
+    turnVideoOn();
+  });
   // 오프라인이 되면 영상은 더 못 도니(끊긴 화면인 채 멈춤) 자동으로 오디오로 되돌린다 — '고장'이
   // 아니라 '이용 불가'로 느껴지게 한다(요구사항). 다시 온라인이 돼도 자동으로 켜지 않는다(항상
   // 사용자가 다시 탭해서 켠다 — 이 모듈의 다른 모든 진입점과 같은 '명시적 재시작' 원칙).
@@ -1743,9 +1784,9 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
           <div class="tx-toolbar">
             <button id="tx-trans" class="tx-toggle tx-trans-toggle" aria-pressed="false" aria-label="Korean translation">KR</button>
             <button id="tx-ko-size" class="tx-toggle tx-ko-size-btn" aria-label="Translation text size">가</button>
+            <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="Text size">A</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="Text size">A</button>
             <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
             ${showVideoToggle ? `
             <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>
