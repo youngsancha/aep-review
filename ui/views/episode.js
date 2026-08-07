@@ -554,8 +554,58 @@ export async function renderEpisode(root, idStr, tStr) {
   function syncNotesOverlayPad() {
     const scroll = document.querySelector('.tx-scroll');
     if (!scroll || !$notes) return;
-    const on = $notes.classList.contains('show');
-    scroll.style.setProperty('--kr-overlay', on ? `${Math.ceil($notes.getBoundingClientRect().height) + 14}px` : '0px');
+    if (!$notes.classList.contains('show')) { scroll.style.setProperty('--kr-overlay', '0px'); return; }
+    // ⚠ 실측(2026-08-07)으로 드러난 첫 시도의 버그: 패널 '높이'만 패딩에 더했더니 컨트롤 알약이
+    // 보이는 동안(.tx-notes 의 bottom 앵커가 ~140px, 알약이 자동숨김되면 ~14px 로 줄어듦)엔 최대
+    // 126px 가 모자랐다 — 패널은 스크롤 영역 하단에서 '높이'만큼이 아니라 '높이 + bottom 오프셋'
+    // 만큼 위에서 시작한다. 높이 대신 실측 gap(스크롤 뷰포트의 실제 하단 - 패널의 실제 top)을
+    // 직접 재면 bottom 오프셋이 얼마든(컨트롤 표시/숨김 무관) 항상 정확하다 — _highlightImpl 의
+    // safeBottom 계산과 같은 두 rect 비교, 방향만 반대(패널이 '가리는' 쪽 높이).
+    const scrollRect = scroll.getBoundingClientRect();
+    const notesRect = $notes.getBoundingClientRect();
+    const gap = Math.max(0, scrollRect.bottom - notesRect.top) + 14;   // +14 = 패널 바로 위 여백
+    scroll.style.setProperty('--kr-overlay', `${Math.ceil(gap)}px`);
+  }
+  // _highlightImpl 의 앵커 계산은 '활성 문장이 바뀌는 시점'에만 돈다(성능·기존 설계). 하지만 패널이
+  // 덮는 영역은 그 사이에도 두 가지 이유로 바뀐다: ① 번역이 placeholder('…')에서 실제 문장으로
+  // 채워지며 패널이 자라고(fillTranslation, 비동기라 앵커 계산 '이후'에 끝남), ② 하단 전송 컨트롤
+  // 알약이 6초 무동작으로 자동 숨김/재표시되면 패널의 bottom 앵커가 같이 움직인다(showControls,
+  // style.css 의 .controls-hidden .tx-notes). 둘 다 활성 문장 자체는 안 바뀌므로 _highlightImpl 이
+  // 재호출되지 않고, 실측(2026-08-07)으로 이 두 경로에서 정확히 이 이유로 문장이 패널 뒤에 남는
+  // 사례가 나왔다 — 문단 진입 시점엔 안전했다가 패널이 나중에 자라거나 내려오며 다시 덮은 것.
+  // 두 호출부(fillTranslation, showControls)에서 이 함수로 '패널이 지금 이 순간 활성 문장을
+  // 덮고 있으면 한 번 더 끌어올린다'만 가볍게 재확인한다 — 새 게이트를 만들지 않고 기존
+  // userScrolledUntil/스무스스크롤 규약을 그대로 따른다.
+  // ⚠ 재진입 금지 플래그. 이 함수는 smoothScrollTo 를 부르고, smoothScrollTo 는 '동작 줄이기'
+  // (prefers-reduced-motion: reduce) 경로에서 이징 없이 즉시 스크롤한 뒤 도착 시점 재확인으로
+  // 이 함수를 같은 콜스택에서 되부른다 → 겹침이 maxScroll 에 걸려 해소 불가일 때 무한 재귀로
+  // 스택이 터진다(실측 2026-08-07: 헤드리스 크로미움이 reduce 를 보고해 _pwtest 의 ROUTER 구간에서
+  // 페이지가 죽었고 Playwright 는 그걸 'navigation' 으로 보고했다 — 실기기에선 이징 경로라 안 터짐).
+  // 한 번의 호출은 한 번만 보정한다: 남은 겹침은 다음 이징 도착이나 다음 문장에서 다시 본다.
+  let reanchoring = false;
+  function reanchorForNotesGrowth() {
+    if (reanchoring) return;
+    const _d = window.__DIAG_KR ? (r) => (window.__REDIAG = window.__REDIAG || []).push(r) : null;
+    if (!($sheet && $sheet.classList.contains('open'))) { _d?.('no-sheet'); return; }
+    if (Date.now() < userScrolledUntil) { _d?.('user-scrolled'); return; }   // 사용자가 직접 스크롤/탭한 직후면 손대지 않는다
+    const idx = lastActiveSent;
+    if (idx < 0 || !sentRanges[idx]) { _d?.('no-idx'); return; }
+    if (!$notes || !$notes.classList.contains('show')) { _d?.('no-notes'); return; }
+    const scroll = document.querySelector('.tx-scroll');
+    if (!scroll) return;
+    const cont = scroll.getBoundingClientRect();
+    const h = scroll.clientHeight;
+    const sRect = sentRanges[idx].el.getBoundingClientRect();
+    const sRelBot = sRect.bottom - cont.top;
+    const nRect = $notes.getBoundingClientRect();
+    const safeBottom = (nRect.top < cont.bottom) ? Math.max(0, nRect.top - cont.top) : h;
+    if (sRelBot <= safeBottom - 10) { _d?.(`clear:${Math.round(sRelBot)}<=${Math.round(safeBottom)}`); return; }   // 아직 안 가려짐 — no-op
+    const target = (sRelBot + scroll.scrollTop) - (safeBottom - 10);
+    const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
+    const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;
+    _d?.(`scroll:${Math.round(ref)}->${Math.round(clamped)} sRelBot=${Math.round(sRelBot)} safe=${Math.round(safeBottom)}`);
+    reanchoring = true;
+    try { if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped); } finally { reanchoring = false; }
   }
   function getSentText(idx) {
     const el = sentRanges[idx] && sentRanges[idx].el;
@@ -577,8 +627,16 @@ export async function renderEpisode(root, idStr, tStr) {
     const text = getSentText(idx);
     if (!text) { hideTransPanel(); return; }
     const ck = trKey(text);                 // '문장 텍스트' 기준 캐시 키(인덱스 X) → 항상 그 문장에 정확히 매칭
-    if (_trCache[ck]) { row.textContent = _trCache[ck]; return; }
-    if (_preKo[ck]) { row.textContent = _preKo[ck]; _trCache[ck] = _preKo[ck]; saveTrCache(ep.id, _trCache); return; }  // 사전번역 우선
+    // ⚠ 아래 두 '빠른 경로'도 패널을 placeholder('…', 1줄) → 실제 번역(2~3줄)으로 키운다. 예전엔
+    // 여기서 그냥 return 해서 함수 맨 끝의 syncNotesOverlayPad()/reanchorForNotesGrowth() 를 통째로
+    // 건너뛰었다 → 하단 여유 패딩(--kr-overlay)이 1줄 기준으로 남고, 스크롤이 scrollHeight-h 에서
+    // 잘려 활성 문장을 패널 위로 끌어올릴 여유 자체가 없어진다. 온디맨드 번역 경로에만 마무리가
+    // 붙어 있었던 셈. 증상은 '첫 문장만' 패널에 가림(실측 2026-08-07: 8지점 중 t=11 하나) —
+    // 두 번째 문장부터는 앞 문장이 남긴 큰 패딩을 물려받아 우연히 통과했다. 세 경로 모두 같은
+    // 마무리를 타야 한다.
+    const settleNotes = () => { syncNotesOverlayPad(); reanchorForNotesGrowth(); };
+    if (_trCache[ck]) { row.textContent = _trCache[ck]; settleNotes(); return; }
+    if (_preKo[ck]) { row.textContent = _preKo[ck]; _trCache[ck] = _preKo[ck]; saveTrCache(ep.id, _trCache); settleNotes(); return; }  // 사전번역 우선
     const seq = ++_trSeq;
     const ko = await translateEnKo(text);   // 사전번역 없을 때만 온디맨드(절대 throw 안 함)
     if (seq !== _trSeq) return;             // 더 최신 문장으로 넘어갔으면 폐기
@@ -601,6 +659,7 @@ export async function renderEpisode(root, idStr, tStr) {
     // 번역문이 자리를 잡으며(placeholder '…' → 실제 문장) 패널 높이가 바뀔 수 있다 — 하단 스크롤
     // 여유 패딩을 그 최종 높이로 다시 맞춘다(hideTransPanel 로 빠진 경우는 그 안에서 이미 0으로).
     syncNotesOverlayPad();
+    reanchorForNotesGrowth();   // 패널이 자란 만큼 활성 문장이 새로 가려졌으면 한 번 더 끌어올린다
     // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만, 캐시에만 저장
     const nxt = idx + 1;
     if (showTrans && nxt < sentRanges.length && !isEasySentence(nxt)) {
@@ -656,12 +715,29 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!sc || scrollTarget == null) return;
     const cur = sc.scrollTop;
     const diff = scrollTarget - cur;
-    if (Math.abs(diff) < 0.5) { sc.scrollTop = scrollTarget; scrollTarget = null; return; }
+    if (Math.abs(diff) < 0.5) {
+      sc.scrollTop = scrollTarget; scrollTarget = null;
+      // 이징이 '도착한' 이 순간이 KR 패널 겹침을 판정할 수 있는 유일하게 옳은 시점이다.
+      // reanchorForNotesGrowth 를 fillTranslation 안에서만 부르면 항상 한 박자 이르다: renderNotes()
+      // 는 _highlightImpl 의 앵커 계산 '앞'에서 돌므로, 그때 문장은 아직 화면 밖(실측 sRelBot=-927)
+      // 이라 '안 가려짐'으로 판정하고 빠져나온다 → 곧이어 주 앵커가 화면을 옮기고, 그 뒤 패널이
+      // placeholder('…') 에서 실제 번역으로 자라 문장을 덮어도 아무도 다시 안 본다(실측 2026-08-07:
+      // 앵커 시점 safeBottom 169 vs 측정 시점 138 = 31px 성장, 정확히 그만큼 가려졌다).
+      // 여기서 한 번 더 보면 순서 문제가 사라진다 — 이미 안 가려졌으면 즉시 return 하는 no-op 이고,
+      // 가려졌으면 다시 이징이 걸렸다가 도착해서 또 확인 → 겹침이 단조 감소하므로 반드시 수렴한다.
+      reanchorForNotesGrowth();
+      return;
+    }
     sc.scrollTop = cur + diff * SCROLL_EASE;
     scrollRaf = requestAnimationFrame(easeScroll);
   }
   function smoothScrollTo(top) {
-    if (REDUCED_MOTION) { const sc = document.querySelector('.tx-scroll'); if (sc) sc.scrollTop = top; return; }
+    if (REDUCED_MOTION) {
+      const sc = document.querySelector('.tx-scroll');
+      if (sc) sc.scrollTop = top;
+      reanchorForNotesGrowth();   // 동작 줄이기 설정에선 이징이 없다 — 도착 시점이 곧 지금
+      return;
+    }
     scrollTarget = top;
     if (!scrollRaf) scrollRaf = requestAnimationFrame(easeScroll);
   }
@@ -805,17 +881,39 @@ export async function renderEpisode(root, idStr, tStr) {
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
+        // ⚠ 실측(2026-08-07 회귀검증)으로 드러난 두 번째 자리: 이 문단-시작 앵커는 '문단 맨 위'만
+        // 10% 선에 놓을 뿐 활성 문장 자체나 패널을 전혀 모른다 — 문단의 첫 문장이라도 패널이 크거나
+        // (긴 KR 번역, 영상 모드처럼 h 자체가 작을 때) 문단이 한 화면보다 길면 그 시점의 활성 문장이
+        // 이미 패널 뒤에서 시작할 수 있다(짧은 문장=문단 1개짜리 픽스처로 재현: 8개 지점 중 7개가
+        // 가려짐 — else 분기만 고치는 걸로는 부족했다). 패널이 켜져 있으면 활성 문장이 안전선 위에
+        // 오도록 한 번 더 끌어올린다(문단-상단 앵커가 이미 충분히 위라면 이 보정은 자연히 no-op).
+        if (notesOn) {
+          const sentAbsBottom = sRelBot + scroll.scrollTop;
+          const minSafeTarget = sentAbsBottom - (safeBottom - 10);
+          if (minSafeTarget > target) target = minSafeTarget;
+        }
       } else if ((!inLoopPara || sentOffscreen) && (sRelBot > safeBottom - 10 || sRelTop < h * 0.04)) {
         // 패널이 켜져 있으면 실측한 안전선(safeBottom) 기준 ≈22% 지점까지, 꺼져 있으면 예전 그대로
         // h 기준 ≈22% 지점까지 문장 상단을 끌어올린다 — 영상 모드처럼 safeBottom 이 작아지면 이
         // 여백도 함께 줄어들어 항상 문장 전체가 패널 위 안전지대 안에 들어온다.
         target = sRelTop + scroll.scrollTop - Math.max(8, (notesOn ? safeBottom : h) * 0.22);
       }
+      if (window.__DIAG_KR) {
+        (window.__KRDIAG = window.__KRDIAG || []).push({
+          idx, paraChanged, notesOn, target: target == null ? null : Math.round(target),
+          safeBottom: Math.round(safeBottom), h, sRelTop: Math.round(sRelTop), sRelBot: Math.round(sRelBot),
+          scrollTop: Math.round(scroll.scrollTop), maxScroll: Math.round(scroll.scrollHeight - h),
+        });
+      }
       if (target != null) {
         const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
         const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;  // rAF ease 로 부드럽게
         if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
       }
+      // 이징 '도착' 재확인(easeScroll)만으로는 구멍이 남는다: 위에서 이미 목표에 있어 smoothScrollTo
+      // 를 아예 안 부르면 도착 이벤트 자체가 없다. 다음 프레임에 한 번 더 본다 — 레이아웃이 확정된
+      // 뒤라 패널 실측이 정확하고, 안 가려졌으면 즉시 return 하는 no-op 이다(재진입 플래그로 보호됨).
+      requestAnimationFrame(() => reanchorForNotesGrowth());
     }
   }
 
@@ -1495,7 +1593,14 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!$sheetCard) return;
     $sheetCard.classList.remove('controls-hidden');
     clearTimeout(ctrlHideTimer);
-    ctrlHideTimer = setTimeout(() => $sheetCard.classList.add('controls-hidden'), 6000);
+    ctrlHideTimer = setTimeout(() => {
+      $sheetCard.classList.add('controls-hidden');
+      setTimeout(reanchorForNotesGrowth, 320);   // bottom 전환(0.3s) 이후 재확인 — 아래 주석 참고
+    }, 6000);
+    // 컨트롤 알약이 나타나면 KR 패널의 bottom 앵커도 같이 위로 밀린다(style.css 의
+    // .controls-hidden .tx-notes 규칙, 0.3s ease 전환) — 활성 문장을 새로 덮을 수 있어 전환이
+    // 끝난 뒤 한 번 재확인한다. 자동 숨김(위 setTimeout 콜백 안) 쪽도 같은 이유로 반대 방향 확인.
+    setTimeout(reanchorForNotesGrowth, 320);
   }
   // 시트 어디든 탭(포인터 누름) → 컨트롤 다시 표시 + 숨김 타이머 리셋
   $sheetCard?.addEventListener('pointerdown', showControls, { passive: true });

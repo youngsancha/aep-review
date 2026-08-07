@@ -194,6 +194,12 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
   import { renderEpisode, detectContentStart, detectAdRanges } from '/views/episode.js';
+  // video.js 는 importmap 에 안 잡혀 있어 실 모듈이 로드된다(ES 모듈은 URL 당 싱글턴이므로 episode.js
+  // 가 내부에서 잡는 video 싱글턴과 완전히 같은 인스턴스) — 테스트가 영상 모드 중 재생 시각을
+  // 직접 밀어(video.seek) KR 패널 겹침 회귀(아래 KR-PANEL-OVERLAP)를 실제 하이라이트 파이프라인으로
+  // 재현한다. 프로덕션 코드는 전혀 안 건드림(하니스 전용 훅).
+  import { video as __videoAdapter } from '/video.js';
+  window.__video = __videoAdapter;
   window.__ready=false;
   // 📺 Library 진입 체인(라이브러리 카드/행의 📺 → aep-open-video 플래그 → hashchange → 회차 진입 즉시
   // Video 모드 on) 재현용 — 실 app.js::route() 는 이 하니스에서 통째로 목이라 없다. 그 대신 동일한
@@ -900,6 +906,37 @@ def main() -> int:
             if pg.query_selector("#np-tx-btn"):
                 pg.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.3)
             video_toggle_hidden = pg.query_selector("#tx-video-toggle") is None
+            # 툴바 한 줄 검증(비-wh, 6칩: KR·가·A·Shadow·1×·🚗) — 360/390 두 폭 모두에서 전부 화면
+            # 안에 있고 '한 줄'인지 확인한다. '한 줄'은 offsetTop 완전 동일이 아니라 문턱(<8px)으로
+            # 판정한다 — 🚗 는 다른 세로 패딩을 써서 같은 줄이어도 top 이 몇 px 어긋난다(실측 확인,
+            # 이 파일의 다른 곳처럼 처음 넣을 때 직접 재서 정함). 줄바꿈되면 최소 30px+ 씩 뛰므로
+            # 8px 문턱으로 확실히 구분된다. 여러 섹션이 쌓아 둔 스테일 '.tx-sheet.open' 중 가장 최근
+            # 것(body 에 마지막으로 append 된 것)만 본다 — 위 npvid_sheet_open 주석과 같은 이유.
+            def _toolbar_row_of_last_open_sheet():
+                return pg.evaluate("""() => {
+                  const sheets = [...document.querySelectorAll('.tx-sheet.open')];
+                  const sheet = sheets[sheets.length - 1];
+                  const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
+                  if (!tb) return null;
+                  const kids = [...tb.querySelectorAll('.tx-toggle')];
+                  const tops = kids.map((k) => k.getBoundingClientRect().top);
+                  const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
+                    return r.left < -0.5 || r.right > innerWidth + 0.5; });
+                  return { n: kids.length, offscreen: bad.length,
+                           topRange: kids.length ? Math.max(...tops) - Math.min(...tops) : 0 };
+                }""")
+            _vp_before_tb1 = pg.viewport_size
+            tb_normal = {}
+            for _vw in (360, 390):
+                pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
+                tb_normal[_vw] = _toolbar_row_of_last_open_sheet()
+                _shot(pg, f"tx-toolbar-normal-{_vw}")
+            pg.set_viewport_size(_vp_before_tb1); time.sleep(0.2)
+            print("TX-TOOLBAR-NORMAL (6 chips):", tb_normal)
+            tb_normal_ok = all(
+                isinstance(tb_normal[v], dict) and tb_normal[v]["n"] == 6
+                and tb_normal[v]["offscreen"] == 0 and tb_normal[v]["topRange"] < 8
+                for v in (360, 390))
             pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)
             np_video_btn_present = pg.query_selector("#np-video-btn") is not None
             wh_chip_shown = bool(pg.query_selector(".np-ext-video-link"))
@@ -919,11 +956,13 @@ def main() -> int:
             npvid_toggle_on = pg.eval_on_selector("#tx-video-toggle", "el=>el.classList.contains('on')") if pg.query_selector("#tx-video-toggle") else None
             npvid_wrap_visible = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden===false") if pg.query_selector("#tx-video-wrap") else None
             npvid_yt_mounted = pg.evaluate("(window.__ytMounts||[]).length")
-            # 툴바 순서(사용자 요청, 이번 라운드): KR·가·A·Shadow·1×·🚗(·📺 는 wh 전용이라 맨 끝 유지) —
+            # 툴바 순서(사용자 요청): KR·가·A·Shadow·1×·🚗·📺·⤢(풀스크린, wh 전용이라 📺 옆 맨 끝) —
             # 가/A(두 텍스트 크기 칩)를 나란히 붙인다. 나머지 칩은 전부 id 로만 동작(#tx-shadow 등)
-            # 하므로 마크업 '순서만' 바꿔도 안전(behaviour·id·cycling·자체 폭 불변). 360px 에서 화면
-            # 밖으로 밀려나는 칩이 없는지도 함께 확인(.tx-toolbar 는 flex-wrap 이라 넘치면 줄바꿈만
-            # 되지만, 그래도 실측으로 확인한다).
+            # 하므로 마크업 '순서만' 바꿔도 안전(behaviour·id·cycling·자체 폭 불변). 360px·390px 두
+            # 폭 모두에서 화면 밖으로 밀려나는 칩이 없는지, 그리고 '한 줄'인지(offsetTop 문턱 <8px —
+            # 🚗/📺/⤢ 는 다른 세로 패딩을 써서 같은 줄이어도 top 이 몇 px 어긋난다, 실측 확인) 함께
+            # 확인한다 — 8칩(wh, 영상 있음)이 실기기 신고의 실제 재현 케이스였다(390px 에서 두 줄:
+            # KR·가·A·Shadow·1×·🚗 / 📺 단독).
             # ⚠ 여기서도 같은 스테일-시트 문제(위 npvid_sheet_open 주석 참고) — 이 시점엔 아직 옛 시트를
             # 안 닫아서 '.tx-sheet.open' 이 둘이다. '#tx-video-toggle' 은 id=4 시트에만 존재하는
             # 유일한 앵커라 거기서 .closest('.tx-sheet') 로 정확히 그 시트만 스코프한다.
@@ -932,22 +971,29 @@ def main() -> int:
               return sheet ? [...sheet.querySelectorAll('.tx-toolbar .tx-toggle')].map(el => el.id) : [];
             }""")
             _vp_before_toolbar = pg.viewport_size
-            pg.set_viewport_size({"width": 360, "height": 780}); time.sleep(0.2)
-            tx_toolbar_fit = pg.evaluate("""() => {
-              const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
-              const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
-              if (!tb) return null;
-              const kids = [...tb.querySelectorAll('.tx-toggle')];
-              const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
-                return r.left < -0.5 || r.right > innerWidth + 0.5; });
-              return { n: kids.length, offscreen: bad.length };
-            }""")
-            _shot(pg, "tx-toolbar-order-360")
+            tx_toolbar_fit = {}
+            for _vw in (360, 390):
+                pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
+                tx_toolbar_fit[_vw] = pg.evaluate("""() => {
+                  const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
+                  const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
+                  if (!tb) return null;
+                  const kids = [...tb.querySelectorAll('.tx-toggle')];
+                  const tops = kids.map((k) => k.getBoundingClientRect().top);
+                  const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
+                    return r.left < -0.5 || r.right > innerWidth + 0.5; });
+                  return { n: kids.length, offscreen: bad.length,
+                           topRange: kids.length ? Math.max(...tops) - Math.min(...tops) : 0 };
+                }""")
+                _shot(pg, f"tx-toolbar-wh-{_vw}")
             pg.set_viewport_size(_vp_before_toolbar); time.sleep(0.2)
             print("TX-TOOLBAR-ORDER:", tx_toolbar_order, " fit=", tx_toolbar_fit)
-            tx_toolbar_order_ok = (tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow',
-                                                          'tx-speed', 'tx-drive', 'tx-video-toggle']
-                                    and isinstance(tx_toolbar_fit, dict) and tx_toolbar_fit["offscreen"] == 0)
+            tx_toolbar_order_ok = (
+                tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow', 'tx-speed',
+                                      'tx-drive', 'tx-video-toggle', 'tx-fullscreen']
+                and all(isinstance(tx_toolbar_fit[v], dict) and tx_toolbar_fit[v]["n"] == 8
+                        and tx_toolbar_fit[v]["offscreen"] == 0 and tx_toolbar_fit[v]["topRange"] < 8
+                        for v in (360, 390)))
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
             print("PRIMARY-VIDEO-BTN: absent_no_id=", no_video_btn_id1, " tx_in_extras_no_id=", tx_btn_in_extras_id1,
@@ -1067,6 +1113,183 @@ def main() -> int:
             lv_off_ok = (lv_off_hidden is True and isinstance(lv_off_geo, dict)
                          and lv_off_geo.get("vwDisplay") == "none")
             pg.set_viewport_size(_vp_before_video)
+
+            # === KR 번역 패널(.tx-notes) 겹침 회귀 ===
+            # 사용자 신고: 영상 모드에서 재생 중인 문장('...creation, innovation, and long-')이 하단
+            # KR 패널 뒤에 잘려 보임 — _highlightImpl 이 패널 유무를 h 의 고정 비율(58%)로 어림한 게
+            # 원인(영상 모드는 스크롤 영역 h 자체가 작아 그 어림이 깨짐). 이제 패널의 실측 위치를
+            # 앵커 계산에 쓴다(위 episode.js 수정) — 여기서 실제 하이라이트 파이프라인으로 재현한다.
+            # window.__video(하니스 훅, 위에서 등록)로 영상 모드의 재생 시각을 직접 밀어 여러 문장을
+            # '진행'시키면서 매번 확인 — KR 패널이 뜬 문장에서 한 번도 안 가려져야 pass.
+            pg.evaluate("window.__DIAG_KR = true")
+            pg.set_viewport_size({"width": 390, "height": 780}); time.sleep(0.2)
+            if pg.query_selector("#tx-video-toggle") and pg.eval_on_selector("#tx-video-toggle", "el=>el.getAttribute('aria-pressed')") != 'true':
+                pg.eval_on_selector("#tx-video-toggle", "el=>el.click()"); time.sleep(0.4)   # video ON
+            if pg.query_selector("#tx-trans") and pg.eval_on_selector("#tx-trans", "el=>el.getAttribute('aria-pressed')") != 'true':
+                pg.click("#tx-trans"); time.sleep(0.1)   # KR ON(기본값이지만 명시적으로 확정)
+            kr_checks = []
+            # ⚠ 고정 sleep 으로 재면 안 된다. smoothScrollTo 는 rAF 로 프레임당 12% 씩 접근하는
+            # 이징이라 수렴 시간이 '이동 거리'에 비례한다 — 첫 seek 은 앞 테스트가 남긴 위치(측정값
+            # scrollTop 1308 → target 222, 1086px)에서 출발해 ~0.82s 가 걸리는데 0.7s 에 재면 항상
+            # 이징 '중간값'을 잡아 첫 샘플만 실패한다(2026-08-07: 앱 쪽 패딩·앵커를 고쳐도 수치가
+            # 1px 도 안 변해서 드러났다 — 실행마다 값이 완전히 동일한 게 이징의 결정론성 힌트였다).
+            # 스크롤이 멈출 때까지 기다린 뒤 잰다. 판정 기준(겹치면 실패)은 그대로다.
+            def _settle_scroll(max_wait=3.0):
+                prev, stable = None, 0
+                waited = 0.0
+                while waited < max_wait:
+                    cur = pg.evaluate("() => { const s=document.querySelector('.tx-scroll'); return s ? Math.round(s.scrollTop) : -1; }")
+                    stable = stable + 1 if cur == prev else 0
+                    if stable >= 2:
+                        return
+                    prev = cur
+                    time.sleep(0.1); waited += 0.1
+
+            for _t in (11, 23, 36, 49, 61, 69, 83, 96):   # FIX_SENTS 각 문장 진입 직후 시각
+                pg.evaluate(f"window.__video.seek({_t})"); time.sleep(0.2); _settle_scroll()
+                r = pg.evaluate("""() => {
+                  const sheet = document.querySelector('.tx-sheet.open');
+                  const active = sheet ? sheet.querySelector('.tx-sent.active') : null;
+                  const notes = sheet ? sheet.querySelector('.tx-notes') : null;
+                  if (!active || !notes) return null;
+                  const notesOn = notes.classList.contains('show');
+                  if (!notesOn) return { notesOn };
+                  const a = active.getBoundingClientRect(), n = notes.getBoundingClientRect();
+                  return { notesOn, t: %d, activeBottom: Math.round(a.bottom), notesTop: Math.round(n.top),
+                           aboveNotes: a.bottom <= n.top + 0.5,
+                           text: active.textContent.trim().slice(0, 40) };
+                }""" % _t)
+                kr_checks.append(r)
+            _shot(pg, "kr-panel-overlap-video-390")
+            print("KR-PANEL-OVERLAP (video mode, KR on):", kr_checks)
+            print("KR-DIAG:", pg.evaluate("() => (window.__KRDIAG || []).slice(0, 3)"))
+            print("KR-REDIAG:", pg.evaluate("() => (window.__REDIAG || []).slice(0, 12)"))
+            kr_shown_checks = [c for c in kr_checks if isinstance(c, dict) and c.get("notesOn") is True]
+            kr_overlap_ok = len(kr_shown_checks) >= 1 and all(c.get("aboveNotes") is True for c in kr_shown_checks)
+            # KR 꺼짐 — 이 로직 자체를 안 타므로(safeBottom = h*0.90, 예전 상수 그대로) 예전과
+            # 동일해야 한다: 활성 문장이 화면 안(완전히 안 사라짐)에 있으면 충분한 회귀 가드.
+            if pg.query_selector("#tx-trans"):
+                pg.click("#tx-trans"); time.sleep(0.1)   # KR OFF
+            pg.evaluate("window.__video.seek(69)"); time.sleep(0.7)
+            kr_off_check = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open');
+              const active = sheet ? sheet.querySelector('.tx-sent.active') : null;
+              const notes = sheet ? sheet.querySelector('.tx-notes') : null;
+              if (!active) return null;
+              const sc = sheet.querySelector('.tx-scroll');
+              const a = active.getBoundingClientRect(), c = sc.getBoundingClientRect();
+              return { notesOn: !!(notes && notes.classList.contains('show')),
+                       visible: a.bottom > c.top && a.top < c.bottom };
+            }""")
+            print("KR-OFF-UNCHANGED (video mode):", kr_off_check)
+            kr_off_ok = isinstance(kr_off_check, dict) and kr_off_check["notesOn"] is False and kr_off_check["visible"] is True
+            if pg.query_selector("#tx-trans"):
+                pg.click("#tx-trans"); time.sleep(0.1)   # KR 다시 ON(아래 마지막 문장 테스트가 필요로 함)
+            # 마지막 문장까지 패널 위로 끌어올릴 여유가 있는가(요구사항 #2) — .tx-scroll 하단 패딩이
+            # --kr-overlay 만큼 늘어나 있어야 스크롤 최댓값에서 마지막 문단이 패널 위로 온전히
+            # 빠져나온다. idx=6(t=68, vocab 붙어 있어 always-shown)로 패널을 띄운 채, 스크롤을
+            # 인위적으로 끝까지 내려 실제 도달 가능한지 지오메트리로 확인한다(활성 문장이 무엇이든
+            # 무관 — 패딩 메커니즘 자체의 검증).
+            pg.evaluate("window.__video.seek(69)"); time.sleep(0.5)
+            last_reach = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open');
+              const notes = sheet.querySelector('.tx-notes');
+              const sc = sheet.querySelector('.tx-scroll');
+              const paras = [...sc.querySelectorAll('.tx-para')];
+              const lastPara = paras[paras.length - 1];
+              if (!notes || !sc || !lastPara) return null;
+              const notesOn = notes.classList.contains('show');
+              const padBottom = parseFloat(getComputedStyle(sc).paddingBottom) || 0;
+              sc.scrollTop = sc.scrollHeight - sc.clientHeight;   // 스크롤 최댓값으로 강제 이동
+              const lp = lastPara.getBoundingClientRect(), n = notes.getBoundingClientRect(), c = sc.getBoundingClientRect();
+              return { notesOn, padBottom, lastParaBottom: Math.round(lp.bottom), notesTop: Math.round(n.top),
+                       reachable: lp.bottom <= n.top + 0.5 };
+            }""")
+            print("KR-PANEL-LAST-SENTENCE-REACHABLE:", last_reach)
+            last_reach_ok = (isinstance(last_reach, dict) and last_reach["notesOn"] is True
+                              and last_reach["padBottom"] > 110 and last_reach["reachable"] is True)
+            kr_panel_ok = kr_overlap_ok and kr_off_ok and last_reach_ok
+
+            # === 🖥 풀스크린 스터디 모드 ===
+            # 사용자 요청: 헤더(핸들·제목·날짜)+툴바를 감추고 영상을 화면 맨 위에 붙여 트랜스크립트에
+            # 최대 공간을 준다. 진입 시 video 가 꺼져 있으면 먼저 켠다(항상 'video on' 전제) — 여기서는
+            # 이미 켜져 있으므로(위 KR 테스트) 곧장 켜져야 한다. 탈출구(#tx-fs-exit)가 항상 뜨는지,
+            # 나가면 헤더/툴바가 복원되는지, video 를 끄면 풀스크린도 같이 꺼지는지까지 확인한다.
+            if pg.query_selector("#tx-trans"):
+                pg.click("#tx-trans"); time.sleep(0.1)   # 스크린샷을 KR on 상태로 통일
+            pg.set_viewport_size({"width": 390, "height": 780}); time.sleep(0.2)
+            fs_before = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              return sheet ? { fs: sheet.classList.contains('fullscreen'),
+                                headerVisible: getComputedStyle(sheet.querySelector('.tx-sheet-header')).display !== 'none' } : null;
+            }""")
+            if pg.query_selector("#tx-fullscreen"):
+                pg.eval_on_selector("#tx-fullscreen", "el=>el.click()"); time.sleep(0.4)
+            fs_on = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              if (!sheet) return null;
+              const header = sheet.querySelector('.tx-sheet-header');
+              const toolbar = sheet.querySelector('.tx-toolbar');
+              const exit = sheet.querySelector('#tx-fs-exit');
+              const wrap = sheet.querySelector('#tx-video-wrap');
+              const vidToggle = sheet.querySelector('#tx-video-toggle');
+              const er = exit ? exit.getBoundingClientRect() : null;
+              return {
+                fsClass: sheet.classList.contains('fullscreen'),
+                headerHidden: getComputedStyle(header).display === 'none',
+                toolbarHidden: getComputedStyle(toolbar).display === 'none',
+                videoOn: vidToggle && vidToggle.classList.contains('on'),
+                wrapPadTop: wrap ? parseFloat(getComputedStyle(wrap).paddingTop) : null,
+                exitVisible: exit && !exit.hidden,
+                exitBox: er ? { w: Math.round(er.width), h: Math.round(er.height) } : null,
+                cardTop: Math.round(sheet.getBoundingClientRect().top),
+              };
+            }""")
+            _shot(pg, "fullscreen-on-390")
+            print("FULLSCREEN-ON:", fs_before, "->", fs_on)
+            fullscreen_on_ok = (isinstance(fs_before, dict) and fs_before["fs"] is False and fs_before["headerVisible"] is True
+                                 and isinstance(fs_on, dict) and fs_on["fsClass"] is True and fs_on["headerHidden"] is True
+                                 and fs_on["toolbarHidden"] is True and fs_on["videoOn"] is True
+                                 and fs_on["wrapPadTop"] == 0 and fs_on["exitVisible"] is True
+                                 and isinstance(fs_on["exitBox"], dict) and fs_on["exitBox"]["w"] >= 44 and fs_on["exitBox"]["h"] >= 44
+                                 and fs_on["cardTop"] <= 1)
+            if pg.query_selector("#tx-fs-exit"):
+                pg.eval_on_selector("#tx-fs-exit", "el=>el.click()"); time.sleep(0.4)
+            fs_off = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              if (!sheet) return null;
+              const header = sheet.querySelector('.tx-sheet-header');
+              const toolbar = sheet.querySelector('.tx-toolbar');
+              const vidToggle = sheet.querySelector('#tx-video-toggle');
+              return { fsClass: sheet.classList.contains('fullscreen'),
+                       headerVisible: getComputedStyle(header).display !== 'none',
+                       toolbarVisible: getComputedStyle(toolbar).display !== 'none',
+                       videoStillOn: vidToggle && vidToggle.classList.contains('on') };
+            }""")
+            _shot(pg, "fullscreen-off-390")
+            print("FULLSCREEN-OFF (via exit chip):", fs_off)
+            # 나가는 건 풀스크린만 — video 는 그대로 켜진 채여야 한다(요구사항: exit 는 풀스크린 한
+            # 단계만 뒤로, video 끄기는 별도 결정 — 아래에서 video 를 끄면 풀스크린도 같이 꺼지는
+            # '반대 방향' 대칭을 확인한다).
+            fullscreen_off_ok = (isinstance(fs_off, dict) and fs_off["fsClass"] is False
+                                  and fs_off["headerVisible"] is True and fs_off["toolbarVisible"] is True
+                                  and fs_off["videoStillOn"] is True)
+            # video 를 끄면 풀스크린도 같이 꺼진다(turnVideoOff 안의 exitFullscreen 호출) — 대칭 확인.
+            if pg.query_selector("#tx-fullscreen"):
+                pg.eval_on_selector("#tx-fullscreen", "el=>el.click()"); time.sleep(0.4)   # 다시 풀스크린 진입
+            fs_reentered = pg.eval_on_selector(".tx-sheet.open .tx-sheet-card", "el=>el.classList.contains('fullscreen')")
+            if pg.query_selector("#tx-video-toggle"):
+                pg.eval_on_selector("#tx-video-toggle", "el=>el.click()"); time.sleep(0.4)   # video OFF
+            fs_after_video_off = pg.evaluate("""() => {
+              const sheet = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              const vidToggle = sheet.querySelector('#tx-video-toggle');
+              return { fsClass: sheet.classList.contains('fullscreen'),
+                       videoOn: vidToggle && vidToggle.classList.contains('on') };
+            }""")
+            print("FULLSCREEN-VIDEO-COUPLING: reentered=", fs_reentered, " after video off=", fs_after_video_off)
+            fullscreen_coupling_ok = (fs_reentered is True and isinstance(fs_after_video_off, dict)
+                                       and fs_after_video_off["fsClass"] is False and fs_after_video_off["videoOn"] is False)
+            fullscreen_ok = fullscreen_on_ok and fullscreen_off_ok and fullscreen_coupling_ok
             libvideo_ok = (lv_sheet_open is True and lv_toggle_pressed == "true" and lv_toggle_on is True
                            and lv_wrap_visible is True and lv_yt_mounted == 1 and lv_yt_played is True
                            and lv_audio_paused is True and lv_playervars_ok is True
@@ -1096,8 +1319,8 @@ def main() -> int:
                      and vk_ok is True
                      and video_toggle_hidden is True and video_toggle_shown is True
                      and wh_chip_shown is True and about_no_url is True
-                     and primary_video_btn_ok is True and tx_toolbar_order_ok is True
-                     and libvideo_ok is True)
+                     and primary_video_btn_ok is True and tx_toolbar_order_ok is True and tb_normal_ok is True
+                     and libvideo_ok is True and kr_panel_ok is True and fullscreen_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
