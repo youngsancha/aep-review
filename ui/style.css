@@ -265,6 +265,7 @@ body.on-episode {
 }
 .feat-play:active { transform: scale(0.97); }
 .feat-script { color: var(--tint); font-weight: 700; font-size: 13.5px; text-decoration: none; }
+.feat-video { color: var(--tint); font-weight: 700; font-size: 13.5px; text-decoration: none; }
 
 /* ── 에피소드 검색 ── */
 .ep-search-wrap { margin: 8px 0 12px; }
@@ -308,6 +309,8 @@ body.on-episode {
 .cont-script { position: relative; color: var(--tint); font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; }
 /* Today 카드의 인라인 링크 — 세로 패딩이 없어 히트 영역이 글자 높이(≈18px)뿐이었다. 시각은 그대로. */
 .cont-script::after { content: ''; position: absolute; left: -6px; right: -6px; top: 50%; transform: translateY(-50%); height: 44px; }
+.cont-video { position: relative; color: var(--tint); font-weight: 700; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.cont-video::after { content: ''; position: absolute; left: -6px; right: -6px; top: 50%; transform: translateY(-50%); height: 44px; }
 
 
 /* ========== Section header ========== */
@@ -431,6 +434,20 @@ body.on-episode {
 /* 시각 크기(28px)는 유지하되 탭 영역을 ~46px 로 넓혀 라이브러리에서 가장 많이 누르는 버튼을 안정적으로. */
 .ep-row .ep-play::after { content: ''; position: absolute; inset: -9px; }
 .ep-row .ep-play:hover { background: var(--tint-soft); color: var(--tint-hover); }
+/* wh(백악관 브리핑) 행 전용 — .ep-play 와 같은 크기/터치영역, 아이콘만 다르다. */
+.ep-row .ep-video {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  cursor: pointer; padding: 0;
+  flex: 0 0 auto;
+  position: relative;
+}
+.ep-row .ep-video::after { content: ''; position: absolute; inset: -9px; }
+.ep-row .ep-video:hover { background: var(--tint-soft); }
 .ep-row .ep-meta {
   font-size: 12px; color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -1065,6 +1082,19 @@ body.on-episode {
 .tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
 .tx-fs-btn { min-width: 36px; font-variant-numeric: tabular-nums; }
+
+/* 📺 Video 모드 iframe — 시트 스크롤 영역 '위'에 얹혀 트랜스크립트 지오메트리는 그대로 둔다.
+   ui/views/episode.js 가 hidden 속성으로 켜고/끈다(off 일 땐 공간을 아예 차지하지 않음). */
+.tx-video-wrap { padding: 10px 14px 0; }
+.tx-video-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.tx-video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
 .tx-scroll {
   max-height: 70vh;
@@ -2434,6 +2464,10 @@ a { color: var(--tint); }
 .tx-drive-btn[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-drive-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
 
+/* 📺 Video 모드 칩 — tx-drive-btn 과 같은 '모드 on' 채움 스타일(같은 툴바, 같은 자리). */
+.tx-video-btn.on, .tx-video-btn[aria-pressed="true"] { background: var(--tint); color: #fff; }
+.tx-video-btn.on:hover, .tx-video-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
+
 /* 플로팅 저장 버튼 — body 직속이라 transcript 시트의 배경 inert 에 안 걸리고, 시트(z 200) 위에 뜬다.
    운전 중 조준 없이 누르는 큰 원 + 표시는 CSS 만으로(body.drive-capture.on-episode) 라우트 연동. */
 #drive-fab {
@@ -2548,17 +2582,8 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
 .set-signout:active { transform: scale(0.99); }
 .set-ver { text-align: center; font-size: 11.5px; color: var(--text-3); margin-top: 12px; font-variant-numeric: tabular-nums; }
 
-/* White House 회차 전용 — 영상 보기(외부 링크). 앱은 오디오 쉐도잉 전용이라 영상은 whitehouse.gov 에서.
-   (정밀진단 후속 WH 쇼: 사용자 요청 "영상도 같이") */
-.np-wh-video {
-  display: flex; align-items: center; gap: 12px;
-  margin: 14px 16px 0; padding: 12px 14px; min-height: 44px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  text-decoration: none; color: var(--text);
-}
-.np-wh-video:active { transform: scale(0.99); }
-.np-wh-video-ico { font-size: 22px; flex: none; }
-.np-wh-video-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.np-wh-video-txt b { font-size: 14.5px; }
-.np-wh-video-txt span { font-size: 12px; color: var(--text-3); }
-.np-wh-video-go { flex: none; color: var(--text-2); font-size: 15px; }
+/* White House 회차 전용 — 영상 보기(외부 링크, whitehouse.gov). 앱 내 📺 Video 모드(트랜스크립트
+   시트)와는 별개 — 이건 항상 존재하는 '진짜 원본' 바로가기다. v1.58.0: About 밑(스크롤 필요)에서
+   .np-extras 칩 줄로 옮겨 스크롤 없이 바로 보이게 했다(1×/반복/Transcript/Offline 과 같은 자리). */
+.np-extras .wh-video-chip { gap: 5px; min-width: 0; padding: 0 14px; text-decoration: none; }
+.wh-video-chip-go { color: var(--text-2); }

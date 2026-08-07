@@ -184,7 +184,9 @@ def remap_vocab(ep_id: int, transcript: dict[str, Any]) -> int:
 
 # ─────────────────────── 재정렬 한 건 ───────────────────────
 def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = True,
-                     from_r2: bool = False) -> dict[str, Any]:
+                     from_r2: bool = False, video_id: str | None = None) -> dict[str, Any]:
+    """video_id: r2_audio 와 같은 방식으로 transcript JSON 에 실릴 YouTube 영상 id(wh_fetch.py 의
+    신규 인제스트 경로만 넘김; 기존 회차는 scripts/wh_backfill_video_ids.py 가 별도로 채운다)."""
     ep_id = row["id"]
     if from_r2:
         # 앱이 '실제로 트는' R2 오디오를 받아 그걸 STT → 자막 = 서빙 오디오 (완벽 일치).
@@ -207,6 +209,8 @@ def retranscribe_one(row: dict[str, Any], remap: bool = True, host_r2: bool = Tr
     data["aligned"] = True  # clean URL 정렬 → 클라이언트 offset 0
     if host_r2 or from_r2:
         data["r2_audio"] = True
+    if video_id:
+        data["video_id"] = video_id   # Video 모드(ui/video.js) — DB 컬럼 아님, r2_audio 와 같은 자리
     store.upload_transcript(ep_id, data)
     store.mark_transcribed(ep_id, data.get("duration"))
     n_remap = remap_vocab(ep_id, data) if remap else 0

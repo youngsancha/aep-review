@@ -1,5 +1,5 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
-import { escapeHtml, fmtDuration, fmtDate, toast } from '/app.js';
+import { escapeHtml, fmtDuration, fmtDate, toast, stripTrailingUrl } from '/app.js';
 import { listEpisodes, audioSrcFor } from '/db.js';
 import { player, getProgressMap, getCompleted } from '/player.js';
 import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions, showMeta } from '/config.js';
@@ -185,6 +185,26 @@ function wirePlay(scope, items) {
       try { sessionStorage.setItem('aep-open-script', a.dataset.id || ''); } catch (e) {}
     });
   });
+  // 📺 Video 로 바로 보기(wh 전용) — aep-open-script/aep-autoplay 와 같은 '일회용 플래그' 관례
+  // (app.js::consumeShortcut 도 이 패턴). 카드 두 곳(cont/feat)은 실제 <a href> 라 클릭 시 플래그만
+  // 심고 링크의 기본 네비게이션(location.hash 변경)에 맡긴다 — route() 를 직접 부르면 이중렌더.
+  scope.querySelectorAll('.feat-video, .cont-video').forEach((a) => {
+    a.addEventListener('click', () => {
+      try { sessionStorage.setItem('aep-open-video', a.dataset.id || ''); } catch (e) {}
+    });
+  });
+  // 목록 행(.ep-video)은 행 전체가 이미 <a class="ep-row"> 라 안에 또 <a> 를 못 넣는다(중첩 링크
+  // 무효) — 버튼 + 수동 location.hash 로 같은 효과를 낸다. 행 자체의 네비게이션은 막는다(이중 이동 방지).
+  scope.querySelectorAll('.ep-video').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!id) return;
+      try { sessionStorage.setItem('aep-open-video', id); } catch (err) {}
+      location.hash = `#/episode/${id}`;   // hashchange → route() 렌더(직접 route 호출 시 이중 렌더)
+    });
+  });
 }
 
 // === 멀티-쇼 선택기 — 두 팟캐스트 전환(MULTISHOW 활성 시만 노출). 단일쇼면 '' 반환 → 기존 동일. ===
@@ -277,6 +297,7 @@ function continueHtml(items) {
         <div class="cont-actions">
           <button class="cont-play" data-id="${ep.id}" data-resume="${prog.t}">▶ Resume</button>
           <a class="cont-script" data-id="${ep.id}" href="#/episode/${ep.id}">View Script ›</a>
+          ${ep.show === 'wh' ? `<a class="cont-video" data-id="${ep.id}" href="#/episode/${ep.id}">📺 Video ›</a>` : ''}
         </div>
       </div>
     </div>`;
@@ -303,7 +324,10 @@ function featuredHtml(e) {
   const title = (e.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   const meta = [fmtDate(e.pub_date), e.duration_sec ? fmtDuration(e.duration_sec) : '']
     .filter(Boolean).join(' · ');
-  const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
+  let desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
+  // wh(백악관 브리핑) description 끝의 원본 URL 은 카드에서 원문 그대로 세 줄로 접혀 노이즈였다 —
+  // 표시할 때만 걷어낸다(다른 쇼는 게이트로 안 건드림). rowHtml() 도 동일 처리.
+  if (e.show === 'wh') desc = stripTrailingUrl(desc);
   return `
     <div class="section-h"><h2>Latest Episode</h2></div>
     <div class="feat-card">
@@ -319,6 +343,7 @@ function featuredHtml(e) {
       <div class="feat-actions">
         ${e.has_audio ? `<button class="feat-play" data-id="${e.id}">▶ Play</button>` : ''}
         <a class="feat-script" data-id="${e.id}" href="#/episode/${e.id}">View Script ›</a>
+        ${e.show === 'wh' ? `<a class="feat-video" data-id="${e.id}" href="#/episode/${e.id}">📺 Video ›</a>` : ''}
       </div>
     </div>
   `;
@@ -326,7 +351,8 @@ function featuredHtml(e) {
 
 function rowHtml(e) {
   const num = e.episode_no != null ? `#${e.episode_no}` : '';
-  const desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
+  let desc = (e.description || '').replace(/<[^>]+>/g, '').trim();
+  if (e.show === 'wh') desc = stripTrailingUrl(desc);
   const title = (e.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   // 들은 진도(부분 청취) — Apple Podcasts 처럼 행에 얇은 막대 + 남은 시간 표시
   const p = _prog[e.id];
@@ -352,6 +378,7 @@ function rowHtml(e) {
         ${desc ? `<p class="ep-desc">${escapeHtml(desc)}</p>` : ''}
         <div class="ep-foot">
           ${e.has_audio ? `<button class="ep-play" data-id="${e.id}" aria-label="Play">${SVG_PLAY_SM}</button>` : ''}
+          ${e.show === 'wh' ? `<button class="ep-video" data-id="${e.id}" aria-label="Watch video">📺</button>` : ''}
           <span class="ep-meta">${pct ? `▶ ${leftMin} min left` : (e.duration_sec ? escapeHtml(fmtDuration(e.duration_sec)) : '')}</span>
           ${chips.length ? `<div class="ep-chips">${chips.join('')}</div>` : ''}
         </div>

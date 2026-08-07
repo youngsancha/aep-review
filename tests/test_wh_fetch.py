@@ -2,8 +2,10 @@
 
 end-to-end(discover_new/ingest_one)는 Supabase 서비스키·R2·yt-dlp 가 필요해 CI(wh-sync.yml)에서만
 검증된다. 여기선 목록 HTML 파싱 + 슬러그→날짜/제목의 순수 함수, discover_all() 의 페이지네이션 루프
-(가짜 _fetch 로 네트워크 없이), ingest_page() 의 pub_date 폴백만 고정한다.
+(가짜 _fetch 로 네트워크 없이), ingest_page() 의 pub_date 폴백, extract_audio() 의 info.json 파싱
+(video_id 포함 — Video 모드 Part A)만 고정한다.
 """
+import json
 from urllib.error import URLError
 
 from ingest import store
@@ -234,3 +236,51 @@ def test_ingest_page_prefers_slug_date_over_yt_dlp_upload_date(monkeypatch):
         do_stt=False,
     )
     assert sink["inserted"]["pub_date"] == "2026-07-23"   # 슬러그 날짜가 폴백보다 우선
+
+
+# ─────────────────────────── extract_audio() video_id 캡처(Part A) ───────────────────────────
+# 실제 yt-dlp 호출(subprocess.run)은 가짜로 막고, 그 산출물인 info.json 만 미리 심어서 파싱 로직만
+# 검증한다(네트워크·ffmpeg 불필요). ep554 실측(HANDOFF): YouTube id 8ytbAVpDBXs, duration 1274s.
+
+def _fake_run_writes_nothing(*args, **kwargs):
+    """실제 yt-dlp 실행을 생략 — 테스트가 info.json 을 직접 미리 써 둔다."""
+    return None
+
+
+def test_extract_audio_captures_youtube_video_id(monkeypatch, tmp_path):
+    monkeypatch.setattr(w.subprocess, "run", _fake_run_writes_nothing)
+    out_mp3 = tmp_path / "a.mp3"
+    info = tmp_path / "a.info.json"
+    info.write_text(json.dumps({
+        "title": "Press Briefing", "duration": 1274.26, "upload_date": "20260723",
+        "id": "8ytbAVpDBXs", "extractor": "youtube",
+    }), encoding="utf-8")
+
+    meta = w.extract_audio("https://www.whitehouse.gov/videos/ep554/", out_mp3)
+    assert meta["video_id"] == "8ytbAVpDBXs"
+    assert meta["duration"] == 1274
+    assert meta["upload_date"] == "2026-07-23"
+    assert not info.exists()   # 다 읽은 뒤 지운다(기존 동작 유지)
+
+
+def test_extract_audio_ignores_id_from_non_youtube_extractor(monkeypatch, tmp_path):
+    """C-SPAN(자체 m3u8) 등 익스트랙터가 youtube 가 아니면 video_id 는 None —
+    비-YouTube id 를 잘못 iframe 에 물리지 않는다(Video 모드는 YouTube 전용)."""
+    monkeypatch.setattr(w.subprocess, "run", _fake_run_writes_nothing)
+    out_mp3 = tmp_path / "a.mp3"
+    info = tmp_path / "a.info.json"
+    info.write_text(json.dumps({
+        "title": "Daily Briefing", "duration": 900, "upload_date": "20260101",
+        "id": "677472", "extractor": "generic",
+    }), encoding="utf-8")
+
+    meta = w.extract_audio("https://www.c-span.org/program/677472", out_mp3)
+    assert meta["video_id"] is None
+
+
+def test_extract_audio_video_id_none_when_no_info_json(monkeypatch, tmp_path):
+    """info.json 자체가 없으면(추출 실패 등 예외적 상황) video_id 는 조용히 None."""
+    monkeypatch.setattr(w.subprocess, "run", _fake_run_writes_nothing)
+    out_mp3 = tmp_path / "a.mp3"
+    meta = w.extract_audio("https://www.whitehouse.gov/videos/ep1/", out_mp3)
+    assert meta["video_id"] is None

@@ -410,6 +410,14 @@ export function fmtDuration(sec) {
   return h ? `${h}h ${m}m` : `${m}m`;
 }
 
+// wh(백악관 브리핑) 같은 소스는 description 끝에 원본 페이지 URL 을 그대로 박아 넣는다(예:
+// 'White House press briefing — https://www.whitehouse.gov/videos/…/'). 화면에 보여줄 때만 그
+// 꼬리를 걷어낸다(저장된 값은 안 건드림) — 호출부가 어떤 쇼인지 직접 게이트해서 쓴다(다른 쇼
+// description 은 이 함수를 아예 안 태워 실수로 건드릴 일이 없게).
+export function stripTrailingUrl(text) {
+  return String(text || '').replace(/\s*(?:[-—–]\s*)?https?:\/\/\S+\s*$/, '').trim();
+}
+
 export function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);

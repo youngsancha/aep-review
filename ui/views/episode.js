@@ -1,8 +1,9 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
-import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast } from '/app.js';
+import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast, stripTrailingUrl } from '/app.js';
 import { getEpisode, episodeNav, markKnown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
+import { video } from '/video.js';
 import { showCover, currentShow, showMeta, hostedAudioUrl } from '/config.js';
 import { lastTrIssue, translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
@@ -76,6 +77,60 @@ const SVG_DL_DONE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"
 // 1× 에서 탭마다 1.25 → 1.5 → 0.5 → 0.75 → 1.0 → 1.25 … 순환 (사용자 지정 순서)
 const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
 
+// === 재생 엔진 라우터(drv) ===================================================================
+// 아래 싱크 엔진 전체(하이라이트·오토스크롤·탭시크·쉐도잉 반복·단어 카라오케·화면유지·진행률저장)는
+// player(공유 <audio>)나 video(YouTube iframe, ui/video.js) 를 직접 보지 않고 오직 drv 만 본다.
+// 둘의 표면이 완전히 같아서(play/pause/toggle/seek/rate/skip/on + paused/time/duration) drv 는
+// '지금 재생을 실제로 미는 게 어느 쪽인가'만 알면 되고, 그 스위치가 이 클래스 하나에 갇혀 있다 —
+// 📺 토글이 켜져도/꺼져도 아래 renderEpisode 의 싱크 코드는 단 한 줄도 안 바뀐다(요구사항의 핵심).
+// 예외 2곳은 의도적으로 drv 를 안 쓴다: ① np-speed 초기화(1020행)는 회차를 넘어 유지되는 공유
+// <audio>.playbackRate 를 그대로 읽어야 하고(비디오는 매번 새로 마운트돼 그런 영속 상태가 없다),
+// ② drv.current(트랙 메타)는 항상 player.current 를 그대로 돌려준다 — 영상이 트는 동안에도 '지금
+// 이 회차'라는 사실은 항상 오디오 싱글톤이 들고 있는 메타데이터이기 때문(marks.js 운전 캡처용).
+class DriverRouter {
+  constructor() {
+    this.mode = 'audio';   // 'audio' | 'video' — 항상 audio 로 시작(📺 는 회차 진입마다 OFF)
+    this._video = null;
+    this.listeners = new Set();
+    // player 구독은 이 회차를 보는 내내 유지 — mode==='video' 인 동안은 그냥 걸러진다(비디오
+    // 모드 중엔 오디오가 pause() 상태라 timeupdate 자체가 안 옴 → 필터는 방어적 이중장치일 뿐).
+    this._offPlayer = player.on((ev) => { if (this.mode === 'audio') this._emit(ev); });
+    this._offVideo = null;
+  }
+  useVideo(adapter) {
+    this.mode = 'video';
+    this._video = adapter;
+    this._offVideo = adapter.on((ev) => { if (this.mode === 'video') this._emit(ev); });
+  }
+  useAudio() {
+    this.mode = 'audio';
+    if (this._offVideo) { this._offVideo(); this._offVideo = null; }
+    this._video = null;
+  }
+  destroy() {
+    this._offPlayer();
+    if (this._offVideo) this._offVideo();
+    this.listeners.clear();
+  }
+  get _engine() { return this.mode === 'video' ? this._video : player; }
+  play()   { this._engine.play(); }
+  pause()  { this._engine.pause(); }
+  toggle() { this._engine.toggle(); }
+  seek(t)  { this._engine.seek(t); }
+  rate(r)  { this._engine.rate(r); }
+  skip(d)  { this._engine.skip(d); }
+  on(fn)   { this.listeners.add(fn); return () => this.listeners.delete(fn); }
+  _emit(ev) {
+    for (const fn of this.listeners) {
+      try { fn(ev, this); } catch (err) { console.error('[drv] listener failed:', err); }
+    }
+  }
+  get paused()   { return this._engine.paused; }
+  get time()     { return this._engine.time; }
+  get duration() { return this._engine.duration; }
+  get current()  { return player.current; }
+}
+
 export async function renderEpisode(root, idStr, tStr) {
   const id = parseInt(idStr, 10);
   // 스테일 렌더 방지: 느린 네트워크에서 getEpisode 를 기다리는 사이 사용자가 다른 화면으로
@@ -104,6 +159,13 @@ export async function renderEpisode(root, idStr, tStr) {
 
   const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
   const txTitle = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
+  // wh(백악관 브리핑) description 은 'White House press briefing — https://…/' 형태로 원본 링크를
+  // 그대로 끝에 박아 넣는다 — 이제 그 링크는 위 .np-extras 칩(📺 Video)이 대신하므로 화면에서는
+  // 중복+노이즈일 뿐이다. 저장된 값(ep.description)은 안 건드리고 표시용으로만 걷어낸다. 다른
+  // 쇼는 손대지 않는다(show==='wh' 게이트). 걷어내고 남는 게 없으면 About 자체를 안 그린다.
+  const aboutText = ep.show === 'wh'
+    ? stripTrailingUrl(stripTags(ep.description || ''))
+    : stripTags(ep.description || '');
 
   root.innerHTML = `
     <div class="np-wrap">
@@ -140,6 +202,11 @@ export async function renderEpisode(root, idStr, tStr) {
             <span>Transcript</span>
           </button>
           ` : ''}
+          ${(ep.show === 'wh' && ep.guid) ? `
+          <a class="speed wh-video-chip" href="https://www.whitehouse.gov/videos/${encodeURIComponent(ep.guid)}/" target="_blank" rel="noopener noreferrer">
+            📺 Video<span class="wh-video-chip-go">↗</span>
+          </a>
+          ` : ''}
           ${isHosted ? `
           <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
           ` : ''}
@@ -147,20 +214,12 @@ export async function renderEpisode(root, idStr, tStr) {
       ` : `<div class="empty">audio not downloaded yet</div>`}
     </div>
 
-    ${ep.description ? `
+    ${aboutText ? `
       <div class="np-about">
         <div class="section-h"><h2>About</h2></div>
-        <p class="np-about-text" id="np-about-text">${escapeHtml(stripTags(ep.description))}</p>
+        <p class="np-about-text" id="np-about-text">${escapeHtml(aboutText)}</p>
         <button class="np-about-toggle" id="np-about-toggle" hidden aria-expanded="false">More</button>
       </div>
-    ` : ''}
-
-    ${(ep.show === 'wh' && ep.guid) ? `
-      <a class="np-wh-video" href="https://www.whitehouse.gov/videos/${encodeURIComponent(ep.guid)}/" target="_blank" rel="noopener noreferrer">
-        <span class="np-wh-video-ico">📺</span>
-        <span class="np-wh-video-txt"><b>Watch the full video</b><span>whitehouse.gov · 오디오는 이 앱에서 쉐도잉</span></span>
-        <span class="np-wh-video-go">↗</span>
-      </a>
     ` : ''}
 
     ${vocabs.length ? `
@@ -187,7 +246,11 @@ export async function renderEpisode(root, idStr, tStr) {
       const wrap = document.createElement('div');
       // r2_audio===true 회차만 완벽 자동싱크(자막≡서빙오디오). 아니면 광고 뒤 드리프트 가능 → 안내 바.
       const perfectSync = ep.transcript?.r2_audio === true;
-      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel, perfectSync).trim();
+      // 📺 Video 모드 토글: wh(백악관 브리핑) 회차 중 transcript 에 video_id 가 있고(Part A 백필/신규
+      // 인제스트가 채움) 온라인일 때만 노출 — 영상 없는 회차에 죽은 버튼을 보이지 않게, 오프라인에선
+      // '이용 불가'로 아예 안 보이게(요구사항: 고장이 아니라 이용불가).
+      const showVideoToggle = !!(ep.transcript?.video_id) && navigator.onLine !== false;
+      wrap.innerHTML = transcriptSheetHtml(sentences, txTitle, showLabel, perfectSync, showVideoToggle).trim();
       $sheet = wrap.firstElementChild;
       document.body.appendChild($sheet);
     } catch (err) {
@@ -250,6 +313,7 @@ export async function renderEpisode(root, idStr, tStr) {
     src: ep.audio_url,
   };
   player.load(track);
+  const drv = new DriverRouter();   // 이 회차 렌더 동안의 재생 엔진 라우터(오디오로 시작)
 
   const $play  = document.getElementById('np-play');
   const $back  = document.getElementById('np-back');
@@ -334,7 +398,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const syncOffset = 0;
   // HL_LAG: whisper 단어 타임스탬프가 음성보다 살짝 빨라, 하이라이트를 약간 늦게 따라오게(>0).
   const HL_LAG = 0.2;
-  const txTime = () => player.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
+  const txTime = () => drv.time - syncOffset - HL_LAG;     // 오디오 시각 → 자막 시각
   const toAudio = (txSec) => txSec + syncOffset;              // 자막 시각 → 오디오 시각(시크용)
 
   // === 현재 문장 번역 항상 표시 (#8) — 무료 MyMemory API, 결과는 per-episode 캐시 ===
@@ -350,30 +414,30 @@ export async function renderEpisode(root, idStr, tStr) {
   let _trSeq = 0;
 
   function refresh() {
-    const dur = player.duration;
+    const dur = drv.duration;
     if (dur) {
-      if (!npScrubbing) $scrub.value = (player.time / dur * 100).toFixed(2);  // 드래그 중엔 안 덮어씀(#6)
-      $scrub.setAttribute('aria-valuetext', `${fmtTime(player.time)} / ${fmtTime(dur)}`);  // 스크린리더에 시간 맥락
-      $cur.textContent = fmtTime(player.time);
-      $rem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
+      if (!npScrubbing) $scrub.value = (drv.time / dur * 100).toFixed(2);  // 드래그 중엔 안 덮어씀(#6)
+      $scrub.setAttribute('aria-valuetext', `${fmtTime(drv.time)} / ${fmtTime(dur)}`);  // 스크린리더에 시간 맥락
+      $cur.textContent = fmtTime(drv.time);
+      $rem.textContent = '-' + fmtTime(Math.max(0, dur - drv.time));
       // 트랜스크립트 시트 시크 바도 동기화 — 시트가 열려 있을 때만(닫힘 시엔 안 보이는 쓰기 낭비 방지).
       // 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
       if (txScrub && !txScrub.isDragging() && $sheet && $sheet.classList.contains('open')) {
-        const pct = (player.time / dur * 100).toFixed(2);
+        const pct = (drv.time / dur * 100).toFixed(2);
         if ($txSeekFill)   $txSeekFill.style.width = pct + '%';
         if ($txSeekHandle) $txSeekHandle.style.left = pct + '%';
-        if ($txSeekCur)    $txSeekCur.textContent = fmtTime(player.time);
-        if ($txSeekRem)    $txSeekRem.textContent = '-' + fmtTime(Math.max(0, dur - player.time));
+        if ($txSeekCur)    $txSeekCur.textContent = fmtTime(drv.time);
+        if ($txSeekRem)    $txSeekRem.textContent = '-' + fmtTime(Math.max(0, dur - drv.time));
       }
     }
     // 재생/일시정지 아이콘은 상태가 바뀔 때만 innerHTML 재파싱(SVG 파싱+노드 교체가 4Hz로 도는 것 방지).
     // 재생 중 시트를 열면 다음 timeupdate 에서 미니 아이콘이 즉시(≤250ms) 맞춰진다.
-    if (_lastPaused !== player.paused) {
-      _lastPaused = player.paused;
-      $play.innerHTML = player.paused ? SVG_PLAY : SVG_PAUSE;
+    if (_lastPaused !== drv.paused) {
+      _lastPaused = drv.paused;
+      $play.innerHTML = drv.paused ? SVG_PLAY : SVG_PAUSE;
       const $miniPlay = document.getElementById('tx-mini-play');
-      if ($miniPlay) $miniPlay.innerHTML = player.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
-      document.querySelector('.np-wrap')?.classList.toggle('is-paused', player.paused);  // 커버 축소 모션
+      if ($miniPlay) $miniPlay.innerHTML = drv.paused ? SVG_MINI_PLAY : SVG_MINI_PAUSE;
+      document.querySelector('.np-wrap')?.classList.toggle('is-paused', drv.paused);  // 커버 축소 모션
     }
     highlightActiveSegment();
 
@@ -385,11 +449,11 @@ export async function renderEpisode(root, idStr, tStr) {
     // 반복 모드가 켜졌지만 아직 대상 문단이 없을 때(에피소드 맨 앞 t=0, 또는 프리롤 광고 중 켜서
     // confirmLoopBoundary 가 문장을 못 찾은 경우): 본편 문장이 재생되기 시작하면 그 문단을 자동으로
     // 반복 대상으로 확정한다. (이게 없으면 앞부분에서 Smart·Repeat 를 켜도 끝까지 한 번도 반복 안 됨.)
-    if (inRepeatMode() && loopPara < 0 && !player.paused) {
+    if (inRepeatMode() && loopPara < 0 && !drv.paused) {
       const si0 = findActiveSentIdx(txTime());
       if (si0 >= 0 && sentRanges[si0]) setLoopPara(paraEls.indexOf(sentRanges[si0].paraEl));
     }
-    if ((inRepeatMode()) && loopPara >= 0 && !player.paused) {
+    if ((inRepeatMode()) && loopPara >= 0 && !drv.paused) {
       if (Number.isFinite(loopEnd) && txTime() >= loopEnd - 0.06) {
         // 사용자가 반복 문단을 한참 지나쳐 '앞으로' 시크(드래그·+30s·잠금화면)한 경우: 되감지 말고
         // 지금 위치의 문단으로 반복 대상을 옮긴다. 가짜 반복 횟수(addShadowReps)도 기록하지 않는다.
@@ -399,12 +463,12 @@ export async function renderEpisode(root, idStr, tStr) {
         addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
         loopCount++;
         if (loopCount < (loopTarget || 5)) {
-          player.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
+          drv.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
           updateLoopBadge();                          // 카운트다운 갱신(남은 횟수)
         } else {
           loopCount = 0;
           if (setLoopPara(loopPara + 1)) {
-            player.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
+            drv.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
           } else {
             endShadow();                              // 마지막 문단 → 쉐도잉 종료
           }
@@ -430,8 +494,8 @@ export async function renderEpisode(root, idStr, tStr) {
   })) : [];
   adBars.forEach((b) => b.el.addEventListener('click', (e) => {
     e.stopPropagation();
-    player.seek((b.end || 0) + 0.01);
-    player.play();
+    drv.seek((b.end || 0) + 0.01);
+    drv.play();
     // 광고 스킵은 명시적 '본편으로' 동작 → 자동추적을 즉시 재개한다. (이 버튼이 .tx-scroll 안에 있어
     // 탭의 touchstart 가 userScrolledUntil 을 4초 세팅해 본편 따라가기가 멈추던 버그 수정.)
     userScrolledUntil = 0;
@@ -606,7 +670,7 @@ export async function renderEpisode(root, idStr, tStr) {
     // 광고 구간이면 해당 광고 바만 강조하고 본문 하이라이트는 보류한다. 본편 문장 타임스탬프는
     // 그대로라, 광고가 끝나면 findActiveSentIdx 가 다음 본편 문장을 제 시각에 잡아 싱크가 이어진다.
     // 광고 경계는 '정확한 컷'이라 HL_LAG 미적용한 실제 오디오 위치로 판정 → 스킵 직후 즉시 본편 인식.
-    const tAd = player.time - syncOffset;
+    const tAd = drv.time - syncOffset;
     let inAd = null;
     for (const b of adBars) { const on = tAd >= b.start && tAd < b.end; b.el.classList.toggle('active', on); if (on) inAd = b; }
     if (inAd) {
@@ -744,13 +808,13 @@ export async function renderEpisode(root, idStr, tStr) {
   function hideWordPop() {
     if (_wpEl) _wpEl.classList.remove('show');
     document.removeEventListener('pointerdown', _wpOutside, true);
-    if (_lpWasPlaying) { _lpWasPlaying = false; player.play(); }   // 열 때 재생 중이었으면 이어 재생
+    if (_lpWasPlaying) { _lpWasPlaying = false; drv.play(); }   // 열 때 재생 중이었으면 이어 재생
   }
   async function showWordPop(wEl) {
     const word = cleanWord(wEl.textContent);
     if (!word) return;
-    _lpWasPlaying = !player.paused;
-    if (_lpWasPlaying) player.pause();     // 읽는 동안 정지(자동스크롤도 멈춰 팝오버가 안 밀린다)
+    _lpWasPlaying = !drv.paused;
+    if (_lpWasPlaying) drv.pause();     // 읽는 동안 정지(자동스크롤도 멈춰 팝오버가 안 밀린다)
     if (!_wpEl) { _wpEl = document.createElement('div'); _wpEl.className = 'tx-wordpop'; document.body.appendChild(_wpEl); }
     _wpEl.innerHTML =
       `<button class="tx-wordpop-spk" aria-label="Pronounce">🔊</button>` +
@@ -796,8 +860,8 @@ export async function renderEpisode(root, idStr, tStr) {
         // loopCount 를 먼저 리셋해야 setLoopPara 가 그리는 카운트다운 배지가 전체 횟수로 시작한다.
         if (pEl) { loopCount = 0; setLoopPara(paraEls.indexOf(pEl)); }
       }
-      player.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
-      player.play();
+      drv.seek(toAudio(txSec));   // 자막 시각 → 오디오 시각
+      drv.play();
       scrollSentIntoViewIfNeeded(sent || para);   // 이미 보이면 안 움직임(탭 그 자리서 시작)
     });
     // 롱프레스 판정: .w 위에서 pointerdown 후 450ms 안 움직이고 유지 → 사전. 움직이면(스크롤) 취소.
@@ -874,6 +938,9 @@ export async function renderEpisode(root, idStr, tStr) {
     setBgInert(false);
     document.getElementById('np-tx-btn')?.focus?.();   // 포커스를 연 버튼으로 복원
     wakePolicy();   // 일반 화면 복귀 → 30초 무조작 시 화면 꺼짐 허용 카운트 시작
+    // 📺 Video 모드는 시트(영상이 마운트된 곳) 안에서만 의미 있다 — 닫으면 화면 밖에서 계속
+    // 돌지 않게 끄고 오디오로 복귀한다(안 그러면 안 보이는 iframe 이 계속 소리를 내는 상태가 됨).
+    if (videoOn) turnVideoOff();
   }
   escClose = (e) => { if (e.key === 'Escape') closeSheet(); };
   document.addEventListener('keydown', escClose);
@@ -888,21 +955,21 @@ export async function renderEpisode(root, idStr, tStr) {
   // Mini-controls inside sheet
   document.getElementById('tx-mini-play')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    player.toggle();
+    drv.toggle();
   });
   document.getElementById('tx-mini-back')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    player.skip(-15);
+    drv.skip(-15);
   });
   document.getElementById('tx-mini-fwd')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    player.skip(30);
+    drv.skip(30);
   });
   // 시트 시크 바 스와이프(Apple Podcasts 식) — 드래그/탭으로 재생 위치 이동 후 이어 재생.
   if ($txSeekTrack) {
     txScrub = bindScrub($txSeekTrack, {
       onPreview(frac) {
-        const dur = player.duration; if (!dur) return;
+        const dur = drv.duration; if (!dur) return;
         const pct = (frac * 100).toFixed(2);
         if ($txSeekFill)   $txSeekFill.style.width = pct + '%';
         if ($txSeekHandle) $txSeekHandle.style.left = pct + '%';
@@ -911,10 +978,10 @@ export async function renderEpisode(root, idStr, tStr) {
         showControls();   // 스크럽 중 컨트롤이 자동으로 사라지지 않게
       },
       onSeek(frac) {
-        const dur = player.duration;
+        const dur = drv.duration;
         if (!dur) return;
-        player.seek(dur * frac);
-        player.play();
+        drv.seek(dur * frac);
+        drv.play();
         // 재생바 시크 = 명시적 위치 선택 → 자동추적 즉시 재개(탭 시크·광고 스킵과 동일 규약).
         // 이게 없으면: 직전에 컨트롤을 깨우려고 .tx-scroll 을 만진 탭이 4s 보류를 걸고, 그 보류 중
         // 시크 틱이 paraChanged 를 '스크롤 없이' 소진 → 단일 문장 반복 문단에선 idx 가 다시 안 바뀌어
@@ -971,7 +1038,7 @@ export async function renderEpisode(root, idStr, tStr) {
   // 현재 재생 위치가 속한 문단을 반복 대상으로(loop/auto5 진입 시 공용). 즉시 되감지 않고
   // 지금 문단을 끝까지 자연스럽게 읽은 뒤, 끝에서 반복/다음이동(사용자 요청).
   function confirmLoopBoundary() {
-    const si = findActiveSentIdx(player.time - syncOffset);
+    const si = findActiveSentIdx(drv.time - syncOffset);
     if (si >= 0 && sentRanges[si]) {
       setLoopPara(paraEls.indexOf(sentRanges[si].paraEl));
       userScrolledUntil = 0;   // 자동추적 재개
@@ -999,7 +1066,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (inRepeatMode()) confirmLoopBoundary();
     else loopPara = -1;
     updateLoopBadge();   // off 전환 시 배지 제거(반복 모드는 setLoopPara 가 이미 갱신)
-    if (player.paused) player.play();  // 모드 전환 즉시 이어 재생
+    if (drv.paused) drv.play();  // 모드 전환 즉시 이어 재생
   });
 
   // 쉐도잉용 속도 조절 — 메인 화면(np-speed)과 시트(tx-speed)가 같은 speedIdx 를 공유한다. 하나에서
@@ -1009,7 +1076,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function setSpeed(idx) {
     speedIdx = ((idx % SPEEDS.length) + SPEEDS.length) % SPEEDS.length;
     const r = SPEEDS[speedIdx];
-    player.rate(r);
+    drv.rate(r);
     const lbl = r === 1 ? '1×' : r + '×';
     if ($speed) $speed.textContent = lbl;
     if ($txSpeed) { $txSpeed.textContent = lbl; $txSpeed.classList.toggle('on', r !== 1); }
@@ -1128,11 +1195,11 @@ export async function renderEpisode(root, idStr, tStr) {
     if (now - lastPrevTap < 1500) {            // 연속 두 번 → 이전 에피소드
       lastPrevTap = 0;
       if (navPrevId != null) gotoEpisode(navPrevId, openScript);
-      else { player.seek(0); player.play(); }  // 첫 회차면 맨 앞 유지
+      else { drv.seek(0); drv.play(); }  // 첫 회차면 맨 앞 유지
     } else {                                    // 첫 번째 → 현재 회차 맨 처음으로
       lastPrevTap = now;
-      player.seek(0);
-      player.play();
+      drv.seek(0);
+      drv.play();
     }
   }
   function nextPress(openScript) {
@@ -1177,10 +1244,10 @@ export async function renderEpisode(root, idStr, tStr) {
   const onEndModeOutside = (e) => { if ($endMode && !$endMode.contains(e.target)) $endMode.classList.remove('pressed'); };
   document.addEventListener('pointerdown', onEndModeOutside, true);
   // 자연 종료 시 선택대로 처리. Transcript 시트를 연 채 끝났다면 다음 회차도 시트를 연 채 이어간다(⏭ 과 동일).
-  const offEnded = player.on((ev) => {
+  const offEnded = drv.on((ev) => {
     if (ev !== 'ended') return;
     const mode = END_MODES[endIdx].mode;
-    if (mode === 'repeat') { player.seek(0); player.play(); }
+    if (mode === 'repeat') { drv.seek(0); drv.play(); }
     else if (mode === 'next' && navNextId != null) gotoEpisode(navNextId, sheetOpen());
   });
 
@@ -1193,7 +1260,7 @@ export async function renderEpisode(root, idStr, tStr) {
   // getLoop: 쉐도잉 반복 중이면 반복 문단 범위를 marks.js 에 제공 — 마크가 '그 문단'에 묶이고,
   // 문단 재시크 직후 눌러도 직전 문단으로 오기록되지 않는다(저장 문단 불일치 수리 2026-07-22).
   initDriveCapture({
-    player, toast,
+    player: drv, toast,
     getLoop: () => (inRepeatMode() && loopPara >= 0 && Number.isFinite(loopStart) && Number.isFinite(loopEnd))
       ? { start: loopStart, end: loopEnd } : null,
   });
@@ -1215,6 +1282,79 @@ export async function renderEpisode(root, idStr, tStr) {
   // 죽는다(사용자 신고 2026-07-30). FAB 과 같은 처방: 포인터를 캡처해 끝까지 우리가 소유하고,
   // 12px 미만 이동이면 취소(pointercancel)돼도 토글한다. click 은 키보드·보조기술용으로 남긴다.
   bindReliableTap($drive, toggleDrive);
+
+  // === 📺 Video 모드 — wh(백악관 브리핑) 회차의 YouTube 원본을 자막 위에 띄우고, 그 재생위치로
+  // 위 싱크 엔진 전체(drv 를 통해)를 구동한다. 회차 진입마다 항상 OFF 로 시작하고 persist 하지
+  // 않는다 — drive 칩과 같은 원칙(v1.39.3): PWA 는 며칠 백그라운드에 살아남으므로 '진입 시 명시적
+  // 리셋'만이 유일하게 보장되는 상태이고, 차 안에선 절대 영상을 원치 않는다.
+  const $videoToggle = document.getElementById('tx-video-toggle');
+  const $videoWrap = $sheet ? $sheet.querySelector('#tx-video-wrap') : null;
+  const $videoFrame = $sheet ? $sheet.querySelector('#tx-video-frame') : null;
+  let videoOn = false;
+  let videoBusy = false;   // mount()/unmount() 진행 중 재진입(연타) 방지
+
+  async function turnVideoOn() {
+    if (videoOn || videoBusy || !$videoToggle) return;
+    if (navigator.onLine === false) { toast('Video needs a connection'); return; }
+    videoBusy = true;
+    const wasPlaying = !drv.paused;
+    const atTime = drv.time;
+    try {
+      player.pause();   // 오디오 즉시 정지 — Media Session/미니플레이어가 곧바로 'paused' 로
+                         // 반영돼(player.js/media-session.js 기존 배선) 팬텀(무음인데 재생중) 상태를 피한다.
+      if ($videoWrap) $videoWrap.hidden = false;
+      await video.mount($videoFrame, ep.transcript.video_id);
+      video.seek(atTime);          // 오디오에서 보던 지점 그대로 이어서(요구사항: 자리 잃지 않기)
+      video.rate(SPEEDS[speedIdx]);
+      drv.useVideo(video);
+      videoOn = true;
+      $videoToggle.classList.add('on');
+      $videoToggle.setAttribute('aria-pressed', 'true');
+      if (wasPlaying) drv.play();
+    } catch (err) {
+      console.error('[video] mount failed:', err);
+      toast('Could not load video — staying on audio');
+      if ($videoWrap) $videoWrap.hidden = true;
+      video.unmount();
+      if (wasPlaying) player.play();
+    }
+    videoBusy = false;
+  }
+  function turnVideoOff() {
+    if (!videoOn) return;
+    const wasPlaying = !drv.paused;
+    const t = drv.time;
+    drv.useAudio();
+    video.unmount();
+    videoOn = false;
+    if ($videoWrap) $videoWrap.hidden = true;
+    if ($videoToggle) { $videoToggle.classList.remove('on'); $videoToggle.setAttribute('aria-pressed', 'false'); }
+    player.seek(t);            // 영상에서 보던 지점으로 오디오를 이어맞춘다(요구사항: 자리 잃지 않기)
+    if (wasPlaying) player.play();
+  }
+  $videoToggle?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (videoBusy) return;
+    if (videoOn) turnVideoOff(); else turnVideoOn();
+  });
+  // 오프라인이 되면 영상은 더 못 도니(끊긴 화면인 채 멈춤) 자동으로 오디오로 되돌린다 — '고장'이
+  // 아니라 '이용 불가'로 느껴지게 한다(요구사항). 다시 온라인이 돼도 자동으로 켜지 않는다(항상
+  // 사용자가 다시 탭해서 켠다 — 이 모듈의 다른 모든 진입점과 같은 '명시적 재시작' 원칙).
+  const onVideoOffline = () => { if (videoOn) { turnVideoOff(); toast('Offline — back to audio'); } };
+  window.addEventListener('offline', onVideoOffline);
+  // 진행률 저장(aep-progress)은 player.js 가 실제 <audio> 의 timeupdate/pause/ended 로만 돈다
+  // (video 모드에선 그 오디오가 pause() 상태라 안 옴). turnVideoOff() 가 끝날 때 한 번 player.seek()
+  // 로 맞춰주지만, 그것만으론 '영상을 계속 켜둔 채 오래 시청' 동안 이어듣기 위치가 안 갱신된다 →
+  // video 모드 중에도 5초마다 오디오 위치를 조용히 따라오게 해(재생은 안 시킴, seek 만) 그 timeupdate
+  // 가 player.js 의 기존 저장 로직을 그대로 타게 한다(새 저장 경로를 만들지 않음 — 코드 안 포크).
+  let _lastVideoSync = 0;
+  const offVideoSync = drv.on((ev) => {
+    if (ev !== 'timeupdate' || drv.mode !== 'video') return;
+    const now = Date.now();
+    if (now - _lastVideoSync < 5000) return;
+    _lastVideoSync = now;
+    player.seek(drv.time);
+  });
 
   // === 하단 전송 컨트롤 자동 숨김 + 화면 탭하면 다시 올라오기 (사용자 요청) ===
   const $sheetCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
@@ -1238,7 +1378,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const sheetOpen = () => !!($sheet && $sheet.classList.contains('open'));
   async function acquireWake() {
     try {
-      if ('wakeLock' in navigator && !wakeLock && !player.paused) {
+      if ('wakeLock' in navigator && !wakeLock && !drv.paused) {
         wakeLock = await navigator.wakeLock.request('screen');
         wakeLock.addEventListener('release', () => { wakeLock = null; });
       }
@@ -1250,23 +1390,23 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function wakePolicy() {
     clearTimeout(wakeIdleTimer); wakeIdleTimer = 0;
-    if (player.paused) return;
+    if (drv.paused) return;
     acquireWake();
     if (!sheetOpen()) wakeIdleTimer = setTimeout(() => { if (!sheetOpen()) releaseWake(); }, WAKE_IDLE_MS);
   }
-  const offWake = player.on((ev) => {
+  const offWake = drv.on((ev) => {
     if (ev === 'play') wakePolicy();
     else if (ev === 'pause' || ev === 'ended') { clearTimeout(wakeIdleTimer); wakeIdleTimer = 0; releaseWake(); }
   });
   // 브라우저는 탭이 숨겨지면 wake lock 을 자동 해제 → 복귀 시 재평가(시트 열림이면 계속 켜둠)
-  const onVis = () => { if (document.visibilityState === 'visible' && !player.paused) wakePolicy(); };
+  const onVis = () => { if (document.visibilityState === 'visible' && !drv.paused) wakePolicy(); };
   document.addEventListener('visibilitychange', onVis);
   // 아무 터치든 30초 카운트 리셋(놓았던 lock 도 재취득) — 캡처 단계라 stopPropagation 에도 안전.
-  const onAnyPointer = () => { if (!player.paused) wakePolicy(); };
+  const onAnyPointer = () => { if (!drv.paused) wakePolicy(); };
   document.addEventListener('pointerdown', onAnyPointer, { capture: true, passive: true });
-  if (!player.paused) wakePolicy();
+  if (!drv.paused) wakePolicy();
 
-  const off = player.on(refresh);
+  const off = drv.on(refresh);
 
   // === 단어 단위 따라가기 (karaoke) — rAF 로 timeupdate(4Hz)보다 부드럽게 ===
   const wordTimed = Array.from(document.querySelectorAll('.tx-scroll .w'))
@@ -1307,13 +1447,13 @@ export async function renderEpisode(root, idStr, tStr) {
   function rafLoop() { updateWord(); rafId = requestAnimationFrame(rafLoop); }
   // 성능: 단어 카라오케 rAF(60fps)는 '시트가 열려 재생 중'일 때만 돈다. 시트 닫힘 상태(화면 켜고
   // 듣기)에선 카라오케가 안 보이므로 60fps 웨이크업을 통째로 없앤다. openSheet/closeSheet 가 시작/정지.
-  function startRaf() { if (!rafId && !player.paused && $sheet && $sheet.classList.contains('open')) rafId = requestAnimationFrame(rafLoop); }
+  function startRaf() { if (!rafId && !drv.paused && $sheet && $sheet.classList.contains('open')) rafId = requestAnimationFrame(rafLoop); }
   function stopRaf() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
-  const offWord = player.on((ev) => {
+  const offWord = drv.on((ev) => {
     if (ev === 'play') startRaf();
     else if (ev === 'pause' || ev === 'ended') { stopRaf(); updateWord(); }
   });
-  if (!player.paused) startRaf();
+  if (!drv.paused) startRaf();
   updateWord();
 
   // Cleanup on route change — detach player listener, remove sheet, restore body scroll
@@ -1322,6 +1462,13 @@ export async function renderEpisode(root, idStr, tStr) {
     offWord();
     offWake();
     offEnded();
+    // 📺 Video 모드 정리 — 켜져 있었으면 오디오로 되돌리고(이 회차를 벗어나도 미니플레이어가 그
+    // 자리에서 이어지는, 이 앱의 일반적인 '화면을 나가도 재생은 계속' 동작과 동일하게) iframe 을
+    // 완전히 떼어낸다(마운트 상태로 두면 다음 회차 렌더가 재사용하려다 죽은 DOM 을 참조하게 됨).
+    window.removeEventListener('offline', onVideoOffline);
+    offVideoSync();
+    if (videoOn) turnVideoOff();
+    drv.destroy();
     clearTimeout(wakeIdleTimer);
     document.removeEventListener('pointerdown', onAnyPointer, { capture: true });
     document.removeEventListener('pointerdown', onEndModeOutside, true);
@@ -1349,15 +1496,15 @@ export async function renderEpisode(root, idStr, tStr) {
     $sheet?.remove();
   }, { once: true });
 
-  $play.addEventListener('click', () => player.toggle());
-  $back.addEventListener('click', () => player.skip(-15));
-  $fwd.addEventListener('click',  () => player.skip(30));
+  $play.addEventListener('click', () => drv.toggle());
+  $back.addEventListener('click', () => drv.skip(-15));
+  $fwd.addEventListener('click',  () => drv.skip(30));
   // 메인 Now-Playing 화면의 ⏮/⏭ — 트랜스크립트와 동일 동작(시트는 안 열고 자동재생만, openScript=false).
   document.getElementById('np-prev')?.addEventListener('click', () => prevPress(false));
   document.getElementById('np-next')?.addEventListener('click', () => nextPress(false));
   $scrub.addEventListener('input', () => {
-    const dur = player.duration;
-    if (dur) player.seek(dur * parseFloat($scrub.value) / 100);
+    const dur = drv.duration;
+    if (dur) drv.seek(dur * parseFloat($scrub.value) / 100);
   });
   // 드래그 중 표시 — 이 사이엔 refresh 가 $scrub.value 를 안 덮어써 썸이 튀지 않는다(#6).
   ['pointerdown', 'touchstart'].forEach((ev) => $scrub.addEventListener(ev, () => { npScrubbing = true; }, { passive: true }));
@@ -1369,34 +1516,49 @@ export async function renderEpisode(root, idStr, tStr) {
     el.addEventListener('click', () => {
       const start = parseFloat(el.dataset.start || '0');
       if (start > 0) {
-        player.seek(start);
-        player.play();
+        drv.seek(start);
+        drv.play();
       }
     });
   });
 
   // "스크립트로 보기" 진입 플래그(라이브러리/트랜스크립트 ⏮⏭ 에서 설정): 자동재생 + 시트 자동 열기.
   // aep-autoplay: 메인 화면 ⏮/⏭ 로 회차 이동 시 — 시트는 안 열고 자동재생만(메인 화면 유지).
+  // aep-open-video: 라이브러리의 📺 (wh 전용, timeline.js) — 시트를 열고 곧장 Video 모드까지 켠다.
+  // 셋 다 같은 '일회용 세션플래그' 관례(app.js::consumeShortcut 참고) — 여기서 읽고 즉시 지운다.
   let wantScript = false;
   let wantAutoplay = false;
+  let wantVideo = false;
   try {
     const si = sessionStorage.getItem('aep-open-script');
     if (si && parseInt(si, 10) === ep.id) { wantScript = true; sessionStorage.removeItem('aep-open-script'); }
     const sa = sessionStorage.getItem('aep-autoplay');
     if (sa && parseInt(sa, 10) === ep.id) { wantAutoplay = true; sessionStorage.removeItem('aep-autoplay'); }
+    const sv = sessionStorage.getItem('aep-open-video');
+    if (sv && parseInt(sv, 10) === ep.id) { wantVideo = true; sessionStorage.removeItem('aep-open-video'); }
   } catch (e) {}
 
-  // 시작 위치: 딥링크(:t) > 저장된 이어듣기 위치. 자동재생: 딥링크이거나 "스크립트로 보기"일 때.
+  // 시작 위치: 딥링크(:t) > 저장된 이어듣기 위치. 자동재생: 딥링크이거나 "스크립트로 보기"/영상 진입일 때.
   const seekTo = tStr != null ? parseFloat(tStr) : NaN;
   const prog = getProgress(ep.id);
   let startAt = null;
   if (Number.isFinite(seekTo) && seekTo > 0) startAt = seekTo;
   else if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) startAt = prog.t;
-  const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript || wantAutoplay;
-  if (startAt != null || autoPlay) {
-    const go = () => { if (startAt != null) player.seek(startAt); if (autoPlay) player.play(); };
-    if (player.duration) go();
-    else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+  const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript || wantAutoplay || wantVideo;
+  if (wantVideo) {
+    // 오디오를 먼저 재생시켰다가 곧바로 video 로 넘기는 경합(먼저 재생 → 그 순간 시각을 읽어 video
+    // 로 이어붙임)을 피하려고, wantVideo 일 땐 아래 일반 오디오 seek/play 경로를 건너뛰고 시트를
+    // 연 뒤 turnVideoOn() 이 끝난 다음(비디오가 없으면 조용히 no-op → 이 then 은 오디오에 적용되고,
+    // 그대로 '평소처럼 시트만 열림'이 된다 — 요구사항: video_id 없으면 에러 없이 평소대로) 시작
+    // 위치/재생을 적용한다.
+    openSheet();
+    turnVideoOn().then(() => { if (startAt != null) drv.seek(startAt); if (autoPlay) drv.play(); });
+  } else {
+    if (startAt != null || autoPlay) {
+      const go = () => { if (startAt != null) drv.seek(startAt); if (autoPlay) drv.play(); };
+      if (drv.duration) go();
+      else { const offMeta = drv.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+    }
   }
   if (wantScript) openSheet();  // 트랜스크립트 시트 바로 열기
 
@@ -1527,7 +1689,7 @@ function adBarHtml(adStart, resumeStart, isPre) {
   </button>`;
 }
 
-function transcriptSheetHtml(segments, title, sub, perfectSync) {
+function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle) {
   // 광고(DAI) 구간을 감지해 자막에서 감추고 '광고' 바로 대체. 본편 문장의 타임스탬프는 그대로 두므로
   // 광고가 끝나면 다음 본편 문장이 제 시각에 하이라이트된다(싱크 보존). 광고 없으면 전부 표시(폴백).
   const adRanges = detectAdRanges(segments);
@@ -1576,12 +1738,20 @@ function transcriptSheetHtml(segments, title, sub, perfectSync) {
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="Text size">A</button>
             <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
+            ${showVideoToggle ? `
+            <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>
+            ` : ''}
           </div>
           ${(!perfectSync && adRanges.length) ? `
           <div class="tx-drift-note" id="tx-drift-note" role="note">
             <span class="tx-drift-txt">이 회차는 아직 완전 자동싱크 전이에요 — 광고 뒤 자막이 밀리면 문장을 탭해 맞추세요</span>
             <button class="tx-drift-x" id="tx-drift-x" aria-label="닫기">×</button>
           </div>` : ''}
+          ${showVideoToggle ? `
+          <div class="tx-video-wrap" id="tx-video-wrap" hidden>
+            <div class="tx-video-frame" id="tx-video-frame"></div>
+          </div>
+          ` : ''}
           <div class="tx-scroll">
             ${body}
           </div>

@@ -49,6 +49,7 @@ export const highlightTerm = (text, term) => {
 export const fmtTime = (s) => { s = Math.max(0, s | 0); const m = (s / 60) | 0; const ss = s % 60; return m + ':' + String(ss).padStart(2, '0'); };
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
 export const fmtDuration = (s) => Math.round(s / 60) + ' min';
+export const stripTrailingUrl = (t) => String(t ?? '').replace(/\s*(?:[-—–]\s*)?https?:\/\/\S+\s*$/, '').trim();
 export const toast = (msg) => { (window.__toasts = window.__toasts || []).push(msg); };
 export const speak = () => {};
 export const prefetch = () => {};
@@ -91,6 +92,12 @@ function buildTranscript(){
 }
 export async function getEpisode(id){
   const transcript = buildTranscript();
+  // id 4 = wh(백악관 브리핑) 회차 — video_id 있음 → 📺 Video 토글 노출 검증용(실제 iframe 은 절대
+  // 안 띄움, mount() 를 호출하지 않는 한 네트워크 무관 — 과제 요구사항: 하니스에서 실제 YouTube
+  // iframe 을 로드하지 않는다). description 은 실제 wh_fetch.py 산출 형태 그대로(끝에 원본 URL) —
+  // stripTrailingUrl 이 화면에서 그걸 걷어내는지도 같이 검증한다.
+  const isWh = Number(id) === 4;
+  if (isWh) transcript.video_id = 'dQw4w9WgXcQ';
   const vocab = [{ id:1, term:'fill in the gap', kind:'idiom',
     definition:'to provide a missing piece of information (빈칸을 채우다)',
     example_sentence:'fill in the gap', sentence_start_sec:70, sentence_end_sec:75 }];
@@ -100,9 +107,13 @@ export async function getEpisode(id){
   // id 3 = 자막만 있고 audio_url 이 없는 회차(아직 호스팅 전). 여는 버튼 없이 시트만 만들어지던
   // 고아 노드 회귀를 잡는다.
   const audioUrl = Number(id) === 3 ? '' : (Number(id) === 2 ? hostedAudioUrl(2) : 'https://example.com/test.mp3');
-  return { id, title:'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
+  return { id, title: isWh ? '4 - WH Briefing Test' : 'Test Episode', season:2, episode_no:12, pub_date:'2026-01-01',
            duration_sec:1700, audio_url:audioUrl, transcribed_at:'2026-01-01',
-           description:'<p>This is a <b>test</b> episode description.</p>', vocab, transcript };
+           show: isWh ? 'wh' : 'aep', guid: isWh ? 'press-secretary-test-briefing' : undefined,
+           description: isWh
+             ? 'White House press briefing — https://www.whitehouse.gov/videos/press-secretary-test-briefing/'
+             : '<p>This is a <b>test</b> episode description.</p>',
+           vocab, transcript };
 }
 export async function episodeNav(id){ return { prevId:null, nextId:null }; }
 export async function retentionStats() { return { learned:12, strong:4, mature:8, retentionFrac:0.33 }; }
@@ -151,13 +162,17 @@ export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }
 export async function listEpisodes() {
   return [
+    // id 1 = wh(백악관 브리핑) — Continue(진도 있음)·Latest Episode 카드가 둘 다 이 회차를 그려서
+    // 📺 Video 어포던스를 카드 두 곳 모두에서 한 번에 검증할 수 있다. description 끝의 원본 URL 로
+    // stripTrailingUrl 이 라이브러리 카드에서도 적용되는지 같이 검증(요구사항 #2).
     { id:1, season:2, episode_no:12, title:'211 - The Latest One', pub_date:'2026-06-10', duration_sec:1700,
-      description:'<p>A <b>great</b> latest episode.</p>', has_audio:true, transcribed_at:'2026-01-01', vocab_count:12,
+      description:'White House press briefing — https://www.whitehouse.gov/videos/the-latest-one/',
+      has_audio:true, transcribed_at:'2026-01-01', vocab_count:12, show:'wh',
       audio_url:'https://traffic.megaphone.fm/ABC123.mp3' },
     { id:2, season:2, episode_no:11, title:'210 - Another', pub_date:'2026-06-01', duration_sec:1600,
-      description:'<p>desc two</p>', has_audio:true, transcribed_at:'2026-01-01', vocab_count:8,
+      description:'<p>desc two</p>', has_audio:true, transcribed_at:'2026-01-01', vocab_count:8, show:'aep',
       audio_url:'https://traffic.megaphone.fm/DEF456.mp3' },
-    { id:3, season:1, episode_no:9, title:'9 - Older one', pub_date:'2025-12-01', duration_sec:1500,
+    { id:3, season:1, episode_no:9, title:'9 - Older one', pub_date:'2025-12-01', duration_sec:1500, show:'aep',
       description:'', has_audio:true, transcribed_at:null, vocab_count:0,
       audio_url:'https://traffic.megaphone.fm/GHI789.mp3' },
   ];
@@ -677,6 +692,30 @@ def main() -> int:
             noaudio_ok = (sheets_after == sheets_before and noaudio_btn is True and noaudio_note is True)
             print("NO-AUDIO-EP: sheets", sheets_before, "->", sheets_after, " no_tx_btn=", noaudio_btn,
                   " note=", noaudio_note, " ok=", noaudio_ok)
+            # 📺 Video 모드 토글(v1.58.0): ep.transcript.video_id 가 있고 온라인일 때만 시트 툴바에
+            # 뜬다. id 1 = video_id 없음(기존 목 회차) → 없어야 한다. id 4 = wh + video_id 있는 목
+            # 회차 → 있어야 하고, wh 전용 외부 링크 칩(.wh-video-chip, .np-extras 로 옮겨온 "Watch
+            # video")도 같이 뜨며, About 텍스트는 stripTrailingUrl 이 원본 URL 을 걷어낸 뒤라야
+            # 한다(요구사항 #1 위치 이동 + #2 URL 노이즈 제거 회귀). 실제 YouTube iframe 은 절대
+            # 로드하지 않는다(토글을 클릭하지 않음 — 과제 요구사항).
+            # ⚠ __renderEp() 는 hashchange 를 안 태우므로 이전 렌더의 시트(body 직속, position:fixed
+            # 풀스크린)가 안 지워진 채 쌓인다 — 이미 위(#np-tx-btn 최초 클릭)에서 하나 열어 뒀으므로
+            # pg.click() 은 그 스테일 오버레이에 막혀 타임아웃난다. eval_on_selector 로 실제 DOM
+            # click() 을 직접 호출해 포인터-가시성 시뮬레이션을 우회한다(이 파일의 기존 관례,
+            # 예: .study-x/.cont-play 재렌더 후 클릭도 전부 이 패턴).
+            pg.evaluate("window.__renderEp(1)"); time.sleep(0.4)
+            if pg.query_selector("#np-tx-btn"):
+                pg.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.3)
+            video_toggle_hidden = pg.query_selector("#tx-video-toggle") is None
+            pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)
+            wh_chip_shown = bool(pg.query_selector(".wh-video-chip"))
+            about_txt = pg.eval_on_selector("#np-about-text", "el=>el.textContent") if pg.query_selector("#np-about-text") else None
+            about_no_url = bool(about_txt) and "http" not in about_txt and "White House press briefing" in about_txt
+            if pg.query_selector("#np-tx-btn"):
+                pg.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.3)
+            video_toggle_shown = pg.query_selector("#tx-video-toggle") is not None
+            print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
+                  " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -699,7 +738,9 @@ def main() -> int:
                      and isinstance(cv_ok, dict) and cv_ok["cv"] == "hidden"
                      and shadow_ok is True
                      and wordpop_ok is True and drive_ok is True and seek_follow is True
-                     and vk_ok is True)
+                     and vk_ok is True
+                     and video_toggle_hidden is True and video_toggle_shown is True
+                     and wh_chip_shown is True and about_no_url is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
@@ -991,6 +1032,25 @@ def main() -> int:
             if pg.query_selector(".cont-script"):
                 pg.eval_on_selector(".cont-script", "el=>{el.addEventListener('click',e=>e.preventDefault(),{once:true}); el.click();}")
                 tl_script_flag = pg.evaluate("sessionStorage.getItem('aep-open-script')")
+            # 📺 Library 진입점(요구사항 #3, v1.58.0): wh(백악관 브리핑) 회차에만 뜬다. id 1 = wh 라
+            # Continue·Latest Episode 카드가 둘 다 id 1 을 그려 한 번에 같이 검증되고, id 2/3(비-wh)
+            # 행엔 없어야 한다. 클릭은 aep-open-video 플래그(aep-open-script 와 같은 일회용 세션플래그
+            # 관례)만 심는지 확인 — 카드는 preventDefault 로 실제 네비를 막고, 행 버튼(.ep-video)은
+            # 자체적으로 location.hash 를 세팅하지만 이 하니스엔 라우터가 없어 무해하다.
+            tl_video_cont = bool(pg.query_selector(".cont-video"))
+            tl_video_feat = bool(pg.query_selector(".feat-video"))
+            tl_video_row_wh = bool(pg.query_selector('.ep-row[data-id="1"] .ep-video'))
+            tl_video_row_non_wh = (pg.query_selector('.ep-row[data-id="2"] .ep-video') is None
+                                    and pg.query_selector('.ep-row[data-id="3"] .ep-video') is None)
+            tl_video_flag = None
+            if pg.query_selector(".cont-video"):
+                pg.eval_on_selector(".cont-video", "el=>{el.addEventListener('click',e=>e.preventDefault(),{once:true}); el.click();}")
+                tl_video_flag = pg.evaluate("sessionStorage.getItem('aep-open-video')")
+            tl_video_row_flag = None
+            if pg.query_selector('.ep-row[data-id="1"] .ep-video'):
+                pg.evaluate("sessionStorage.removeItem('aep-open-video')")
+                pg.eval_on_selector('.ep-row[data-id="1"] .ep-video', "el=>el.click()")
+                tl_video_row_flag = pg.evaluate("sessionStorage.getItem('aep-open-video')")
             # 에피소드 검색(#15): 'older' 입력 시 1개로 필터
             tl_search = tl_clear_collapsed = None
             if pg.query_selector("#ep-search"):
@@ -1011,12 +1071,17 @@ def main() -> int:
                   " progress=", tl_progress, " done=", tl_done, " search_rows=", tl_search,
                   " hero_h=", tl_hero_h, " compact=", tl_compact, " overflow_px=", tl_overflow,
                   " clear_collapsed=", tl_clear_collapsed, " err=", tl_err)
+            print("TIMELINE-VIDEO: cont=", tl_video_cont, " feat=", tl_video_feat, " row_wh=", tl_video_row_wh,
+                  " row_non_wh_absent=", tl_video_row_non_wh, " cont_flag=", tl_video_flag,
+                  " row_flag=", tl_video_row_flag)
             timeline_ok = (tl_feat == 1 and tl_rows >= 3 and tl_hero == 1 and tl_featplay
                            and tl_cont and tl_contplay is True and tl_script_flag == "1"
                            and tl_seasons >= 2 and tl_first_open is True and tl_has_collapsed is True
                            and tl_progress is True and tl_done is True and tl_compact is True
                            and tl_search == 1 and tl_clear_collapsed is True
-                           and tl_no_pan and not tl_err)
+                           and tl_no_pan and not tl_err
+                           and tl_video_cont and tl_video_feat and tl_video_row_wh
+                           and tl_video_row_non_wh and tl_video_flag == "1" and tl_video_row_flag == "1")
 
             # === Settings 시트 회귀 (v1.41.0) ===
             pg.goto("http://localhost:8123/_harness_settings.html")

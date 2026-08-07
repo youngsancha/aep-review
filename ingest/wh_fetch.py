@@ -96,9 +96,12 @@ def title_from_slug(slug: str) -> str:
 # ─────────────────────────── yt-dlp 추출 ───────────────────────────
 
 def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
-    """whitehouse.gov 브리핑 페이지 → 임베드 오디오를 mp3 로. 반환: {title, duration}.
+    """whitehouse.gov 브리핑 페이지 → 임베드 오디오를 mp3 로. 반환: {title, duration, upload_date, video_id}.
     yt-dlp(generic→youtube 임베드 해석) + ffmpeg. format 140(m4a) 우선, 없으면 bestaudio.
-    메타데이터는 --write-info-json 으로 받아 title/duration 을 안정적으로 읽는다."""
+    메타데이터는 --write-info-json 으로 받아 title/duration/id 를 안정적으로 읽는다.
+    video_id: 실제로 추출된 YouTube 영상 id(예: '8ytbAVpDBXs') — Video 모드(ui/video.js)가 이걸로
+    같은 영상을 iframe 에 띄운다. 트랜스크립트 타임라인은 이 정확한 영상에서 뽑은 오디오로 STT 했으므로
+    오프셋 없이 1:1 매핑된다(ep554 실측: YouTube 1274s vs transcript 1274.26s)."""
     import json
 
     base = out_mp3.with_suffix("")   # yt-dlp 가 .mp3 / .info.json 을 붙임
@@ -127,7 +130,7 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
     finally:
         if cookiefile:
             cookiefile.unlink(missing_ok=True)
-    title, dur, update = "", None, None
+    title, dur, update, vid = "", None, None, None
     info = base.with_suffix(".info.json")
     if info.exists():
         try:
@@ -138,10 +141,16 @@ def extract_audio(page_url: str, out_mp3: Path) -> dict[str, Any]:
             ud = d.get("upload_date") or d.get("release_date")   # yt-dlp: YYYYMMDD
             if ud and len(str(ud)) == 8:
                 update = f"{str(ud)[:4]}-{str(ud)[4:6]}-{str(ud)[6:8]}"
+            # ⚠ extract_audio 는 whitehouse.gov(YouTube 임베드)·C-SPAN(자체 m3u8) 공용이다. video_id 는
+            # Video 모드(ui/video.js)가 곧장 YouTube iframe 에 넣을 값이라, 실제로 youtube 익스트랙터로
+            # 풀린 경우에만 채운다 — 아니면(C-SPAN 등) None 으로 둬 엉뚱한 id 를 iframe 에 물리지 않는다.
+            extractor = str(d.get("extractor") or d.get("extractor_key") or "").lower()
+            if "youtube" in extractor:
+                vid = (d.get("id") or "").strip() or None
         except (ValueError, OSError):
             pass
         info.unlink(missing_ok=True)
-    return {"title": title, "duration": dur, "upload_date": update}
+    return {"title": title, "duration": dur, "upload_date": update, "video_id": vid}
 
 
 # ─────────────────────────── 신규 발견 ───────────────────────────
@@ -228,7 +237,10 @@ def ingest_page(page_url: str, guid: str, pub_date: str | None, title_fallback: 
     out: dict[str, Any] = {"guid": guid, "id": ep_id, "title": title}
     if do_stt:
         # from_r2: 방금 올린 R2 오디오를 STT → 자막≡오디오. remap=False(신규라 재매핑 대상 없음).
-        r = retranscribe_one({"id": ep_id}, remap=False, host_r2=False, from_r2=True)
+        # video_id: r2_audio 와 같은 방식으로 transcript JSON 에 함께 실린다(Part A) — Video 모드가
+        # DB 마이그레이션 없이 곧바로 쓸 수 있게(앱은 이미 이 파일을 받고 있음).
+        r = retranscribe_one({"id": ep_id}, remap=False, host_r2=False, from_r2=True,
+                             video_id=meta.get("video_id"))
         out["segments"] = r.get("segments")
     return out
 
