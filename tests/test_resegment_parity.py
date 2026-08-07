@@ -45,7 +45,12 @@ def js_output() -> dict:
         pytest.skip("node 미설치 — JS 파리티 비교 skip")
     if not HARNESS.exists():
         pytest.skip("resegment_parity.mjs 없음")
-    ids = [i for i in SAMPLE_IDS if (TX_DIR / f"{i}.json").exists()] or _disk_ids()[:8]
+    # ⚠ 예전엔 _disk_ids()[:8] 이었다. glob 순서가 사실상 id 오름차순이라 '가장 오래된 8개'만
+    # 비교했고, 새로 받은 회차(백악관 브리핑처럼 분절 분기가 다른 것)는 픽스처를 넣어도 영영
+    # 비교 대상에 못 들어갔다 — 2026-08-07 에 U.S./Ms. 약어 분절 버그를 고치면서 드러났다.
+    # 양끝(오래된 것 + 최신)을 함께 잡는다.
+    disk = sorted(_disk_ids(), key=int)
+    ids = [i for i in SAMPLE_IDS if (TX_DIR / f"{i}.json").exists()] or (disk[:5] + disk[-5:])
     if not ids:
         pytest.skip("data/transcripts 픽스처 없음")
     proc = subprocess.run(

@@ -2116,6 +2116,12 @@ function resegment(segments) {
   // 광고/낭독처럼 구두점이 거의 없는 run-on 도 적절한 길이로 자른다:
   //  ① 종결 구두점(.?!…)  ② 문장 사이 큰 쉼(gap)  ③ 긴 절의 콤마  ④ 길이 하드캡.
   const ENDS = /[.!?…]["')\]]?$/;
+  // 약어는 마침표로 끝나지만 '문장'을 끝내지 않는다. 이걸 종결로 보면 문장이 한복판에서 갈리고
+  // 그 뒤가 앞 문장의 꼬리로 시작한다 — 실측(554/555)에서 "...voting in U.S." / "elections. And
+  // she says…", "...from U.S." / "roads. Does the White House…", "Ms. Sanders I don't believe…"
+  // 가 전부 이 경우였다. ① 이니셜/약어 형태(U.S., a.m., J.), ② 흔한 경칭·단위 약어.
+  const ABBR = /^(?:[A-Za-z]\.)+$|^(?:mr|mrs|ms|dr|prof|sen|rep|gov|st|jr|sr|vs|etc|inc|ltd|co|no|dept|approx)\.$/i;
+  const endsSent = (t) => ENDS.test(t) && !ABBR.test((t || '').replace(/^[^A-Za-z]+/, ''));
   const COMMA = /[,;:]["')\]]?$/;
   // 등위·종속 접속사 앞은 영어 절(clause)이 자연스럽게 갈리는 지점. 절이 이미 길면 '그 앞'에서
   // 끊어 "…is so | alive", "…layer of | yellow" 같은 구(句) 중간 하드캡 절단을 막는다.
@@ -2164,7 +2170,7 @@ function resegment(segments) {
     const txt = (w.word || '').trim();
     const n = cur.words.length;
     const dur = cur.end - cur.start;
-    if ((ENDS.test(txt) && n >= 2) ||           // ① 종결 구두점
+    if ((endsSent(txt) && n >= 2) ||            // ① 종결 구두점(약어 제외 — ABBR 주석 참조)
         (COMMA.test(txt) && n >= 7) ||          // ③ 긴 절은 콤마에서(9→7: 더 짧게)
         dur > 9 || n >= 14) {                   // ④ 하드캡 — 18w/12s→14w/9s: 한 문장이 4줄↑로
                                                 //    번역카드와 겹쳐 안 보이던 문제 방지(전체적으로 짧게)
@@ -2172,6 +2178,31 @@ function resegment(segments) {
     }
   }
   if (cur) { cur.text = cur.words.map((x) => x.word).join('').trim(); out.push(cur); }
+
+  // ⑤ 후처리 — '앞 문장의 꼬리'가 다음 문장 머리에 남은 것을 되돌린다.
+  // 화자가 강조로 한 박자 쉬고 마지막 단어를 말하는 일이 흔하다("...to thrive like never ▁ before.").
+  // 그때 ② gap 규칙이 그 앞에서 문장을 닫아버리고, 남은 'before.' 는 새 문장의 첫 단어가 되는데
+  // ① ENDS 규칙은 n>=2 라야 닫으므로(약어 "Mr." 하나로 문장이 끊기는 걸 막는 가드) 그 한 단어는
+  // 닫히지도 못한 채 '다음' 문장을 통째로 끌어안는다 → "before. Just this week, the National
+  // Association of Manufacturers, ..." 같은 문장이 나온다. 실측(554/555/556 세 회차, 2065문장):
+  // 3.8% 가 이 꼴이었다.
+  // 이게 단순 표시 문제가 아닌 이유: 쉐도잉 반복은 '문단' 단위로 되감으므로, 문단이 앞 문장의
+  // 꼬리에서 시작하면 반복할 때마다 문장 중간에서 음성이 시작된다 → 사용자에겐 "싱크가 안 맞는"
+  // 것으로 보인다(신고 2026-08-07). ⚠ 실제 타임스탬프는 정확했다 — 같은 구간을 medium.en 으로
+  // 다시 인식해 단어 단위로 대조한 결과 중앙값 -0.01s(최대 0.29s)였다. 어긋난 건 경계다.
+  // 앞 문장이 이미 종결 구두점으로 끝났으면 그 꼬리는 진짜 새 발화("Yes." "Thank you.")이므로 둔다.
+  for (let i = out.length - 1; i >= 1; i--) {
+    const s = out[i], p = out[i - 1];
+    if (s.words.length < 2 || !p.words.length) continue;   // 한 단어짜리 문장 자체는 건드리지 않는다
+    if (!endsSent((s.words[0].word || '').trim())) continue;
+    if (endsSent((p.text || '').trim())) continue;
+    const w0 = s.words.shift();
+    p.words.push(w0);
+    if (Number.isFinite(w0.end)) p.end = w0.end;
+    if (Number.isFinite(s.words[0].start)) s.start = s.words[0].start;
+    p.text = p.words.map((x) => x.word).join('').trim();
+    s.text = s.words.map((x) => x.word).join('').trim();
+  }
   return out;
 }
 

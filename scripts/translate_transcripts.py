@@ -49,6 +49,15 @@ class ClaudeUnavailable(RuntimeError):
 
 # ─────────────────────────── resegment (episode.js 포팅, 키 정합 필수) ───────────────────────────
 _ENDS = re.compile(r'[.!?…]["\')\]]?$')
+# 약어는 마침표로 끝나지만 문장을 끝내지 않는다 — episode.js 의 ABBR/endsSent 와 1:1 대응.
+# (근거·실측 사례는 episode.js 주석 참조. tests/test_resegment_parity.py 가 둘을 함께 고정한다.)
+_ABBR = re.compile(r'^(?:[A-Za-z]\.)+$|^(?:mr|mrs|ms|dr|prof|sen|rep|gov|st|jr|sr|vs|etc|inc|ltd|co|no|dept|approx)\.$', re.I)
+_LEAD_NONALPHA = re.compile(r'^[^A-Za-z]+')
+
+
+def _ends_sent(t: str) -> bool:
+    t = (t or "").strip()
+    return bool(_ENDS.search(t)) and not _ABBR.match(_LEAD_NONALPHA.sub("", t))
 _COMMA = re.compile(r'[,;:]["\')\]]?$')
 _CONJ = re.compile(r'^(and|but|so|or|because|when|while|if|since|though|although|unless)$', re.I)
 # The/My 는 episode.js 와 동일하게 실측(53 회차, 470-522) 기반으로 추가 — 그 근거는
@@ -81,7 +90,9 @@ def resegment(segments) -> list[str]:
     if not words:
         return [(s.get("text") or "").strip() for s in (segments or [])]
 
-    out: list[str] = []
+    # episode.js 와 같이 '문장 객체' 로 모았다가 마지막에 텍스트만 뽑는다 — 아래 ⑤ 후처리(꼬리
+    # 되돌리기)가 단어 목록을 봐야 하기 때문이다. 반환 계약(list[str])은 그대로다.
+    out: list[dict] = []
     cur = None
     prev_end = None
 
@@ -92,7 +103,7 @@ def resegment(segments) -> list[str]:
         # groupIntoParagraphs 쪽(endsSentence) 양쪽에서 문장이 안 끝난 것처럼 보인다.
         if force_period and cur["text"] and not _ENDS.search(cur["text"]):
             cur["text"] += "."
-        out.append(cur["text"])
+        out.append(cur)
         cur = None
 
     for w in words:
@@ -118,12 +129,35 @@ def resegment(segments) -> list[str]:
         txt = (w.get("word") or "").strip()
         n = len(cur["words"])
         dur = (cur["end"] - cur["start"]) if (_num(cur.get("end")) is not None and _num(cur.get("start")) is not None) else 0
-        if (_ENDS.search(txt) and n >= 2) or (_COMMA.search(txt) and n >= 7) or dur > 9 or n >= 14:
+        if (_ends_sent(txt) and n >= 2) or (_COMMA.search(txt) and n >= 7) or dur > 9 or n >= 14:
             close()
     if cur:
         cur["text"] = "".join(x["word"] for x in cur["words"]).strip()
-        out.append(cur["text"])
-    return out
+        out.append(cur)
+
+    # ⑤ 후처리 — '앞 문장의 꼬리' 되돌리기. episode.js resegment 의 같은 블록과 1:1 대응이며
+    # tests/test_resegment_parity.py 가 두 구현을 함께 고정한다. 상세 근거는 episode.js 주석 참조
+    # (요지: 강조 쉼 때문에 문장의 마지막 단어 앞에서 갈리면, ENDS 의 n>=2 가드 때문에 그 한 단어가
+    #  닫히지 못하고 다음 문장에 붙는다 — 실측 3개 회차 2065문장 중 3.8%).
+    for i in range(len(out) - 1, 0, -1):
+        sc, pc = out[i], out[i - 1]
+        if len(sc["words"]) < 2 or not pc["words"]:
+            continue
+        if not _ends_sent((sc["words"][0].get("word") or "")):
+            continue
+        if _ends_sent(pc.get("text") or ""):
+            continue
+        w0 = sc["words"].pop(0)
+        pc["words"].append(w0)
+        we0 = _num(w0.get("end"))
+        if we0 is not None:
+            pc["end"] = we0
+        ws0 = _num(sc["words"][0].get("start"))
+        if ws0 is not None:
+            sc["start"] = ws0
+        pc["text"] = "".join(x["word"] for x in pc["words"]).strip()
+        sc["text"] = "".join(x["word"] for x in sc["words"]).strip()
+    return [o["text"] for o in out]
 
 
 def trkey(text: str) -> str:

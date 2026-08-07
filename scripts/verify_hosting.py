@@ -88,6 +88,15 @@ _LEAD = re.compile(r"^[^A-Za-z']+")
 STARTER = re.compile(r"^(But|And|So|Or|Now|Then|Well|Yeah|Yes|No|Okay|OK|Here|There|This|That|These|Those|He|She|It|They|We|You|Who|If|When|Where|What|Why|How|Because|Although|Though|While|Since|Maybe|Actually|Finally|However|Meanwhile|Anyway|Plus|Also|The|My)$")
 
 
+# 약어는 마침표로 끝나지만 문장을 끝내지 않는다 — episode.js 의 ABBR/endsSent 와 1:1 대응.
+_ABBR = re.compile(r"^(?:[A-Za-z]\.)+$|^(?:mr|mrs|ms|dr|prof|sen|rep|gov|st|jr|sr|vs|etc|inc|ltd|co|no|dept|approx)\.$", re.I)
+
+
+def _ends_sent(t):
+    t = (t or "").strip()
+    return bool(ENDS.search(t)) and not _ABBR.match(_LEAD.sub("", t))
+
+
 def resegment(segments):
     # episode.js 의 resegment 와 동일 기준(접속사 앞 분할 + 하드캡 백스톱) — 표시와 검증 일치.
     words = []
@@ -121,10 +130,26 @@ def resegment(segments):
         txt = (w["word"] or "").strip()
         n = len(cur["words"])
         dur = (cur["end"] or 0) - (cur["start"] or 0)
-        if (ENDS.search(txt) and n >= 2) or (COMMA.search(txt) and n >= 7) or dur > 9 or n >= 14:
+        if (_ends_sent(txt) and n >= 2) or (COMMA.search(txt) and n >= 7) or dur > 9 or n >= 14:
             out.append(cur); cur = None
     if cur:
         out.append(cur)
+    # ⑤ 앞 문장의 꼬리 되돌리기 — episode.js resegment 의 같은 후처리(근거는 그쪽 주석).
+    # 이 파일은 .text 를 안 만들지만 seg_quality 가 '경계'를 세므로 여기서도 같이 옮겨야
+    # 통계가 실제 앱과 맞는다.
+    for i in range(len(out) - 1, 0, -1):
+        sc, pc = out[i], out[i - 1]
+        if len(sc["words"]) < 2 or not pc["words"]:
+            continue
+        if not _ends_sent((sc["words"][0].get("word") or "")):
+            continue
+        if not _ends_sent("".join(x["word"] for x in pc["words"])):
+            w0 = sc["words"].pop(0)
+            pc["words"].append(w0)
+            if isinstance(w0.get("end"), (int, float)):
+                pc["end"] = w0["end"]
+            if isinstance(sc["words"][0].get("start"), (int, float)):
+                sc["start"] = sc["words"][0]["start"]
     return out
 
 
