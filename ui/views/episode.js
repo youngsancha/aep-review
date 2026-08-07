@@ -878,9 +878,19 @@ export async function renderEpisode(root, idStr, tStr) {
         const nRect = $notes.getBoundingClientRect();
         safeBottom = (nRect.top < cont.bottom) ? Math.max(0, nRect.top - cont.top) : h;
       }
+      // ⬆ 현재 문장을 '화면 중간 위쪽'에 유지한다(사용자 요청 2026-08-07: "화면 바닥에 닿기 전에
+      // 중간 위쪽에서 스크롤"). 예전 트리거는 '패널에 가려지기 직전'(sRelBot > safeBottom - 10)이라
+      // 긴 문단에서 문장이 계속 아래로 밀려 내려가다 바닥에서야 한 번에 끌어올려졌다 — 신고 스크린샷의
+      // 활성 문장이 정확히 KR 패널 바로 위 최하단에 있었다. 이제 사용 가능한 높이의 절반을 넘어가면
+      // 그 시점에 올린다(올리는 위치는 예전과 같은 상단 ≈22%).
+      // usable = 실제로 안 가려진 높이. 패널이 꺼져 있으면 h 와 같으므로 오디오 모드의 배치 계산은
+      // 예전과 수식이 동일하고, 바뀌는 건 '언제' 올리느냐뿐이다.
+      const usable = notesOn ? safeBottom : h;
+      const tooLow = sRelBot > usable * 0.5;
+      const tooHigh = sRelTop < h * 0.04;
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
-        target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
+        target = pTop - Math.max(8, usable * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
         // ⚠ 실측(2026-08-07 회귀검증)으로 드러난 두 번째 자리: 이 문단-시작 앵커는 '문단 맨 위'만
         // 10% 선에 놓을 뿐 활성 문장 자체나 패널을 전혀 모른다 — 문단의 첫 문장이라도 패널이 크거나
         // (긴 KR 번역, 영상 모드처럼 h 자체가 작을 때) 문단이 한 화면보다 길면 그 시점의 활성 문장이
@@ -892,11 +902,20 @@ export async function renderEpisode(root, idStr, tStr) {
           const minSafeTarget = sentAbsBottom - (safeBottom - 10);
           if (minSafeTarget > target) target = minSafeTarget;
         }
-      } else if ((!inLoopPara || sentOffscreen) && (sRelBot > safeBottom - 10 || sRelTop < h * 0.04)) {
-        // 패널이 켜져 있으면 실측한 안전선(safeBottom) 기준 ≈22% 지점까지, 꺼져 있으면 예전 그대로
-        // h 기준 ≈22% 지점까지 문장 상단을 끌어올린다 — 영상 모드처럼 safeBottom 이 작아지면 이
+      } else if (sentOffscreen || tooLow || (!inLoopPara && tooHigh)) {
+        // 문장 상단을 usable 기준 ≈22% 지점으로 끌어올린다 — 영상 모드처럼 usable 이 작아지면 이
         // 여백도 함께 줄어들어 항상 문장 전체가 패널 위 안전지대 안에 들어온다.
-        target = sRelTop + scroll.scrollTop - Math.max(8, (notesOn ? safeBottom : h) * 0.22);
+        // ⚠ inLoopPara 게이트는 tooHigh 에만 남긴다. 원래 이 게이트는 '되감기 직후 화면이 아래로
+        // 흔들렸다 되돌아오던' 문제(되감으면 문장이 화면 위쪽으로 가 tooHigh 가 걸린다)를 막으려고
+        // 넣은 것이라, 그 방향만 계속 막으면 된다. 반대로 tooLow(문장이 아래로 내려가 읽기 불편)는
+        // 반복 중에도 고쳐야 한다 — 예전엔 반복 중 이것까지 막혀 문장이 바닥에 눌러앉았다.
+        // ⚠ 문장이 usable 보다 길면 22% 여백을 줄 수 없다 — 여백을 고집하면 문장 끝이 반드시
+        // 패널에 걸린다(실측: 문장 높이 129px vs usable 138px → 어떤 스크롤 값으로도 해결 불가.
+        // 이게 KR-PANEL-OVERLAP 의 t=11 이 다섯 번의 앵커링 수정에도 1px 도 안 움직인 이유였다).
+        // 그때는 문장의 '시작'을 보여주는 게 맞다 — 읽기는 위에서 시작하니까.
+        const margin = Math.max(8, usable * 0.22);
+        const sentH = sRelBot - sRelTop;
+        target = sRelTop + scroll.scrollTop - ((sentH + margin > usable) ? 8 : margin);
       }
       if (window.__DIAG_KR) {
         (window.__KRDIAG = window.__KRDIAG || []).push({

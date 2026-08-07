@@ -1183,7 +1183,11 @@ def main() -> int:
             for _t in (11, 23, 36, 49, 61, 69, 83, 96):   # FIX_SENTS 각 문장 진입 직후 시각
                 pg.evaluate(f"window.__video.seek({_t})"); time.sleep(0.2); _settle_scroll()
                 r = pg.evaluate("""() => {
-                  const sheet = document.querySelector('.tx-sheet.open');
+                  // ⚠ 이 구간엔 열린 시트가 둘일 수 있다(위 TX-TOOLBAR 주석 참고). 스코프 없이
+                  // 첫 번째 .tx-sheet.open 을 집으면 '옛 시트'를 재게 된다 — 그러면 무엇을 고쳐도
+                  // 수치가 안 변한다. 측정도 조작(seek)과 같은 시트여야 한다.
+                  const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet')
+                             || document.querySelector('.tx-sheet.open');
                   const active = sheet ? sheet.querySelector('.tx-sent.active') : null;
                   const notes = sheet ? sheet.querySelector('.tx-notes') : null;
                   if (!active || !notes) return null;
@@ -1192,7 +1196,9 @@ def main() -> int:
                   const a = active.getBoundingClientRect(), n = notes.getBoundingClientRect();
                   return { notesOn, t: %d, activeBottom: Math.round(a.bottom), notesTop: Math.round(n.top),
                            aboveNotes: a.bottom <= n.top + 0.5,
-                           text: active.textContent.trim().slice(0, 40) };
+                           text: active.textContent.trim().slice(0, 40),
+                           sheets: document.querySelectorAll('.tx-sheet.open').length,
+                           scoped: sheet === document.querySelector('.tx-sheet.open') };
                 }""" % _t)
                 kr_checks.append(r)
             _shot(pg, "kr-panel-overlap-video-390")
