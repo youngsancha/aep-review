@@ -1122,15 +1122,25 @@ body.on-episode {
 .tx-toolbar {
   padding: 10px 5px;
   border-bottom: 0.5px solid var(--separator-thin);
-  display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+  /* 한 줄을 '구조적으로' 보장한다. 예전엔 wrap 이라 칩 폭 합계가 화면폭을 1px 만 넘어도 두 줄이
+     됐고, 그 경계를 픽셀 예산으로 맞추는 건 불가능했다 — 같은 CSS 에서 _pwtest 하니스는 칩을
+     실기기보다 49px 넓게 잰다(폰트 스택이 다르다. 2026-08-07 에 두 번 측정해 일관된 값). 하니스에
+     맞추면 실기기가 헐거워지고, 실기기에 맞추면 게이트가 두 줄로 실패한다.
+     nowrap + overflow-x 면 어느 기기 폰트에서도 줄바꿈이 일어나지 않고, 정말로 넘칠 때만 가로로
+     밀린다 — 사용자가 원한 불변식("항상 한 줄")이 CSS 로 보장된다. 스크롤바는 숨긴다(칩 8개가
+     화면에 다 들어가는 게 정상이고, 막대가 보이면 잘린 것처럼 읽힌다). */
+  display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 3px; align-items: center;
+  scrollbar-width: none; -ms-overflow-style: none;
   background: var(--surface);
 }
+.tx-toolbar::-webkit-scrollbar { display: none; }
+.tx-toolbar > .tx-toggle { flex: 0 0 auto; }
 .tx-toggle {
   position: relative;
   background: var(--surface-2); border: 0;
   color: var(--tint);
   font-size: 12.5px; font-weight: 700;
-  cursor: pointer; padding: 8px 8px;
+  cursor: pointer; padding: 8px 10px;
   border-radius: 999px;
   white-space: nowrap;
   letter-spacing: -0.01em;
@@ -1142,7 +1152,7 @@ body.on-episode {
 .tx-toggle:hover { background: var(--tint-soft); }
 .tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
-.tx-fs-btn { min-width: 28px; font-variant-numeric: tabular-nums; }
+.tx-fs-btn { min-width: 31px; font-variant-numeric: tabular-nums; }
 
 /* 📺 Video 모드 iframe — 시트 상단에 '고정'되고 트랜스크립트(.tx-scroll)가 그 아래 남은 높이를
    전부 채워 자체 스크롤한다. ui/views/episode.js 가 hidden 속성으로 켜고/끈다(off 일 땐 공간을
@@ -2187,7 +2197,7 @@ a { color: var(--tint); }
 /* 라벨이 Shadow→Repeat→5× Auto 로 바뀌어도 버튼 너비가 변하지 않게 고정(가장 넓은 라벨 기준).
    speed-toggle 와 동일한 방식 — 폭 고정 + 가운데 정렬. */
 .tx-loop-toggle { white-space: nowrap; min-width: 72px; text-align: center; }
-.tx-speed-toggle { min-width: 41px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.tx-speed-toggle { min-width: 45px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .tx-speed-toggle.on { background: var(--tint); color: #fff; }
 .tx-speed-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 .tx-loop-toggle.on,
@@ -2286,12 +2296,12 @@ a { color: var(--tint); }
 /* 번역 토글(KR) — 유일하게 자체 폭 가드가 없던 텍스트 칩이라 공용 .tx-toggle 압축(9px)보다 살짝
    넉넉한 전용 padding 을 준다. 📺(tx-video-btn, 아래) 를 그만큼 더 좁혀 예산을 대신 낸다 — 이모지
    1글자라 KR 두 글자보다 여유가 있다. */
-.tx-trans-toggle { padding: 8px 10px; }
+.tx-trans-toggle { padding: 8px 12px; }
 .tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 
 /* 한국어 번역 크기 칩('가') — 탭마다 작게→보통→크게→아주크게 순환. 기본(1.0) 아닐 때만 on 강조 */
-.tx-ko-size-btn { min-width: 27px; }
+.tx-ko-size-btn { min-width: 30px; }
 .tx-ko-size-btn.on { background: var(--tint); color: #fff; }
 .tx-ko-size-btn.on:hover { background: var(--tint-hover); color: #fff; }
 
@@ -2528,7 +2538,7 @@ a { color: var(--tint); }
 /* 주행 중 탭 신뢰성: 이 칩 위에서 시작한 터치는 브라우저가 스크롤/제스처로 가져가지 못하게 한다.
    FAB(#drive-fab)과 같은 처방 — 차량 진동으로 손가락이 밀리면 click 이 아예 발화하지 않는다
    (사용자 보고 2026-07-22 FAB, 2026-07-30 이 칩). 켜는 버튼이 안 눌리면 FAB 도 안 뜬다. */
-.tx-drive-btn { padding: 7px 8px; touch-action: none; }
+.tx-drive-btn { padding: 7px 10px; touch-action: none; }
 /* 히트 영역 확대(시각 크기 유지) — 조준 없이 누르는 버튼이라 좌우로도 넓힌다. */
 .tx-drive-btn::after { left: -8px; right: -8px; height: 48px; }
 .tx-drive-btn svg { display: block; }
@@ -2537,7 +2547,7 @@ a { color: var(--tint); }
 
 /* 📺 Video 모드 칩 — tx-drive-btn 과 같은 '모드 on' 채움 스타일(같은 툴바, 같은 자리). 이모지
    1글자라 좁은 padding 으로도 여유(KR 이 쓰는 여분 예산을 여기서 댄다, 위 tx-trans-toggle 참고). */
-.tx-video-btn { padding: 7px 8px; }
+.tx-video-btn { padding: 7px 10px; }
 .tx-video-btn.on, .tx-video-btn[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-video-btn.on:hover, .tx-video-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
 
@@ -2546,7 +2556,7 @@ a { color: var(--tint); }
    오른쪽 끝에 따로 붙이고(margin-left:auto) 조금 크게 둔다. 툴바가 한 줄에 다 들어가고도 폭이
    남는 실기기(실측 360px 중 99px 여유)에서 칩들이 왼쪽에 몰려 보이던 것도 이걸로 해결된다 —
    남는 폭이 '의도한 여백'이 된다(사용자 요청 2026-08-07). */
-.tx-fs-toggle { padding: 8px 12px; margin-left: auto; }
+.tx-fs-toggle { padding: 8px 14px; margin-left: auto; }
 .tx-fs-toggle svg { width: 17px; height: 17px; }
 .tx-fs-toggle svg { display: block; }
 .tx-fs-toggle.on, .tx-fs-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }

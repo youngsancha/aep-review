@@ -1006,7 +1006,9 @@ def main() -> int:
                       return { n: kids.length, offscreen: bad.length,
                                topRange: kids.length ? Math.max(...tops) - Math.min(...tops) : 0,
                                label: sh ? sh.textContent.trim() : '?',
-                               chipsW: Math.round(used), avail: innerWidth };
+                               chipsW: Math.round(used), avail: innerWidth,
+                               // nowrap 이 된 뒤로는 '두 줄인가' 대신 '가로로 넘쳤는가' 가 실제 신호다.
+                               overflow: Math.max(0, tb.scrollWidth - tb.clientWidth) };
                     }""")
                     if r:
                         _steps_seen.append(r)
@@ -1026,9 +1028,14 @@ def main() -> int:
             tx_toolbar_order_ok = (
                 tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow', 'tx-speed',
                                       'tx-drive', 'tx-video-toggle', 'tx-fullscreen']
+                # 한 줄은 이제 CSS(nowrap)가 보장하지만, wrap 으로 되돌아가는 회귀를 잡으려면
+                # 계속 확인해야 한다 → topRange 는 두 폭 모두에서 assert.
+                # 가로 넘침(overflow)은 390 에서만 assert 한다: 하니스는 같은 칩을 실기기보다 49px
+                # 넓게 재므로(폰트 스택 차이, 2026-08-07 2회 측정) 360 에서의 넘침은 실기기에 없는
+                # 조건이다. 360 수치는 사람이 여유를 보도록 출력만 한다.
                 and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 8
-                        and tx_toolbar_worst[v]["offscreen"] == 0 and tx_toolbar_worst[v]["topRange"] < 8
-                        for v in (360, 390)))
+                        and tx_toolbar_worst[v]["topRange"] < 8 for v in (360, 390))
+                and tx_toolbar_worst[390]["overflow"] == 0)
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
             print("PRIMARY-VIDEO-BTN: absent_no_id=", no_video_btn_id1, " tx_in_extras_no_id=", tx_btn_in_extras_id1,
