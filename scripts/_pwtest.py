@@ -193,6 +193,36 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="module">
   import { renderEpisode, detectContentStart, detectAdRanges } from '/views/episode.js';
   window.__ready=false;
+  // 📺 Library 진입 체인(라이브러리 카드/행의 📺 → aep-open-video 플래그 → hashchange → 회차 진입 즉시
+  // Video 모드 on) 재현용 — 실 app.js::route() 는 이 하니스에서 통째로 목이라 없다. 그 대신 동일한
+  // 계약(해시 매칭 → renderEpisode 호출, 절대 직접 호출 안 함 → 이중 렌더 방지)만 미러링하는 초소형
+  // 라우터를 hashchange 리스너로 하나 둔다 — 최초 렌더(아래, id 1) '이전에' 등록해 실제 app.js 처럼
+  // '리스너가 먼저 있고 그 뒤에 라우팅이 일어나는' 순서를 그대로 지킨다.
+  window.addEventListener('hashchange', () => {
+    const m = location.hash.match(/^#\\/episode\\/(\\d+)/);
+    if (m) renderEpisode(document.getElementById('app'), m[1]);
+  });
+  // 실제 YouTube IFrame API 스텁 — video.js::loadApi() 는 window.YT.Player 가 이미 있으면 <script>
+  // 주입을 건너뛰므로 네트워크 없이 mount() 가 실제 흐름(onReady→attach→resolve)을 그대로 탄다.
+  // tests/video_adapter.test.mjs 의 fakeYt() 와 같은 표면(playVideo/pauseVideo/seekTo/getCurrentTime/
+  // getDuration/setPlaybackRate/destroy)만 흉내내고 실 iframe/네트워크는 절대 안 만든다.
+  window.__ytCalls = [];
+  window.__ytMounts = [];
+  window.YT = {
+    Player: function (el, opts) {
+      const self = { _t: 0 };
+      window.__ytMounts.push({ el, videoId: opts.videoId, playerVars: opts.playerVars });
+      self.playVideo = () => { window.__ytCalls.push(['play']); };
+      self.pauseVideo = () => { window.__ytCalls.push(['pause']); };
+      self.seekTo = (t) => { self._t = t; window.__ytCalls.push(['seekTo', t]); };
+      self.getCurrentTime = () => self._t;
+      self.getDuration = () => 1274;
+      self.setPlaybackRate = (r) => { window.__ytCalls.push(['rate', r]); };
+      self.destroy = () => { window.__ytCalls.push(['destroy']); };
+      setTimeout(() => opts.events.onReady(), 0);   // 실제 API 처럼 비동기(다음 틱)로 ready
+      return self;
+    },
+  };
   // 프리롤 광고 감지 단위검증: 광고2 + 인사말 + 진행자 인트로 → 본편 시작 인덱스 2('Hi everybody')
   window.__adK = detectContentStart([
     {text:'Support for this show comes from a sponsor you will hear now.'},
@@ -298,6 +328,122 @@ ROUTER_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 </body></html>
 """
 
+# === 📺 Library→Video 진입 체인 풀-통합 재현(버그 리포트, 실기기 v1.58.0) ===================
+# 위 ROUTER_HARNESS 는 뷰를 전부 스텁으로 갈아 real app.js::route() 만 검증했고, 위의 episode
+# 하니시(HARNESS_HTML)는 renderEpisode 를 직접(또는 손으로 흉내낸 미니 라우터로) 불러 real app.js
+# 를 아예 안 태웠다 — 그 조합(진짜 app.js 라우팅 + 진짜 timeline.js 카드 + 진짜 episode.js) 은
+# 지금까지 한 번도 같이 돈 적이 없다. 이 하니스만 그 셋을 전부 real 로 두고 db/player/tts/supabase
+# 만 목한다 — Library 카드의 실제 <a> 를 Playwright 로 '진짜' 클릭(isTrusted, 기본 네비게이션 포함)
+# 해서 사용자가 실기기에서 겪은 경로를 최대한 그대로 재현한다.
+REALVIDEO_MOCK = UI / "_realvideomock.js"
+REALVIDEO_HARNESS = UI / "_harness_realvideo.html"
+REALVIDEO_MOCK_JS = r"""
+export const supabase = {
+  auth: {
+    getSession: async () => ({ data: { session: { user: { id: 'test' } } } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+    signOut: async () => {},
+    stopAutoRefresh: () => {},
+  },
+};
+const calls = []; window.__calls = calls; window.__err = window.__err || [];
+class MockPlayer {
+  constructor(){this.audio={};this._t=0;this._paused=true;this.listeners=new Set();}
+  load(t){calls.push(['load',t&&t.id]);this.current=t;}
+  play(){calls.push(['play']);this._paused=false;this._emit('play');}
+  pause(){calls.push(['pause']);this._paused=true;this._emit('pause');}
+  toggle(){calls.push(['toggle']);this._paused?this.play():this.pause();}
+  seek(t){calls.push(['seek',t]);this._t=t;this._emit('timeupdate');}
+  rate(r){calls.push(['rate',r]);} skip(d){calls.push(['skip',d]);this._t=Math.max(0,this._t+d);}
+  on(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);}
+  _emit(ev){for(const fn of this.listeners){try{fn(ev,this);}catch(e){window.__err.push('listener:'+e);}}}
+  get paused(){return this._paused;} get time(){return this._t;} get duration(){return 1274;}
+}
+export const player = new MockPlayer(); window.__player = player;
+export function getProgress(){ return null; }
+export function getProgressMap(){ return {}; }
+export function getCompleted(){ return new Set(); }
+export function getCompletedAt(){ return {}; }
+export const speak = () => {};
+export const prefetch = () => {};
+// 실기기 신고를 그대로: wh(백악관 브리핑) 회차 1개, video_id 있음, Continue/Latest/목록 행 모두
+// 같은 id 를 그려 세 진입점(cont-video/feat-video/ep-video) 을 전부 같은 클릭으로 검증할 수 있게 한다.
+const EP_ID = 4;
+export async function listEpisodes() {
+  return [
+    { id: EP_ID, season:2, episode_no:12, title:'211 - The Latest One', pub_date:'2026-06-10', duration_sec:1700,
+      description:'White House press briefing — https://www.whitehouse.gov/videos/the-latest-one/',
+      has_audio:true, transcribed_at:'2026-01-01', vocab_count:0, show:'wh',
+      audio_url:'https://example.com/wh.mp3' },
+  ];
+}
+export async function audioSrcFor(id, u) { return u; }
+export async function hostedSet() { return new Set(); }
+export function cleanAudioUrl(u) { return u; }
+export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
+export async function episodeNav() { return { prevId:null, nextId:null }; }
+export async function markKnown() {}
+export async function getEpisode(id) {
+  const FIX = [[0,'Hello everyone welcome back.'],[4,'Today we have a briefing.'],[8,'Thanks for watching along.']];
+  const segments = FIX.map((s,i)=>{
+    const st=s[0], toks=s[1].split(' '), per=0.4, en=+(st+per*toks.length).toFixed(2);
+    const words=toks.map((w,j)=>({start:+(st+per*j).toFixed(2), end:+(st+per*(j+1)).toFixed(2), word:(j?' ':'')+w}));
+    return {idx:i, start:st, end:en, text:s[1], words};
+  });
+  const transcript = { language:'en', duration:1274, aligned:true, r2_audio:true, segments, video_id:'dQw4w9WgXcQ' };
+  return { id: Number(id), title:'211 - The Latest One', season:2, episode_no:12, pub_date:'2026-06-10',
+           duration_sec:1700, audio_url:'https://example.com/wh.mp3', transcribed_at:'2026-01-01',
+           show:'wh', guid:'press-secretary-test-briefing',
+           description:'White House press briefing — https://www.whitehouse.gov/videos/the-latest-one/',
+           vocab:[], transcript };
+}
+"""
+REALVIDEO_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
+<script type="importmap">{"imports":{
+  "/supabase.js":"/_realvideomock.js","/db.js":"/_realvideomock.js",
+  "/tts.js":"/_realvideomock.js","/player.js":"/_realvideomock.js"
+}}</script><link rel="stylesheet" href="/style.css" /></head><body>
+<header id="topbar">
+  <button id="back-btn" hidden aria-label="Back">&lsaquo;</button>
+  <h1 id="page-title">E-Podcast</h1>
+  <span id="app-version">v?</span>
+  <button id="sync-btn" aria-label="Sync">&#8635;</button>
+</header>
+<main id="app"></main>
+<nav id="tabbar">
+  <a href="#/"      data-tab="timeline"><span class="label">Library</span></a>
+  <a href="#/study" data-tab="study"><span class="label">Study</span></a>
+</nav>
+<script>
+  window.APP_VERSION='test';
+  // 실제 YouTube IFrame API 스텁(HARNESS_HTML 과 동일 계약) — 네트워크 0, video.js 를 real 로 태운다.
+  // ?noyt=1 로 열면 이 스텁을 아예 안 심는다 — video.js::loadApi() 가 real <script src=iframe_api>
+  // 경로를 그대로 타게 해, 그 요청이 막혔을 때(광고차단기·방화벽·일시 네트워크 실패) 실제로 무슨 일이
+  // 일어나는지(REQUEST_TIMEOUT_MS 타임아웃/onerror 회귀 검증용) 재현할 수 있게 한다.
+  window.__ytCalls = [];
+  window.__ytMounts = [];
+  if (!location.search.includes('noyt')) {
+    window.YT = {
+      Player: function (el, opts) {
+        const self = { _t: 0 };
+        window.__ytMounts.push({ el, videoId: opts.videoId, playerVars: opts.playerVars });
+        self.playVideo = () => { window.__ytCalls.push(['play']); };
+        self.pauseVideo = () => { window.__ytCalls.push(['pause']); };
+        self.seekTo = (t) => { self._t = t; window.__ytCalls.push(['seekTo', t]); };
+        self.getCurrentTime = () => self._t;
+        self.getDuration = () => 1274;
+        self.setPlaybackRate = (r) => { window.__ytCalls.push(['rate', r]); };
+        self.destroy = () => { window.__ytCalls.push(['destroy']); };
+        setTimeout(() => opts.events.onReady(), 30);   // 실 API 처럼 약간의 비동기 지연을 둔다
+        return self;
+      },
+    };
+  }
+</script>
+<script type="module" src="/app.js"></script>
+</body></html>
+"""
+
 SRS_HARNESS = UI / "_harness_srs.html"
 SRS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
@@ -344,6 +490,8 @@ def main() -> int:
     SRS_HARNESS.write_text(SRS_HARNESS_HTML, encoding="utf-8")
     ROUTER_MOCK.write_text(ROUTER_MOCK_JS, encoding="utf-8")
     ROUTER_HARNESS.write_text(ROUTER_HARNESS_HTML, encoding="utf-8")
+    REALVIDEO_MOCK.write_text(REALVIDEO_MOCK_JS, encoding="utf-8")
+    REALVIDEO_HARNESS.write_text(REALVIDEO_HARNESS_HTML, encoding="utf-8")
     SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
     OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
@@ -716,6 +864,93 @@ def main() -> int:
             video_toggle_shown = pg.query_selector("#tx-video-toggle") is not None
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
+            # 📺 Library 진입 체인 회귀(실기기 v1.58.0 신고): Continue/Latest Episode 카드나 목록 행의
+            # 📺 Video 버튼 → aep-open-video 플래그 → hashchange → 회차 진입에서 Video 모드까지 자동으로
+            # 켜져야 한다("시트만 열리고 영상은 안 켜짐" 신고). __renderEp() 직접호출(위의 다른 검증들이
+            # 쓰는 지름길)은 hashchange 를 안 태우므로 이 경로를 재현 못 한다 — 반드시 location.hash 를
+            # 바꿔 hashchange 가 실제로 라우팅을 몰게 한다(위에서 등록한 하니스 미니 라우터, 이 함수
+            # 안에서 route() 격 호출을 또 하면 이중렌더+시트중복이라 절대 하지 않는다).
+            pg.evaluate("location.hash=''"); time.sleep(0.3)   # 위 __renderEp(4) 잔여 시트를 hashchange cleanup 으로 정리
+            pg.evaluate("sessionStorage.setItem('aep-open-video','4')")
+            pg.evaluate("window.__ytCalls=[]; window.__ytMounts=[];")
+            pg.evaluate("location.hash='#/episode/4'")
+            try:
+                pg.wait_for_function(
+                    "document.getElementById('tx-video-toggle') && "
+                    "document.getElementById('tx-video-toggle').getAttribute('aria-pressed')==='true'",
+                    timeout=3000)
+            except Exception:
+                pass
+            time.sleep(0.2)
+            lv_sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')") if pg.query_selector(".tx-sheet") else False
+            lv_toggle_pressed = pg.eval_on_selector("#tx-video-toggle", "el=>el.getAttribute('aria-pressed')") if pg.query_selector("#tx-video-toggle") else None
+            lv_toggle_on = pg.eval_on_selector("#tx-video-toggle", "el=>el.classList.contains('on')") if pg.query_selector("#tx-video-toggle") else None
+            lv_wrap_visible = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden===false") if pg.query_selector("#tx-video-wrap") else None
+            lv_yt_mounted = pg.evaluate("(window.__ytMounts||[]).length")
+            lv_yt_played = pg.evaluate("(window.__ytCalls||[]).some(c=>c[0]==='play')")
+            lv_audio_paused = pg.evaluate("(window.__calls||[]).some(c=>c[0]==='pause')")
+            lv_player_vars = pg.evaluate("(window.__ytMounts||[])[0]?.playerVars || null")
+            print("LIBRARY-VIDEO-DEEPLINK: sheet_open=", lv_sheet_open, " toggle_pressed=", lv_toggle_pressed,
+                  " toggle_on=", lv_toggle_on, " wrap_visible=", lv_wrap_visible,
+                  " yt_mounted=", lv_yt_mounted, " yt_played=", lv_yt_played, " audio_paused=", lv_audio_paused,
+                  " player_vars=", lv_player_vars)
+            # YouTube 자체 풀스크린 진입로 차단(사용자 신고: 세로 풀스크린 + 유튜브 자체 자막이 우리
+            # 자막과 겹침) — playsinline(iOS 인라인 유지)·fs:0(풀스크린 버튼 제거)·cc_load_policy:0
+            # (자체 자막 기본 끔)이 실제로 new YT.Player(...) 에 전달되는지 고정한다.
+            lv_playervars_ok = (isinstance(lv_player_vars, dict)
+                                 and lv_player_vars.get("playsinline") == 1
+                                 and lv_player_vars.get("fs") == 0
+                                 and lv_player_vars.get("modestbranding") == 1
+                                 and lv_player_vars.get("iv_load_policy") == 3
+                                 and lv_player_vars.get("cc_load_policy") == 0
+                                 and lv_player_vars.get("rel") == 0)
+            # 레이아웃(사용자 신고 #2): 영상은 시트 상단에 고정, 자막(.tx-scroll)이 그 아래 남은 높이를
+            # 채우고 자체 스크롤해야 한다 — 영상이 자막과 함께 밀려 올라가면 안 된다. 실측(폰 뷰포트)
+            # 으로 기하를 재고, 사람이 봐도 확인할 수 있게 스크린샷도 남긴다(AEP_SHOTS 설정 시).
+            _vp_before_video = pg.viewport_size
+            pg.set_viewport_size({"width": 390, "height": 780})   # iPhone 급 세로 폰
+            time.sleep(0.3)
+            _shot(pg, "video-mode-on-pinned-top")
+            lv_geo = pg.evaluate("""() => {
+              const tb = document.querySelector('.tx-sheet.open .tx-toolbar');
+              const vw = document.getElementById('tx-video-wrap');
+              const sc = document.querySelector('.tx-sheet.open .tx-scroll');
+              const card = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              if (!tb || !vw || !sc || !card) return null;
+              const r = (el) => el.getBoundingClientRect();
+              return { tb: r(tb), vw: r(vw), sc: r(sc), card: r(card) };
+            }""")
+            print("LIBRARY-VIDEO-LAYOUT:", lv_geo)
+            lv_layout_ok = False
+            if isinstance(lv_geo, dict):
+                tb, vw, sc, card = lv_geo["tb"], lv_geo["vw"], lv_geo["sc"], lv_geo["card"]
+                vw_ratio = (vw["width"] / vw["height"]) if vw["height"] else 0
+                lv_layout_ok = (
+                    tb["top"] <= vw["top"] + 1               # 툴바가 영상보다 위(또는 같은 줄)
+                    and vw["top"] < sc["top"]                 # 영상이 자막 스크롤 영역보다 위
+                    and sc["top"] >= vw["bottom"] - 1          # 자막이 영상 '아래'에서 시작(겹침 없음)
+                    and sc["bottom"] <= card["bottom"] + 1     # 자막이 시트 안에 담김(넘치지 않음)
+                    and 1.5 < vw_ratio < 2.0                   # 영상이 대략 16:9(≈1.78) 그대로(우리쪽 레터박스 없음)
+                )
+            # 껐을 때 원상복구(요구사항 #4) — 다시 토글해 .tx-video-wrap 이 hidden 되고 .tx-scroll 이
+            # 그 공간을 도로 흡수하는지 확인한다.
+            if pg.query_selector("#tx-video-toggle"):
+                pg.eval_on_selector("#tx-video-toggle", "el=>el.click()"); time.sleep(0.3)
+            lv_off_hidden = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden") if pg.query_selector("#tx-video-wrap") else None
+            lv_off_geo = pg.evaluate("""() => {
+              const vw = document.getElementById('tx-video-wrap');
+              const sc = document.querySelector('.tx-sheet.open .tx-scroll');
+              if (!vw || !sc) return null;
+              return { vwDisplay: getComputedStyle(vw).display, scTop: sc.getBoundingClientRect().top };
+            }""")
+            print("LIBRARY-VIDEO-OFF-RESTORE: hidden=", lv_off_hidden, " geo=", lv_off_geo)
+            lv_off_ok = (lv_off_hidden is True and isinstance(lv_off_geo, dict)
+                         and lv_off_geo.get("vwDisplay") == "none")
+            pg.set_viewport_size(_vp_before_video)
+            libvideo_ok = (lv_sheet_open is True and lv_toggle_pressed == "true" and lv_toggle_on is True
+                           and lv_wrap_visible is True and lv_yt_mounted == 1 and lv_yt_played is True
+                           and lv_audio_paused is True and lv_playervars_ok is True
+                           and lv_layout_ok is True and lv_off_ok is True)
             print("PLAYER CALLS=", calls)
             print("window.__err=", werr, " CONSOLE=", errs)
             print("episode: about_blocks=", about)
@@ -740,7 +975,8 @@ def main() -> int:
                      and wordpop_ok is True and drive_ok is True and seek_follow is True
                      and vk_ok is True
                      and video_toggle_hidden is True and video_toggle_shown is True
-                     and wh_chip_shown is True and about_no_url is True)
+                     and wh_chip_shown is True and about_no_url is True
+                     and libvideo_ok is True)
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
@@ -1199,7 +1435,102 @@ def main() -> int:
                   " 404[back_hidden=", rt_404_back, " tabs_lit=", rt_404_tabs, " title=", repr(rt_404_title), "]",
                   " scroll", rt_scroll_before, "->", rt_scroll_after, " err=", rt_err, " ok=", router_ok)
 
-            ok = ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
+            # === 📺 Library→Video 진입 체인 풀-통합 재현 (사용자 실기기 신고, v1.58.0) ==============
+            # 위 라우터 검증과 달리 뷰를 전혀 스텁하지 않는다 — 진짜 timeline.js 카드의 진짜 <a> 를
+            # Playwright 로 실제 클릭(isTrusted, 기본 네비게이션 포함)해 실기기 경로를 최대한 그대로
+            # 재현한다. episode 하니스(위 LIBRARY-VIDEO-DEEPLINK) 의 손으로 짠 미니 라우터 재현은
+            # 통과했다 — real app.js::route() + real timeline.js 조합에서만 나타나는 차이가 있는지 확인.
+            errs.clear()
+            pg.goto("http://localhost:8123/_harness_realvideo.html")
+            pg.wait_for_selector(".feat-video", timeout=10000)
+            time.sleep(0.3)
+            pg.click(".feat-video")
+            try:
+                pg.wait_for_function(
+                    "document.getElementById('tx-video-toggle') && "
+                    "document.getElementById('tx-video-toggle').getAttribute('aria-pressed')==='true'",
+                    timeout=5000)
+            except Exception:
+                pass
+            time.sleep(0.3)
+            rv_hash = pg.evaluate("location.hash")
+            rv_sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')") if pg.query_selector(".tx-sheet") else False
+            rv_toggle_pressed = pg.eval_on_selector("#tx-video-toggle", "el=>el.getAttribute('aria-pressed')") if pg.query_selector("#tx-video-toggle") else None
+            rv_toggle_on = pg.eval_on_selector("#tx-video-toggle", "el=>el.classList.contains('on')") if pg.query_selector("#tx-video-toggle") else None
+            rv_wrap_visible = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden===false") if pg.query_selector("#tx-video-wrap") else None
+            rv_yt_mounted = pg.evaluate("(window.__ytMounts||[]).length")
+            rv_sheets_count = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
+            rv_err = pg.evaluate("window.__err||[]")
+            print("REALVIDEO: hash=", rv_hash, " sheet_open=", rv_sheet_open,
+                  " toggle_pressed=", rv_toggle_pressed, " toggle_on=", rv_toggle_on, " wrap_visible=", rv_wrap_visible,
+                  " yt_mounted=", rv_yt_mounted, " sheets_count=", rv_sheets_count, " err=", rv_err, " console=", errs)
+            realvideo_ok = (rv_sheet_open is True and rv_toggle_pressed == "true" and rv_toggle_on is True
+                            and rv_wrap_visible is True and rv_yt_mounted == 1 and rv_sheets_count == 1)
+
+            # === 진짜 근본원인 재현: YouTube IFrame API 스크립트가 안 뜨면(광고차단기·방화벽·일시
+            # 네트워크 실패) video.js::loadApi() 가 예전엔 영원히 pending — turnVideoOn() 이 그 안에서
+            # 통째로 멈추고(toast 도 console 도 0), '시트는 열리는데 영상만 안 켜짐' 이 실기기 신고와
+            # 정확히 일치했다(scripts/_pwtest.py 밖에서 이 route()-abort 로 직접 재현·확인함).
+            # ?noyt=1 로 스텁을 빼고 real <script src=iframe_api> 요청 자체를 막아, 고친 loadApi() 가
+            # ① onerror 로 제때 reject 해 기존 catch(toast+상태복구)가 실제로 도는지, ② 실패한
+            # _apiPromise 를 계속 붙들지 않고 지워서 다음 시도가 재시도될 수 있는지(네트워크 복구 후
+            # 다시 켜면 성공) 를 검증한다.
+            pg.route("**/www.youtube.com/iframe_api", lambda route: route.abort())
+            pg.goto("http://localhost:8123/_harness_realvideo.html?noyt=1")
+            pg.wait_for_selector(".feat-video", timeout=10000)
+            time.sleep(0.3)
+            pg.click(".feat-video")
+            try:
+                pg.wait_for_function(
+                    "() => { const t = document.getElementById('toast');"
+                    " return t && /Could not load video/.test(t.textContent); }", timeout=5000)
+            except Exception:
+                pass
+            time.sleep(0.2)
+            fail_toast = pg.evaluate(
+                "() => { const t = document.getElementById('toast');"
+                " return !!(t && /Could not load video/.test(t.textContent)); }")
+            fail_wrap_hidden = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden") if pg.query_selector("#tx-video-wrap") else None
+            fail_toggle_pressed = pg.eval_on_selector("#tx-video-toggle", "el=>el.getAttribute('aria-pressed')") if pg.query_selector("#tx-video-toggle") else None
+            fail_console_warned = any("mount failed" in e for e in errs)
+            print("REALVIDEO-YT-BLOCKED: toast=", fail_toast, " wrap_hidden=", fail_wrap_hidden,
+                  " toggle_pressed=", fail_toggle_pressed, " console_had_mount_failed=", fail_console_warned)
+            # 네트워크가 회복됐다고 가정: 차단을 풀고 real API 대신 스텁을 심어(이 문서엔 처음부터 스텁이
+            # 없었으므로 지금 주입) 재시도가 실제로 성공하는지 — _apiPromise 가 실패를 영구 캐시하지
+            # 않았어야 이게 통과한다.
+            pg.unroute("**/www.youtube.com/iframe_api")
+            pg.evaluate("""() => {
+              window.__ytMounts = [];
+              window.YT = { Player: function (el, opts) {
+                const self = { _t: 0 };
+                window.__ytMounts.push({ el, videoId: opts.videoId });
+                self.playVideo = () => {}; self.pauseVideo = () => {}; self.seekTo = (t) => { self._t = t; };
+                self.getCurrentTime = () => self._t; self.getDuration = () => 1274;
+                self.setPlaybackRate = () => {}; self.destroy = () => {};
+                setTimeout(() => opts.events.onReady(), 10);
+                return self;
+              } };
+              // window.onYouTubeIframeAPIReady 가 이미 이전 시도(reject 이전)에 등록돼 있었을 수 있으니
+              // 그대로 둬도 무해 — loadApi() 는 window.YT 가 이미 있으면 <script> 를 아예 다시 안 쏜다.
+            }""")
+            if pg.query_selector("#tx-video-toggle"):
+                pg.eval_on_selector("#tx-video-toggle", "el=>el.click()")
+            try:
+                pg.wait_for_function(
+                    "document.getElementById('tx-video-toggle') && "
+                    "document.getElementById('tx-video-toggle').getAttribute('aria-pressed')==='true'",
+                    timeout=5000)
+            except Exception:
+                pass
+            time.sleep(0.2)
+            retry_pressed = pg.eval_on_selector("#tx-video-toggle", "el=>el.getAttribute('aria-pressed')") if pg.query_selector("#tx-video-toggle") else None
+            retry_mounted = pg.evaluate("(window.__ytMounts||[]).length")
+            print("REALVIDEO-YT-RETRY-AFTER-RECOVERY: toggle_pressed=", retry_pressed, " mounted=", retry_mounted)
+            ytblocked_ok = (fail_toast is True and fail_wrap_hidden is True and fail_toggle_pressed == "false"
+                            and retry_pressed == "true" and retry_mounted == 1)
+
+            ok = (ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
+                  and realvideo_ok and ytblocked_ok)
             b.close()
     finally:
         srv.terminate()
@@ -1210,6 +1541,8 @@ def main() -> int:
         SRS_HARNESS.unlink(missing_ok=True)
         ROUTER_MOCK.unlink(missing_ok=True)
         ROUTER_HARNESS.unlink(missing_ok=True)
+        REALVIDEO_MOCK.unlink(missing_ok=True)
+        REALVIDEO_HARNESS.unlink(missing_ok=True)
         SETTINGS_HARNESS.unlink(missing_ok=True)
         OFFLINE_MOCK.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")

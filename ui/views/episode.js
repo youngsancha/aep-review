@@ -1294,8 +1294,17 @@ export async function renderEpisode(root, idStr, tStr) {
   let videoBusy = false;   // mount()/unmount() 진행 중 재진입(연타) 방지
 
   async function turnVideoOn() {
-    if (videoOn || videoBusy || !$videoToggle) return;
-    if (navigator.onLine === false) { toast('Video needs a connection'); return; }
+    // ⚠ 이 가드들은 전부 '조용한 no-op' 이었다 — 셋 다 아무 토스트도, 콘솔 흔적도 안 남기고 그냥
+    // 리턴만 해서, 실패해도 사용자·개발자 둘 다 원인을 알 방법이 없었다(버그헌트: Library 진입
+    // 체인에서 '시트는 열리는데 영상이 안 켜짐' 신고 — 원인은 이 함수가 아니라 video.js::loadApi()
+    // 가 네트워크 실패 시 영원히 pending 인 채였던 것이었지만, 그 조사 과정에서 이 함수의 다른
+    // 조용한 탈출구들도 똑같이 무음이라는 게 드러났다 — 다음에 또 이런 신고가 오면 콘솔 한 줄로
+    // 바로 '어느 가드에 걸렸는지' 알 수 있어야 한다). !$videoToggle 은 showVideoToggle=false
+    // (video_id 없음 또는 오프라인)인데 aep-open-video 플래그가 걸린 딥링크로 진입한 경우다.
+    if (videoOn) { console.warn('[video] turnVideoOn: already on, ignoring'); return; }
+    if (videoBusy) { console.warn('[video] turnVideoOn: mount already in progress, ignoring'); return; }
+    if (!$videoToggle) { console.warn('[video] turnVideoOn: no #tx-video-toggle in this sheet (video_id missing or offline at render time) — nothing to turn on'); return; }
+    if (navigator.onLine === false) { console.warn('[video] turnVideoOn: offline, refusing to mount'); toast('Video needs a connection'); return; }
     videoBusy = true;
     const wasPlaying = !drv.paused;
     const atTime = drv.time;

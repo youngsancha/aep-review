@@ -1083,9 +1083,16 @@ body.on-episode {
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
 .tx-fs-btn { min-width: 36px; font-variant-numeric: tabular-nums; }
 
-/* 📺 Video 모드 iframe — 시트 스크롤 영역 '위'에 얹혀 트랜스크립트 지오메트리는 그대로 둔다.
-   ui/views/episode.js 가 hidden 속성으로 켜고/끈다(off 일 땐 공간을 아예 차지하지 않음). */
-.tx-video-wrap { padding: 10px 14px 0; }
+/* 📺 Video 모드 iframe — 시트 상단에 '고정'되고 트랜스크립트(.tx-scroll)가 그 아래 남은 높이를
+   전부 채워 자체 스크롤한다. ui/views/episode.js 가 hidden 속성으로 켜고/끈다(off 일 땐 공간을
+   아예 차지하지 않음 — [hidden] 기본 display:none 이라 아래 flex 규칙도 자동으로 빠짐, 별도
+   토글 클래스 불필요).
+   ⚠ .tx-video-wrap 은 .tx-card(flex column) 의 형제로 .tx-scroll '밖'에 있다 — position:sticky 가
+   아니라 애초에 스크롤 영역 밖이라 트랜스크립트와 함께 안 밀린다(사용자 신고: 유튜브 자체 풀스크린이
+   아니라 '우리 레이아웃이 영상을 고정 안 함' 오해를 피하려고 실제로도 스크롤 컨테이너 밖에 둔다).
+   flex-shrink:0 로 좁은 세로 공간에서도 16:9 그대로 유지 — 줄어드는 쪽은 항상 .tx-scroll
+   (min-height:0 라 0까지 줄었다 스크롤로 흡수, 위 .tx-sheet-card .tx-scroll 규칙). */
+.tx-video-wrap { padding: 10px 14px 0; flex-shrink: 0; }
 .tx-video-frame {
   position: relative;
   width: 100%;

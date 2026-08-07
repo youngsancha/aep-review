@@ -120,9 +120,18 @@ export class VideoAdapter {
         const el = document.createElement('div');
         container.appendChild(el);
         // window.YT 는 loadApi() 가 보장(전역 YT 자체는 eslint.config.js 에 일부러 선언 안 함).
+        // playerVars: 우리 시트 레이아웃(영상 상단 고정 + 자막 스크롤)을 YouTube 자체 풀스크린이
+        // 덮어쓰지 못하게 막는다(사용자 신고 — 세로 풀스크린 + 자체 자막이 우리 자막과 겹쳐 보임).
+        //  · playsinline:1 — iOS 가 재생을 네이티브 풀스크린으로 승격시키지 않고 인라인 유지.
+        //  · fs:0           — YouTube 자체 풀스크린 버튼 제거(그 버튼이 사용자를 이 화면으로 데려간
+        //                      경로였다 — 버튼이 없으면 그 경로 자체가 없다).
+        //  · rel:0/modestbranding:1/iv_load_policy:3 — 관련영상·로고·주석으로 우리 자막 위 시선을
+        //                      뺏지 않는다.
+        //  · cc_load_policy:0 — YouTube 자체 자막을 요청 시점에 켜지 않는다(우리 자막과 중복 방지).
+        //                      영상 자체가 자막을 강제로 켠 채 내보내면(드묾) 그건 유튜브 쪽 한계로 수용.
         const yt = new window.YT.Player(el, {
           videoId,
-          playerVars: { rel: 0, playsinline: 1 },
+          playerVars: { rel: 0, playsinline: 1, fs: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0 },
           events: {
             onReady: () => { this.attach(yt); resolve(this); },
             onStateChange: (e) => this.handleState(e.data),
@@ -150,15 +159,47 @@ export const video = new VideoAdapter();
 // === YouTube IFrame API 지연 로드 =============================================================
 // 절대 부팅 시점에 로드하지 않는다 — 사용자가 📺 를 처음 켤 때만 <script> 를 주입한다(오프라인
 // 앱·비-wh 회차 사용자는 이 스크립트를 영원히 안 받는다).
+// ⚠ 버그헌트(Library 진입 체인 신고 — "시트는 열리는데 영상이 안 켜짐", 콘솔에 아무 흔적도 없음):
+// 예전엔 <script> 에 onerror 도 타임아웃도 없었다 — 차단기/방화벽/일시적 네트워크 실패로 이 스크립트가
+// 안 오면(또는 와도 window.onYouTubeIframeAPIReady 가 무슨 이유로든 안 불리면) 이 Promise 는 영원히
+// pending 상태로 남는다. mount() 는 이걸 await 하므로 turnVideoOn() 이 그 안에서 통째로 멈추고,
+// try/catch 의 catch 는 '거부(reject)'에만 반응하므로 아예 발동하지 않는다 — 토스트도, 콘솔 로그도,
+// videoBusy 리셋도 없이 그냥 계속 '켜지는 중'인 채로 조용히 멈춘다(재현: scripts/_pwtest.py 의
+// playwright route() 로 iframe_api 요청을 abort() 하면 동일하게 재현됨). 게다가 실패한 Promise 를
+// _apiPromise 에 계속 들고 있어 재시도조차 막았다 — 세션 내내(PWA 는 며칠 살아 있다) 이 기능이
+// 영구히 죽는다. 지금은: ① 로드 실패(onerror)·② REQUEST_TIMEOUT_MS 안에 ready 콜백이 안 오면 모두
+// 거부해 turnVideoOn() 의 기존 catch(토스트 + 상태복구)가 반드시 타게 하고, ③ 실패 시 _apiPromise 를
+// 지워 다음 시도가 처음부터(새 <script>) 다시 붙게 한다.
+const REQUEST_TIMEOUT_MS = 8000;
 let _apiPromise = null;
 function loadApi() {
   if (typeof window !== 'undefined' && window.YT && window.YT.Player) return Promise.resolve();
   if (_apiPromise) return _apiPromise;
-  _apiPromise = new Promise((resolve) => {
+  _apiPromise = new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      _apiPromise = null;   // 다음 시도가 처음부터 다시 붙게(이 실패를 영구 캐시하지 않는다)
+      reject(new Error('YouTube API load timed out'));
+    }, REQUEST_TIMEOUT_MS);
     const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { if (prev) { try { prev(); } catch (e) {} } resolve(); };
+    window.onYouTubeIframeAPIReady = () => {
+      if (prev) { try { prev(); } catch (e) {} }
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
     const s = document.createElement('script');
     s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      _apiPromise = null;
+      reject(new Error('YouTube API script failed to load'));
+    };
     document.head.appendChild(s);
   });
   return _apiPromise;
