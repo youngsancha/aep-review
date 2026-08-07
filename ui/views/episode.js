@@ -1116,9 +1116,24 @@ export async function renderEpisode(root, idStr, tStr) {
   $sheet?.querySelector('.tx-sheet-backdrop')?.addEventListener('click', closeSheet);
   const destroySheetDrag = $sheet ? bindSheetDrag($sheet, closeSheet) : null;
   // Mini-controls inside sheet
+  // 영상 모드에서 '재생을 누르는 것' = 학습을 시작하는 것 → 바로 풀스크린으로 들어간다(사용자
+  // 요청 2026-08-07: "화면안이나 밑에 재생 눌렀을때 기본 풀화면"). 재생으로 '전환될 때'만 건다:
+  // 사용자가 재생 중에 ✕ 로 풀스크린을 직접 나갔다면 다음에 재생을 누를 때까지 그 선택을 존중한다.
+  // ⚠ drv.paused 는 토글 '직후'엔 아직 옛 값이다(YouTube 는 상태 이벤트로 비동기 갱신) — 그래서
+  // 누르기 '전' 값을 보고 판단한다.
+  function playMayGoFullscreen(fn) {
+    const wasPaused = drv.paused;
+    fn();
+    if (wasPaused && videoOn) enterFullscreen();
+  }
   document.getElementById('tx-mini-play')?.addEventListener('click', (e) => {
     e.stopPropagation();
-    drv.toggle();
+    playMayGoFullscreen(() => drv.toggle());
+  });
+  // 영상 탭 = 재생/일시정지(YouTube 컨트롤을 껐으므로 이 레이어가 그 자리를 대신한다).
+  document.getElementById('tx-video-tap')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    playMayGoFullscreen(() => drv.toggle());
   });
   document.getElementById('tx-mini-back')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1988,6 +2003,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
           ${showVideoToggle ? `
           <div class="tx-video-wrap" id="tx-video-wrap" hidden>
             <div class="tx-video-frame" id="tx-video-frame">
+              <button class="tx-video-tap" id="tx-video-tap" aria-label="Play or pause"></button>
               <button class="tx-fs-exit" id="tx-fs-exit" aria-label="Exit fullscreen" hidden>✕</button>
             </div>
           </div>

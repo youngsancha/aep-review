@@ -970,29 +970,64 @@ def main() -> int:
               const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
               return sheet ? [...sheet.querySelectorAll('.tx-toolbar .tx-toggle')].map(el => el.id) : [];
             }""")
+            # ⚠ 이 검사는 반드시 '가장 넓은 라벨'에서 해야 한다. 쉐도잉 칩은 Shadow → 3× Smart →
+            # 2× Smart → 1× Smart → 2× Auto → 3× Auto → 5× Auto → 10× Auto 로 순환하는데, 기본값
+            # 'Shadow'(6자)가 그 중 가장 좁다. 예전엔 기본 상태에서만 재서 '360/390 한 줄 통과' 가
+            # 나왔지만 실기기 사용자는 '2× Smart' 상태였고 그때는 두 줄이었다(2026-08-07 스크린샷).
+            # 라벨 하나가 실측 85px 로 Shadow 보다 ~30px 넓다 — 고정 min-width 를 줄여도 내용이 더
+            # 넓으면 의미가 없다. 8단계를 전부 돌면서 최악값을 취한다(8번 누르면 제자리로 돌아온다).
             _vp_before_toolbar = pg.viewport_size
             tx_toolbar_fit = {}
+            tx_toolbar_worst = {}
+            _steps_seen = []
             for _vw in (360, 390):
                 pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
-                tx_toolbar_fit[_vw] = pg.evaluate("""() => {
-                  const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
-                  const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
-                  if (!tb) return null;
-                  const kids = [...tb.querySelectorAll('.tx-toggle')];
-                  const tops = kids.map((k) => k.getBoundingClientRect().top);
-                  const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
-                    return r.left < -0.5 || r.right > innerWidth + 0.5; });
-                  return { n: kids.length, offscreen: bad.length,
-                           topRange: kids.length ? Math.max(...tops) - Math.min(...tops) : 0 };
-                }""")
-                _shot(pg, f"tx-toolbar-wh-{_vw}")
+                worst = None
+                # 라벨을 직접 써 넣어 최악 폭을 만든다. 칩을 실제로 눌러 순환시키려 했으나 하니스에선
+                # 클릭이 라벨을 안 바꾼다(8번 눌러도 계속 'Shadow'). 여기서 볼 것은 순환 '동작' 이
+                # 아니라 각 라벨에서의 '레이아웃 폭' 이고, 순환 자체는 다른 곳에서 검증된다.
+                for _label in ('Shadow', '3× Smart', '2× Smart', '1× Smart',
+                               '2× Auto', '3× Auto', '5× Auto', '10× Auto'):
+                    pg.evaluate("""(lb) => {
+                      const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
+                      const sh = sheet?.querySelector('#tx-shadow');
+                      if (sh) sh.textContent = lb;
+                    }""", _label); time.sleep(0.05)
+                    r = pg.evaluate("""() => {
+                      const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet');
+                      const tb = sheet ? sheet.querySelector('.tx-toolbar') : null;
+                      if (!tb) return null;
+                      const kids = [...tb.querySelectorAll('.tx-toggle')];
+                      const tops = kids.map((k) => k.getBoundingClientRect().top);
+                      const bad = kids.filter((e) => { const r = e.getBoundingClientRect();
+                        return r.left < -0.5 || r.right > innerWidth + 0.5; });
+                      const sh = sheet.querySelector('#tx-shadow');
+                      const used = kids.reduce((s, k) => s + k.getBoundingClientRect().width, 0);
+                      return { n: kids.length, offscreen: bad.length,
+                               topRange: kids.length ? Math.max(...tops) - Math.min(...tops) : 0,
+                               label: sh ? sh.textContent.trim() : '?',
+                               chipsW: Math.round(used), avail: innerWidth };
+                    }""")
+                    if r:
+                        _steps_seen.append(r)
+                    if r and (worst is None or r["topRange"] > worst["topRange"]
+                              or (r["topRange"] == worst["topRange"] and r["chipsW"] > worst["chipsW"])):
+                        worst = r
+                    if _label == 'Shadow':
+                        tx_toolbar_fit[_vw] = r        # 기본 상태 — 참고용
+                    _shot(pg, f"tx-toolbar-wh-{_vw}-{_label.replace(' ', '')}")
+                tx_toolbar_worst[_vw] = worst
+                if _vw == 360:
+                    print("TX-TOOLBAR-STEPS(360):", [(s["label"], s["chipsW"], s["topRange"]) for s in _steps_seen])
+                _steps_seen.clear()
             pg.set_viewport_size(_vp_before_toolbar); time.sleep(0.2)
+            print("TX-TOOLBAR-WORST-LABEL:", tx_toolbar_worst)
             print("TX-TOOLBAR-ORDER:", tx_toolbar_order, " fit=", tx_toolbar_fit)
             tx_toolbar_order_ok = (
                 tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow', 'tx-speed',
                                       'tx-drive', 'tx-video-toggle', 'tx-fullscreen']
-                and all(isinstance(tx_toolbar_fit[v], dict) and tx_toolbar_fit[v]["n"] == 8
-                        and tx_toolbar_fit[v]["offscreen"] == 0 and tx_toolbar_fit[v]["topRange"] < 8
+                and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 8
+                        and tx_toolbar_worst[v]["offscreen"] == 0 and tx_toolbar_worst[v]["topRange"] < 8
                         for v in (360, 390)))
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))

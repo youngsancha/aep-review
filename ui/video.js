@@ -131,7 +131,13 @@ export class VideoAdapter {
         //                      영상 자체가 자막을 강제로 켠 채 내보내면(드묾) 그건 유튜브 쪽 한계로 수용.
         const yt = new window.YT.Player(el, {
           videoId,
-          playerVars: { rel: 0, playsinline: 1, fs: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0 },
+          //  · controls:0 — YouTube 자체 컨트롤(가운데 큰 ▶, 제목 바, 진행바, 추천영상 카드)을
+          //                 아예 없앤다. 앱은 이미 자기 트랜스포트(미니 플레이어)를 갖고 있어
+          //                 중복이고, 무엇보다 쉐도잉 반복은 문단마다 seek 를 계속 호출하는데
+          //                 YouTube 는 seek 마다 이 컨트롤을 영상 위로 띄운다 → 반복 학습 내내
+          //                 화면이 가려진다(사용자 신고 2026-08-07 스크린샷). 재생/일시정지는
+          //                 아래 시트 컨트롤과 영상 탭(enterFullscreen 경로)으로 그대로 된다.
+          playerVars: { rel: 0, playsinline: 1, fs: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0, controls: 0 },
           events: {
             onReady: () => { this.attach(yt); resolve(this); },
             onStateChange: (e) => this.handleState(e.data),

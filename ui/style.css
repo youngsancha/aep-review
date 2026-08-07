@@ -939,6 +939,14 @@ body.on-episode {
    최우선, 제스처만으론 안 됨). YouTube 자체 컨트롤(재생바·설정)은 전부 프레임 하단에 뜨므로
    우상단은 겹치지 않는 안전지대. fullscreen 이 아닐 때도 DOM 엔 항상 있고 hidden 속성으로만
    숨긴다(episode.js 가 토글) — mount() 가 iframe 을 이 버튼 '뒤에' append 하므로 z-index 로 위에 둔다. */
+/* 영상 위 투명 탭 레이어 — YouTube 자체 컨트롤을 끈(controls:0) 대신 '영상을 눌러 재생/일시정지'
+   를 우리가 제공한다. iframe 은 교차출처라 그 안의 탭을 가로챌 수 없으므로 위에 덮는 것이 유일한
+   방법이다. z-index 는 나가기 ✕(5)보다 낮게 둬서 풀스크린 탈출구를 절대 가리지 않는다. */
+.tx-video-tap {
+  position: absolute; inset: 0; z-index: 4;
+  background: transparent; border: 0; padding: 0;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
 .tx-fs-exit {
   position: absolute; top: 8px; right: 8px; z-index: 5;
   width: 44px; height: 44px; border-radius: 50%;
@@ -1112,17 +1120,17 @@ body.on-episode {
    정한 값. 세로 44px 히트영역(.tx-toggle::after)은 그대로 유지 — 이 절의 어떤 값도 그걸 건드리지
    않는다. */
 .tx-toolbar {
-  padding: 10px 5px;
+  padding: 10px 4px;
   border-bottom: 0.5px solid var(--separator-thin);
-  display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 2px; align-items: center;
   background: var(--surface);
 }
 .tx-toggle {
   position: relative;
   background: var(--surface-2); border: 0;
   color: var(--tint);
-  font-size: 12.5px; font-weight: 700;
-  cursor: pointer; padding: 7px 9px;
+  font-size: 12px; font-weight: 700;
+  cursor: pointer; padding: 7px 7px;
   border-radius: 999px;
   white-space: nowrap;
   letter-spacing: -0.01em;
@@ -1134,7 +1142,7 @@ body.on-episode {
 .tx-toggle:hover { background: var(--tint-soft); }
 .tx-toggle:active { transform: scale(0.95); }
 .tx-toggle[aria-pressed="true"] { background: var(--tint-soft); color: var(--tint-hover); }
-.tx-fs-btn { min-width: 30px; font-variant-numeric: tabular-nums; }
+.tx-fs-btn { min-width: 26px; font-variant-numeric: tabular-nums; }
 
 /* 📺 Video 모드 iframe — 시트 상단에 '고정'되고 트랜스크립트(.tx-scroll)가 그 아래 남은 높이를
    전부 채워 자체 스크롤한다. ui/views/episode.js 가 hidden 속성으로 켜고/끈다(off 일 땐 공간을
@@ -2178,8 +2186,8 @@ a { color: var(--tint); }
 /* 쉐도잉 문장 반복 토글 (헤더 칩) */
 /* 라벨이 Shadow→Repeat→5× Auto 로 바뀌어도 버튼 너비가 변하지 않게 고정(가장 넓은 라벨 기준).
    speed-toggle 와 동일한 방식 — 폭 고정 + 가운데 정렬. */
-.tx-loop-toggle { white-space: nowrap; min-width: 74px; text-align: center; }
-.tx-speed-toggle { min-width: 53px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.tx-loop-toggle { white-space: nowrap; min-width: 68px; text-align: center; }
+.tx-speed-toggle { min-width: 43px; text-align: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .tx-speed-toggle.on { background: var(--tint); color: #fff; }
 .tx-speed-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 .tx-loop-toggle.on,
@@ -2278,12 +2286,12 @@ a { color: var(--tint); }
 /* 번역 토글(KR) — 유일하게 자체 폭 가드가 없던 텍스트 칩이라 공용 .tx-toggle 압축(9px)보다 살짝
    넉넉한 전용 padding 을 준다. 📺(tx-video-btn, 아래) 를 그만큼 더 좁혀 예산을 대신 낸다 — 이모지
    1글자라 KR 두 글자보다 여유가 있다. */
-.tx-trans-toggle { padding: 7px 11px; }
+.tx-trans-toggle { padding: 7px 9px; }
 .tx-trans-toggle.on, .tx-trans-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-trans-toggle.on:hover { background: var(--tint-hover); color: #fff; }
 
 /* 한국어 번역 크기 칩('가') — 탭마다 작게→보통→크게→아주크게 순환. 기본(1.0) 아닐 때만 on 강조 */
-.tx-ko-size-btn { min-width: 28px; }
+.tx-ko-size-btn { min-width: 25px; }
 .tx-ko-size-btn.on { background: var(--tint); color: #fff; }
 .tx-ko-size-btn.on:hover { background: var(--tint-hover); color: #fff; }
 
@@ -2520,7 +2528,7 @@ a { color: var(--tint); }
 /* 주행 중 탭 신뢰성: 이 칩 위에서 시작한 터치는 브라우저가 스크롤/제스처로 가져가지 못하게 한다.
    FAB(#drive-fab)과 같은 처방 — 차량 진동으로 손가락이 밀리면 click 이 아예 발화하지 않는다
    (사용자 보고 2026-07-22 FAB, 2026-07-30 이 칩). 켜는 버튼이 안 눌리면 FAB 도 안 뜬다. */
-.tx-drive-btn { padding: 6px 8px; touch-action: none; }
+.tx-drive-btn { padding: 6px 6px; touch-action: none; }
 /* 히트 영역 확대(시각 크기 유지) — 조준 없이 누르는 버튼이라 좌우로도 넓힌다. */
 .tx-drive-btn::after { left: -8px; right: -8px; height: 48px; }
 .tx-drive-btn svg { display: block; }
@@ -2534,7 +2542,7 @@ a { color: var(--tint); }
 .tx-video-btn.on:hover, .tx-video-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
 
 /* 🖥 풀스크린 진입 칩(#tx-fullscreen, 📺 옆) — 아이콘 전용이라 tx-drive-btn 과 같은 좁은 패딩. */
-.tx-fs-toggle { padding: 6px 8px; }
+.tx-fs-toggle { padding: 6px 6px; }
 .tx-fs-toggle svg { display: block; }
 .tx-fs-toggle.on, .tx-fs-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-fs-toggle.on:hover, .tx-fs-toggle[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
