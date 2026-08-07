@@ -69,6 +69,9 @@ const SVG_PREV_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="cu
 const SVG_NEXT_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>';
 // 운전 캡처 칩 글리프 — END_MODES 와 동일하게 currentColor 단색(컬러 이모지 사각박스 회피).
 const SVG_CAR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.4-4.2A2 2 0 0 1 8.3 5.5h7.4a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v4h-2.2M3 16V12a1 1 0 0 1 1-1"/><circle cx="7.5" cy="16.5" r="1.7"/><circle cx="16.5" cy="16.5" r="1.7"/><path d="M9.2 16.5h5.6"/></svg>';
+// 🖥 풀스크린 스터디 모드 칩 글리프(확대 화살표 4모서리) — 툴바 진입 버튼(#tx-fullscreen). 컬러
+// 이모지 대신 currentColor 단색 SVG(안드로이드 사각박스 회피, 위 SVG_CAR 와 동일 관례).
+const SVG_EXPAND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M3 15v6h6"/><path d="M21 15v6h-6"/></svg>';
 
 // 오프라인 저장 칩 글리프 — 컬러 이모지(⬇/✅) 대신 currentColor 단색 SVG(안드로이드 사각박스 회피).
 const SVG_DL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M7.5 10l4.5 4.5L16.5 10"/><path d="M4.5 20h15"/></svg>';
@@ -542,6 +545,18 @@ export async function renderEpisode(root, idStr, tStr) {
     if (vi >= 0) vNotes[vi].push(v);
   }
   const $notes = $sheet ? $sheet.querySelector('.tx-notes') : null;
+  // KR 번역 패널(.tx-notes)은 .tx-scroll '위'에 하단 고정 오버레이로 뜬다(문단이 아니라 카드처럼
+  // 떠 있는 디자인) — 켜져 있는 동안 스크롤 맨 끝 문장이 그 뒤에 가려진 채 영원히 못 끌어올려지는
+  // 문제(사용자 신고 — 영상 모드에서 특히 심함, 스크롤 영역 자체가 짧아 패널이 차지하는 비중이 큼)를
+  // 막기 위해, 패널이 켜질 때 그 실측 높이만큼 .tx-scroll 하단에 여유 패딩을 더한다(꺼지면 0으로).
+  // 문장 길이·'가' 텍스트크기 설정에 따라 1~3줄로 높이가 바뀌므로 상수를 쓰지 않고 매번 실측한다.
+  // _highlightImpl 의 스크롤 앵커 계산도 이 패널의 실측 위치를 그대로 재사용한다(아래).
+  function syncNotesOverlayPad() {
+    const scroll = document.querySelector('.tx-scroll');
+    if (!scroll || !$notes) return;
+    const on = $notes.classList.contains('show');
+    scroll.style.setProperty('--kr-overlay', on ? `${Math.ceil($notes.getBoundingClientRect().height) + 14}px` : '0px');
+  }
   function getSentText(idx) {
     const el = sentRanges[idx] && sentRanges[idx].el;
     return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
@@ -552,6 +567,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!$notes) return;
     $notes.classList.remove('show');
     $notes.setAttribute('aria-hidden', 'true');
+    syncNotesOverlayPad();
   }
   async function fillTranslation(idx) {
     if (!$notes) return;
@@ -582,6 +598,9 @@ export async function renderEpisode(root, idStr, tStr) {
         hideTransPanel();
       }
     }
+    // 번역문이 자리를 잡으며(placeholder '…' → 실제 문장) 패널 높이가 바뀔 수 있다 — 하단 스크롤
+    // 여유 패딩을 그 최종 높이로 다시 맞춘다(hideTransPanel 로 빠진 경우는 그 안에서 이미 0으로).
+    syncNotesOverlayPad();
     // 다음 문장 미리 번역(부드러운 전환) — easy 가 아닌 문장만, 캐시에만 저장
     const nxt = idx + 1;
     if (showTrans && nxt < sentRanges.length && !isEasySentence(nxt)) {
@@ -607,11 +626,13 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!wantTrans) {
       $notes.classList.remove('show');
       $notes.setAttribute('aria-hidden', 'true');
+      syncNotesOverlayPad();
       return;
     }
     $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">KR</span><span class="tx-trans-ko">…</span></div>`;
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
+    syncNotesOverlayPad();   // placeholder('…') 높이 기준 1차 반영 — fillTranslation 이 실제 번역으로 재조정
     fillTranslation(idx);
   }
 
@@ -769,12 +790,26 @@ export async function renderEpisode(root, idStr, tStr) {
       // 흔들림만 막아야 한다. 활성 문장이 화면에서 '완전히' 사라졌다면(위/아래 밖) followResume 신호가
       // 탭 등으로 지워졌어도 아래 out-of-band 당김이 복귀시킨다 — 보이는 동안엔 기존과 100% 동일.
       const sentOffscreen = sRelBot <= 0 || sRelTop >= h;
+      // 하단 안전선: KR 번역 패널(.tx-notes)이 켜져 있으면 .tx-scroll 하단을 덮는 오버레이라, '실제로
+      // 안 가려진' 높이만 안전하다. 예전엔 h 의 고정 비율(58%)로 어림했는데 — 그 비율은 오디오 모드
+      // (h 가 큼)에서만 우연히 맞았고, 영상 모드(h 가 훨씬 작음 — 패널이 그 안에서 차지하는 비중이
+      // 커짐)에선 활성 문장이 패널 뒤에 가려진 채로 방치됐다(사용자 신고: 영상 모드에서 진행 중 문장이
+      // KR 패널 밑에 잘려 보임). 패널은 문장 길이·'가' 텍스트크기에 따라 1~3줄로 높이가 바뀌므로
+      // 상수가 아니라 매 틱 실측한다(syncNotesOverlayPad 와 같은 rect, 별도 갱신 불필요 — 여긴 앵커링만).
+      const notesOn = !!($notes && $notes.classList.contains('show'));
+      let safeBottom = h * 0.90;   // 패널이 꺼져 있으면 예전과 100% 동일한 상수 유지(회귀 없음).
+      if (notesOn) {
+        const nRect = $notes.getBoundingClientRect();
+        safeBottom = (nRect.top < cont.bottom) ? Math.max(0, nRect.top - cont.top) : h;
+      }
       if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, h * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
-      } else if ((!inLoopPara || sentOffscreen) && (sRelBot > h * (showTrans ? 0.58 : 0.90) || sRelTop < h * 0.04)) {
-        // 번역카드(하단 오버레이)가 켜져 있으면 활성 문장을 더 위(≈13%)로 올려 카드와 안 겹치고 위쪽에 자리잡게.
-        target = sRelTop + scroll.scrollTop - Math.max(8, h * (showTrans ? 0.13 : 0.22));
+      } else if ((!inLoopPara || sentOffscreen) && (sRelBot > safeBottom - 10 || sRelTop < h * 0.04)) {
+        // 패널이 켜져 있으면 실측한 안전선(safeBottom) 기준 ≈22% 지점까지, 꺼져 있으면 예전 그대로
+        // h 기준 ≈22% 지점까지 문장 상단을 끌어올린다 — 영상 모드처럼 safeBottom 이 작아지면 이
+        // 여백도 함께 줄어들어 항상 문장 전체가 패널 위 안전지대 안에 들어온다.
+        target = sRelTop + scroll.scrollTop - Math.max(8, (notesOn ? safeBottom : h) * 0.22);
       }
       if (target != null) {
         const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
@@ -970,7 +1005,9 @@ export async function renderEpisode(root, idStr, tStr) {
     // 돌지 않게 끄고 오디오로 복귀한다(안 그러면 안 보이는 iframe 이 계속 소리를 내는 상태가 됨).
     if (videoOn) turnVideoOff();
   }
-  escClose = (e) => { if (e.key === 'Escape') closeSheet(); };
+  // Esc: 풀스크린 중이면 한 단계만 빠져나오고(헤더/툴바 복귀), 아니면 시트 전체를 닫는다 — 데스크톱
+  // 키보드 사용자에게도 '한 걸음씩 되돌아오는' 익숙한 동작(모바일 탈출구는 #tx-fs-exit 원형 버튼).
+  escClose = (e) => { if (e.key === 'Escape') { if (fullscreenOn) exitFullscreen(); else closeSheet(); } };
   document.addEventListener('keydown', escClose);
   document.getElementById('np-tx-btn')?.addEventListener('click', openSheet);
   $sheet?.querySelector('.tx-sheet-close')?.addEventListener('click', closeSheet);
@@ -1359,6 +1396,10 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function turnVideoOff() {
     if (!videoOn) return;
+    // 📺 를 끄면서 풀스크린도 같이 나간다 — 'video 없는 풀스크린'은 만들지 않는다(요구사항: 헤더/툴바가
+    // 사라진 채 영상도 없는 화면에 갇히는 상태 방지). enterFullscreen() 이 항상 videoOn 을 전제로만
+    // 켜지므로(아래) 이 방향의 대칭도 여기서 맞춘다.
+    if (fullscreenOn) exitFullscreen();
     const wasPlaying = !drv.paused;
     const t = drv.time;
     drv.useAudio();
@@ -1373,6 +1414,47 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     if (videoBusy) return;
     if (videoOn) turnVideoOff(); else turnVideoOn();
+  });
+
+  // === 🖥 풀스크린 스터디 모드 (사용자 요청) — 헤더(드래그핸들·제목·날짜)와 툴바를 감추고 영상을
+  // 화면 맨 위에 여백 없이 붙인 뒤, 트랜스크립트가 그 아래 남은 높이를 전부 채운다. '영상이 최상단'
+  // 이 전제라 진입 시 영상이 꺼져 있으면 먼저 켜고(꺼지면 위 turnVideoOff 가 이 모드도 같이 끔 —
+  // video 없는 풀스크린 상태는 존재하지 않는다). 하이라이트/자동추적/탭탐색/쉐도잉반복/단어팝오버/
+  // KR 패널은 전부 같은 .tx-scroll·.tx-notes 를 그대로 쓰므로 이 모드 때문에 달라지는 로직이 없다.
+  // drive 칩·video 모드와 같은 원칙(v1.39.3): 회차 진입마다 항상 OFF, localStorage 에 저장 안 함
+  // (PWA 는 며칠 백그라운드에 살아남아 '진입 시 리셋'만이 유일하게 보장되는 상태).
+  const $fsToggle = document.getElementById('tx-fullscreen');
+  const $fsExit = $sheet ? $sheet.querySelector('#tx-fs-exit') : null;
+  let fullscreenOn = false;
+  function syncFullscreenChip() {
+    if ($fsToggle) {
+      $fsToggle.classList.toggle('on', fullscreenOn);
+      $fsToggle.setAttribute('aria-pressed', fullscreenOn ? 'true' : 'false');
+    }
+    if ($fsExit) $fsExit.hidden = !fullscreenOn;
+  }
+  async function enterFullscreen() {
+    if (fullscreenOn) return;
+    if (!videoOn) await turnVideoOn();   // 항상 video-on 을 전제 — 꺼져 있으면 먼저 켠다
+    if (!videoOn) return;                // turnVideoOn 실패(오프라인 등) → 풀스크린도 진입 안 함
+    fullscreenOn = true;
+    $sheetCard?.classList.add('fullscreen');
+    syncFullscreenChip();
+  }
+  function exitFullscreen() {
+    if (!fullscreenOn) return;
+    fullscreenOn = false;
+    $sheetCard?.classList.remove('fullscreen');
+    syncFullscreenChip();
+  }
+  $fsToggle?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (fullscreenOn) exitFullscreen(); else enterFullscreen();
+  });
+  // 헤더가 사라진 채로 갇히지 않도록 하는 유일한 탈출구(발견성) — 영상 위 항상 보이는 44px 원형 버튼.
+  $fsExit?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exitFullscreen();
   });
   // 메인 화면 1차 Video 버튼(#np-video-btn, useVideoLayout 블록) — Library 의 📺 Video ›(timeline.js)
   // 와 정확히 같은 결과(시트 열기 + Video 모드 on)를 같은 함수(openSheet/turnVideoOn)로 낸다. Library
@@ -1790,6 +1872,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
             <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
             ${showVideoToggle ? `
             <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>
+            <button id="tx-fullscreen" class="tx-toggle tx-fs-toggle" aria-pressed="false" aria-label="Fullscreen study mode">${SVG_EXPAND}</button>
             ` : ''}
           </div>
           ${(!perfectSync && adRanges.length) ? `
@@ -1799,7 +1882,9 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
           </div>` : ''}
           ${showVideoToggle ? `
           <div class="tx-video-wrap" id="tx-video-wrap" hidden>
-            <div class="tx-video-frame" id="tx-video-frame"></div>
+            <div class="tx-video-frame" id="tx-video-frame">
+              <button class="tx-fs-exit" id="tx-fs-exit" aria-label="Exit fullscreen" hidden>✕</button>
+            </div>
           </div>
           ` : ''}
           <div class="tx-scroll">

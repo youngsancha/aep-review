@@ -912,8 +912,44 @@ body.on-episode {
 .tx-sheet-card .tx-scroll {
   flex: 1; min-height: 0;
   max-height: none;
-  padding-bottom: 110px; /* room for floating mini-controls */
+  /* 110px = 하단 플로팅 미니컨트롤 알약을 위한 여유. --kr-overlay 는 KR 번역 패널(.tx-notes)이
+     켜져 있을 때 episode.js::syncNotesOverlayPad() 가 그 패널의 실측 높이(+14px 여유)로 채운다 —
+     안 켜져 있으면 0px(기본값)이라 오늘과 동일. 이게 없으면 패널이 켜진 채로 마지막 문장까지
+     스크롤해도 그 문장이 패널 뒤에서 영영 안 나온다(스크롤 한계 = 콘텐츠 끝, 여유 패딩 없이는
+     문장을 패널 위로 끌어올릴 여지 자체가 없었다 — 사용자 신고, 영상 모드에서 특히 심함). */
+  padding-bottom: calc(110px + var(--kr-overlay, 0px));
 }
+
+/* ========== 🖥 풀스크린 스터디 모드 (사용자 요청) ==========
+   episode.js::enterFullscreen()/exitFullscreen() 가 .tx-sheet-card 에 토글하는 클래스. 헤더가
+   flex 흐름에서 display:none 으로 빠지면 .tx-card(flex:1) 가 그 공간까지 자동으로 채우므로,
+   .tx-video-wrap(맨 위 고정)이 별도 위치조정 없이도 화면 최상단에 붙는다 — 남는 건 그 자체의
+   10px 상단 padding 과 카드 모서리 둥글림뿐이라 그 둘만 지운다. 회차 진입마다 OFF(localStorage
+   미저장, drive 칩/video 모드와 같은 원칙 v1.39.3) — 켤 때 JS 가 클래스를 더할 뿐 여기 기본값은
+   없다. */
+.tx-sheet-card.fullscreen {
+  height: 100vh; height: 100dvh;   /* 92vh 바텀시트 인셋을 없애고 화면 전체를 채운다 */
+  border-radius: 0;
+}
+.tx-sheet-card.fullscreen > .tx-sheet-header { display: none; }
+.tx-sheet-card.fullscreen .tx-card > .tx-toolbar { display: none; }
+.tx-sheet-card.fullscreen .tx-video-wrap { padding: 0; }
+.tx-sheet-card.fullscreen .tx-video-frame { border-radius: 0; }
+/* 탈출구 — 헤더의 ✕가 사라지므로 영상 위에 항상 떠 있는 44px 원형 버튼이 유일한 출구(발견성
+   최우선, 제스처만으론 안 됨). YouTube 자체 컨트롤(재생바·설정)은 전부 프레임 하단에 뜨므로
+   우상단은 겹치지 않는 안전지대. fullscreen 이 아닐 때도 DOM 엔 항상 있고 hidden 속성으로만
+   숨긴다(episode.js 가 토글) — mount() 가 iframe 을 이 버튼 '뒤에' append 하므로 z-index 로 위에 둔다. */
+.tx-fs-exit {
+  position: absolute; top: 8px; right: 8px; z-index: 5;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; cursor: pointer;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+  font-size: 19px; line-height: 1;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.tx-fs-exit:active { transform: scale(0.94); }
+.tx-fs-exit[hidden] { display: none; }
 
 /* Episode chips row in NP */
 
@@ -2485,6 +2521,12 @@ a { color: var(--tint); }
 /* 📺 Video 모드 칩 — tx-drive-btn 과 같은 '모드 on' 채움 스타일(같은 툴바, 같은 자리). */
 .tx-video-btn.on, .tx-video-btn[aria-pressed="true"] { background: var(--tint); color: #fff; }
 .tx-video-btn.on:hover, .tx-video-btn[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
+
+/* 🖥 풀스크린 진입 칩(#tx-fullscreen, 📺 옆) — 아이콘 전용이라 tx-drive-btn 과 같은 좁은 패딩. */
+.tx-fs-toggle { padding: 6px 11px; }
+.tx-fs-toggle svg { display: block; }
+.tx-fs-toggle.on, .tx-fs-toggle[aria-pressed="true"] { background: var(--tint); color: #fff; }
+.tx-fs-toggle.on:hover, .tx-fs-toggle[aria-pressed="true"]:hover { background: var(--tint-hover); color: #fff; }
 
 /* 플로팅 저장 버튼 — body 직속이라 transcript 시트의 배경 inert 에 안 걸리고, 시트(z 200) 위에 뜬다.
    운전 중 조준 없이 누르는 큰 원 + 표시는 CSS 만으로(body.drive-capture.on-episode) 라우트 연동. */
