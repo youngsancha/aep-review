@@ -1,6 +1,6 @@
 # E-Podcast (aep-review) — Session Handoff
 
-**Written:** 2026-08-07 · **Live:** v1.60.0 (verified on prod) · **Branch:** main, clean, HEAD == origin/main
+**Written:** 2026-08-07 · **Live:** v1.61.0 (verified on prod) · **Branch:** main, clean, HEAD == origin/main
 
 Read this first, then the auto-memory topic file
 `~/.claude/projects/-Users-youngsancha/memory/aep-review-project.md` (full accumulated trap history).
@@ -45,11 +45,21 @@ starting the next** (audio → R2 → STT → vocab → Kokoro speech → Korean
 stage would leave a pile of transcript-less rows if it dies at hour 20; this way an interruption leaves
 finished episodes plus untouched work.
 
-- **Script:** `scripts/wh_ingest_all.sh` (was in a scratchpad; moved into the repo so it survives a
-  session ending). **Resume by simply re-running it** — every stage is idempotent: `wh_fetch` skips
-  guids already in the DB, `kokoro_pregen` skips existing keys, `translate_transcripts` checkpoints
-  per sentence.
-- **Log:** `~/Library/Logs/aep-wh-all.log` · progress = `grep -c COMPLETE`.
+- **It runs under launchd, not from a shell.** `com.roy.aep-wh-ingest` →
+  `scripts/wh_ingest_supervisor.sh` → `scripts/wh_ingest_all.sh`. A terminal-launched run already
+  died once: the session ended, SIGHUP took the driver down, and only its faster-whisper child
+  survived — one episode was left with STT but no vocab/speech/translation and 49 briefings never
+  started. macOS ships no `setsid`, so launchd is the only way to detach it.
+  - `launchctl kickstart -k gui/$UID/com.roy.aep-wh-ingest` to restart,
+    `launchctl bootout gui/$UID/com.roy.aep-wh-ingest` to stop.
+  - The supervisor waits out any running `ingest.wh_fetch` before starting (two drivers on one
+    episode would race on the same transcript JSON), finishes a half-done episode named in
+    `~/Library/Caches/aep-wh-finish-ep` and then deletes that file (extract_vocab calls an LLM per
+    episode — repeating it costs money), holds a lock dir, and restarts the driver on failure.
+- Every stage is idempotent: `wh_fetch` skips guids already in the DB, `kokoro_pregen` skips
+  existing keys, `translate_transcripts` checkpoints per sentence. **Re-running is always safe.**
+- **Log:** `~/Library/Logs/aep-wh-all.log` (supervisor lines are tagged `[sup]`) · progress =
+  `grep -c COMPLETE` · launchd's own stdout is `~/Library/Logs/aep-wh-launchd.log`.
 - **Pace:** ~38 min/episode (21-min briefing ≈ 22 min CPU STT + vocab + translation).
 - **Order is newest-first**, so an interruption still leaves the most recent briefings done.
 - 64 briefings are discoverable in total (6 paginated listing pages); 59 of them are Karoline Leavitt.
@@ -59,24 +69,17 @@ finished episodes plus untouched work.
 ⚠ This must run **locally on the Mac mini**. Both audio sources block datacenter IPs (YouTube answers
 "Sign in to confirm you're not a bot"; C-SPAN returns 403). `wh-sync.yml` is dispatch-only for that reason.
 
-## 4. ⏳ IN FLIGHT — a Sonnet agent on the transcript sheet (NOT yet in the tree)
+## 4. Transcript sheet — 3 of 4 shipped in v1.61.0
 
-Four items, priority order (told to ship 1-3 and report 4 undone rather than rush):
-1. **The active sentence hides behind the Korean panel.** `_highlightImpl` anchors the active paragraph
-   against the scroll container's *full* height, but `.tx-notes` is a pinned bottom overlay, so the
-   usable viewport is shorter. Audio-only had enough slack to hide it; video mode halved the scroll area
-   and it became "the line I need to read is off-screen". Fix = anchor against the usable area (measure
-   the panel, it is 1-3 lines depending on text size) + bottom padding on `.tx-scroll` so the last
-   sentences can clear it.
-2. **Fullscreen focus study mode** — a toolbar chip that hides header + toolbar, pins the video flush to
-   the top of the screen and gives the transcript everything below. Must have a visible exit (no
-   gesture-only), must default OFF on every entry (memory-only, same rule as drive mode and video mode).
-3. **Toolbar on one row at 360px** — 7 chips currently wrap. `.tx-loop-toggle`'s fixed `min-width` exists
-   because the shadow label cycles (`Shadow` … `10× Auto`); it may shrink but must stay fixed, and the
-   44px `::after` touch expanders must survive.
-4. Header (title/date) compaction for the *normal* sheet.
-
-If that agent is gone, the four items above are the spec — re-run them.
+1. ✅ **Korean panel covering the active sentence** — mostly fixed, see §7 for the one residual.
+2. ✅ **Fullscreen focus study mode** (`⤢` chip). Verified: header + toolbar hidden, video flush at
+   `cardTop: 0`, 44×44 exit button visible, exits via ✕ / Esc / turning the video off, always OFF on
+   entry (memory-only, same rule as drive mode and video mode).
+3. ✅ **Toolbar on one row** — 8 chips fit at both 360 and 390 px (`offscreen: 0`, `topRange: 2.5`).
+   `.tx-loop-toggle`'s width is still fixed (the shadow label cycles `Shadow` … `10× Auto`) and the
+   44px `::after` touch expanders survive.
+4. ⬜ **Header (title/date) compaction for the *normal* sheet — not started.** Still wanted: the user
+   asked for it so the video and study area get more room outside fullscreen.
 
 ---
 
@@ -91,6 +94,7 @@ If that agent is gone, the four items above are the spec — re-run them.
 - **v1.59.0** the YouTube API script could hang forever · video pinned to the top.
 - **v1.60.0** transcripts were frozen on-device by `force-cache` · `Transcript`/`Video` equal-weight
   primary buttons · toolbar order `KR · 가 · A · …`.
+- **v1.61.0** fullscreen study mode · toolbar on one row · KR panel overlap 4/8 → 1/8 failing.
 
 Also: the daily cron only ever read the `aep` feed, so **All Ears English silently missed 6 weeks**
 (31 episodes recovered) · WH listing pagination 12 → 64.
@@ -117,8 +121,32 @@ Also: the daily cron only ever read the `aep` feed, so **All Ears English silent
   singleton. Bail paths now log why.
 - **A "safety" guard can protect the wrong thing.** `wh_backfill_video_ids` excluded the newest episode
   by `pub_date` when the one being written is always the newest by **id**.
+- **A fixed `sleep` cannot measure an easing animation.** `smoothScrollTo` approaches its target by 12%
+  per frame, so settling time is proportional to the *distance*. The KR-overlap check slept 0.7 s; the
+  first seek had to travel 1086 px (~0.82 s), so it always sampled a mid-ease position — and the numbers
+  were identical every run, which reads like a solid bug rather than a race. Poll until the scroll stops.
+- **"Re-check after it settles" can recurse into itself.** Adding a re-anchor call at the end of the ease
+  looked safe until `prefers-reduced-motion: reduce`, where `smoothScrollTo` skips the ease entirely and
+  scrolls synchronously — re-anchor → scroll → re-anchor in one call stack, unbounded when the overlap
+  cannot be resolved. Headless Chromium reports `reduce`, so it blew the stack in `_pwtest`'s ROUTER
+  section and Playwright reported it as `Execution context was destroyed ... because of a navigation`.
+  A misleading error message; bisecting by `git stash push -- <file>` found it in one run.
+- **The harness geometry is not the phone's.** In `_harness.html` the `.tx-scroll` container reports
+  `clientHeight` 1363 inside a 780 px viewport — it overflows the screen, which a real sheet never does.
+  Any assertion that reasons about "the visible area" can therefore be measuring something the device
+  never sees. Confirm on the phone before trusting a lone harness failure.
 
 ## 7. Open / deferred
+
+- ⚠ **`scripts/_pwtest.py` currently exits FAIL on one assertion** — `KR-PANEL-OVERLAP` sample `t=11`
+  (the first sentence right after playback starts) still measures 21 px of overlap, `activeBottom 562`
+  vs `notesTop 541`. It went from 4 of 8 samples failing to 1. It was shipped red on purpose: nothing
+  that was green before this session went red, and the assertion is new — it measures a pre-existing
+  defect. Before spending more on it, **check on the phone whether it reproduces at all**: the number
+  did not move by a single pixel across five different fixes (bottom padding, paragraph-branch safe
+  line, re-anchor on ease arrival, re-anchor on the next frame, settled-scroll measurement), which
+  points at the harness geometry above rather than the app. Filed on the ops dashboard.
+- Header (title/date) compaction for the normal sheet — item 4 of the sheet work, never started.
 
 - Mini-player has no −15s (asymmetric with +30s); layout is tight — skipped as low value.
 - `tests/test_resegment_parity.py` skips without fixtures — filed on the ops dashboard.
