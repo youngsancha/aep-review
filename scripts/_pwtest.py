@@ -1119,11 +1119,17 @@ def main() -> int:
             pg.set_viewport_size({"width": 390, "height": 780})   # iPhone 급 세로 폰
             time.sleep(0.3)
             _shot(pg, "video-mode-on-pinned-top")
+            # ⚠ 네 요소를 반드시 '같은 시트'에서 집어야 한다. 예전엔 vw 만 document.getElementById
+            # (문서 순서상 첫 번째)로, 나머지는 '.tx-sheet.open'(역시 첫 번째)로 집었다 — 이 구간엔
+            # 열린 시트가 둘일 수 있어(위 TX-TOOLBAR 주석) 서로 다른 시트의 사각형을 섞어 쟀고,
+            # 그래서 '자막이 시트 밖으로 918px 넘침' 같은 실제로는 없는 실패가 나왔다.
             lv_geo = pg.evaluate("""() => {
-              const tb = document.querySelector('.tx-sheet.open .tx-toolbar');
-              const vw = document.getElementById('tx-video-wrap');
-              const sc = document.querySelector('.tx-sheet.open .tx-scroll');
-              const card = document.querySelector('.tx-sheet.open .tx-sheet-card');
+              const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet')
+                         || document.querySelector('.tx-sheet.open');
+              const tb = sheet?.querySelector('.tx-toolbar');
+              const vw = sheet?.querySelector('#tx-video-wrap');
+              const sc = sheet?.querySelector('.tx-scroll');
+              const card = sheet?.querySelector('.tx-sheet-card');
               if (!tb || !vw || !sc || !card) return null;
               const r = (el) => el.getBoundingClientRect();
               return { tb: r(tb), vw: r(vw), sc: r(sc), card: r(card) };
@@ -1201,8 +1207,15 @@ def main() -> int:
                   const notesOn = notes.classList.contains('show');
                   if (!notesOn) return { notesOn };
                   const a = active.getBoundingClientRect(), n = notes.getBoundingClientRect();
+                  const sc = sheet.querySelector('.tx-scroll');
+                  const cTop = sc ? sc.getBoundingClientRect().top : 0;
                   return { notesOn, t: %d, activeBottom: Math.round(a.bottom), notesTop: Math.round(n.top),
                            aboveNotes: a.bottom <= n.top + 0.5,
+                           // 위로 잘림(머리가 스크롤 영역 위로 넘어감) — 읽을 수 없는 상태.
+                           // v1.65.0 회귀 재발 방지(2× Smart 반복 중 되감기에서 발생).
+                           topClipped: Math.round(a.top) < Math.round(cTop) - 1,
+                           // 문장 높이와 '안 가려진 높이' — 판정을 나누는 데 쓴다(아래 파이썬 주석).
+                           sentH: Math.round(a.height), usable: Math.round(n.top - cTop),
                            text: active.textContent.trim().slice(0, 40),
                            sheets: document.querySelectorAll('.tx-sheet.open').length,
                            scoped: sheet === document.querySelector('.tx-sheet.open') };
@@ -1213,7 +1226,22 @@ def main() -> int:
             print("KR-DIAG:", pg.evaluate("() => (window.__KRDIAG || []).slice(0, 3)"))
             print("KR-REDIAG:", pg.evaluate("() => (window.__REDIAG || []).slice(0, 12)"))
             kr_shown_checks = [c for c in kr_checks if isinstance(c, dict) and c.get("notesOn") is True]
-            kr_overlap_ok = len(kr_shown_checks) >= 1 and all(c.get("aboveNotes") is True for c in kr_shown_checks)
+            # ⚠ 문장이 '안 가려진 높이'(usable = KR 패널 위 여백)보다 크면 '머리가 보인다' 와
+            # '꼬리가 패널 위' 를 동시에 만족하는 게 물리적으로 불가능하다. 그때 옳은 동작은
+            # 시작을 보여주는 것이다 — 읽기는 위에서 시작하고 패널엔 그 문장의 번역이 떠 있다.
+            # 그래서 판정을 나눈다: 들어가는 문장은 가리면 실패, 안 들어가는 문장은 머리가
+            # 잘리면 실패. (예전엔 전자만 봐서, 앱이 긴 문장의 머리를 잘라 화면 위로 밀어내도
+            # 통과했다 — 사용자 신고 2026-08-10 이 그 상태였다.)
+            def _fits(c):
+                # 문턱 18 = 앱이 요구하는 여유의 합(머리 위 8px + 꼬리와 패널 사이 10px).
+                # 그보다 여유가 없으면 두 조건을 동시에 만족하는 게 산술적으로 불가능하다 —
+                # 실제로 sentH 156 / usable 167 인 지점이 여기 걸렸다(여유 11px < 18px).
+                return (c.get("sentH") or 0) + 18 <= (c.get("usable") or 0)
+            kr_overlap_ok = len(kr_shown_checks) >= 1 and all(
+                (c.get("aboveNotes") is True) if _fits(c) else (c.get("topClipped") is not True)
+                for c in kr_shown_checks)
+            kr_clip_ok = all(c.get("topClipped") is not True for c in kr_shown_checks if _fits(c))
+            print("KR-TOP-CLIP:", [c.get("t") for c in kr_shown_checks if c.get("topClipped")] or "none")
             # KR 꺼짐 — 이 로직 자체를 안 타므로(safeBottom = h*0.90, 예전 상수 그대로) 예전과
             # 동일해야 한다: 활성 문장이 화면 안(완전히 안 사라짐)에 있으면 충분한 회귀 가드.
             if pg.query_selector("#tx-trans"):
@@ -1256,7 +1284,7 @@ def main() -> int:
             print("KR-PANEL-LAST-SENTENCE-REACHABLE:", last_reach)
             last_reach_ok = (isinstance(last_reach, dict) and last_reach["notesOn"] is True
                               and last_reach["padBottom"] > 110 and last_reach["reachable"] is True)
-            kr_panel_ok = kr_overlap_ok and kr_off_ok and last_reach_ok
+            kr_panel_ok = kr_overlap_ok and kr_off_ok and last_reach_ok and kr_clip_ok
 
             # === 🖥 풀스크린 스터디 모드 ===
             # 사용자 요청: 헤더(핸들·제목·날짜)+툴바를 감추고 영상을 화면 맨 위에 붙여 트랜스크립트에
@@ -1369,6 +1397,23 @@ def main() -> int:
                      and wh_chip_shown is True and about_no_url is True
                      and primary_video_btn_ok is True and tx_toolbar_order_ok is True and tb_normal_ok is True
                      and libvideo_ok is True and kr_panel_ok is True and fullscreen_ok is True)
+            # ep 묶음은 항목이 30개가 넘는 논리곱이라 실패해도 무엇이 걸렸는지 안 보인다 → 찍는다.
+            print("EP-SUBFAILED:", [k for k, v in {
+                "noaudio": noaudio_ok is True, "chips_fit": isinstance(chips_fit, dict) and chips_fit["offscreen"] == 0,
+                "np_fit": isinstance(np_fit, dict) and np_fit["titleH"] <= 62 and np_fit["clearance"] >= 8,
+                "download": dl_none_mega is True and dl_idle == "Offline" and dl_saved == "Saved",
+                "notes": notes_show is True and bool(notes_no_vocab) and about == 1,
+                "trans": isinstance(trans_ok, str) and trans_ok.startswith("[KO]") and "fill in the gap" in trans_ok,
+                "trans_fs": trans_fs is not None and trans_fs >= 20 and trans_fixed is True,
+                "sync": sync_ok is True, "fs": fs_ok is True, "ads": ad_detect == 2 and ad_none is True and ad_mid_ok is True,
+                "shadow": shadow_ok is True, "wordpop": wordpop_ok is True, "drive": drive_ok is True,
+                "seek_follow": seek_follow is True, "vk": vk_ok is True,
+                "video_toggle": video_toggle_hidden is True and video_toggle_shown is True,
+                "primary_video": primary_video_btn_ok is True, "toolbar_order": tx_toolbar_order_ok is True,
+                "tb_normal": tb_normal_ok is True, "libvideo": libvideo_ok is True,
+                "kr_panel": kr_panel_ok is True, "fullscreen": fullscreen_ok is True,
+                "errs": (not werr) and (not errs),
+            }.items() if not v] or "none")
 
             # === Study 뷰 회귀 ===
             pg.goto("http://localhost:8123/_harness_study.html")
@@ -1973,8 +2018,13 @@ def main() -> int:
                           and dbcache_hits["transcript"] == 2)
             pg2.close()
 
-            ok = (ep_ok and study_ok and timeline_ok and settings_ok and srs_ok and router_ok
-                  and realvideo_ok and ytblocked_ok and dbcache_ok)
+            # 실패 시 어느 묶음인지 바로 보이게 한다 — 예전엔 RESULT: FAIL 만 나와서 큰 논리곱을
+            # 사람이 눈으로 되짚어야 했다(2026-08-10: 이것 때문에 한참 헤맸다).
+            _groups = {"ep": ep_ok, "study": study_ok, "timeline": timeline_ok, "settings": settings_ok,
+                       "srs": srs_ok, "router": router_ok, "realvideo": realvideo_ok,
+                       "ytblocked": ytblocked_ok, "dbcache": dbcache_ok}
+            print("GROUPS-FAILED:", [k for k, v in _groups.items() if not v] or "none")
+            ok = all(_groups.values())
             b.close()
     finally:
         srv.terminate()

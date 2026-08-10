@@ -596,11 +596,26 @@ export async function renderEpisode(root, idStr, tStr) {
     const cont = scroll.getBoundingClientRect();
     const h = scroll.clientHeight;
     const sRect = sentRanges[idx].el.getBoundingClientRect();
-    const sRelBot = sRect.bottom - cont.top;
+    const sRelBot = sRect.bottom - cont.top, sRelTop = sRect.top - cont.top;
     const nRect = $notes.getBoundingClientRect();
     const safeBottom = (nRect.top < cont.bottom) ? Math.max(0, nRect.top - cont.top) : h;
-    if (sRelBot <= safeBottom - 10) { _d?.(`clear:${Math.round(sRelBot)}<=${Math.round(safeBottom)}`); return; }   // 아직 안 가려짐 — no-op
-    const target = (sRelBot + scroll.scrollTop) - (safeBottom - 10);
+    // 온전히 보이면 no-op. ⚠ '바닥이 안전선 위' 만으로는 부족하다 — 문장이 안 가려진 높이보다
+    // 길면 아래 보정이 바닥을 맞추느라 머리를 화면 위로 밀어내는데, 그 상태는 바닥 조건을
+    // 만족하므로 여기서 조기 반환돼 스스로 회복하지 못한다(사용자 신고 2026-08-10: 2× Smart
+    // 반복 중 긴 문장이 화면 위로 넘어감. 계측 KR-TOP-CLIP 이 t=23/36/49 에서 재현).
+    if (sRelTop >= 0 && sRelBot <= safeBottom - 10) { _d?.(`clear:${Math.round(sRelBot)}<=${Math.round(safeBottom)}`); return; }
+    // 문장이 안 가려진 높이 안에 못 들어가면 바닥을 맞추는 건 의미가 없다(어차피 일부는 가려진다).
+    // 그럴 땐 '시작'을 보여준다 — 읽기는 위에서 시작한다. 아래 앵커링(usable 분기)과 같은 원칙.
+    // 규칙 둘, 순서가 중요하다.
+    //  ① 꼬리가 '실제로' 패널에 가릴 때만 내린다. ⚠ 무조건 '꼬리를 안전선에 맞춘다'로 쓰면,
+    //     이미 안전선 위에 있는 문장까지 아래로 끌어내린다(화면이 거꾸로 움직인다).
+    //  ② 그 결과가 머리를 화면 위로 밀어내면 거기서 자른다(상한). 둘을 동시에 만족 못 하는
+    //     긴 문장에서는 자연히 '시작을 보여주는' 쪽이 남는다.
+    let desired = scroll.scrollTop;
+    if (sRelBot > safeBottom - 10) desired = scroll.scrollTop + (sRelBot - (safeBottom - 10));
+    const topCap = scroll.scrollTop + sRelTop - 8;
+    if (desired > topCap) desired = topCap;
+    const target = desired;
     const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - h));
     const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;
     _d?.(`scroll:${Math.round(ref)}->${Math.round(clamped)} sRelBot=${Math.round(sRelBot)} safe=${Math.round(safeBottom)}`);
@@ -866,6 +881,13 @@ export async function renderEpisode(root, idStr, tStr) {
       // 흔들림만 막아야 한다. 활성 문장이 화면에서 '완전히' 사라졌다면(위/아래 밖) followResume 신호가
       // 탭 등으로 지워졌어도 아래 out-of-band 당김이 복귀시킨다 — 보이는 동안엔 기존과 100% 동일.
       const sentOffscreen = sRelBot <= 0 || sRelTop >= h;
+      // 위쪽으로 '걸쳐' 잘린 상태(머리는 화면 위, 꼬리만 보임)도 읽을 수 없기는 마찬가지다.
+      // v1.65.0 회귀(사용자 신고 2026-08-10, 2× Smart 반복 중 긴 문장): tooLow 는 반복 중에도
+      // 고치게 풀었는데 tooHigh 는 inLoopPara 에 계속 막혀 있어서, 재생 중 화면이 아래로 따라
+      // 내려간 뒤 되감으면 문단 첫 문장이 화면 위로 올라간 채 방치됐다. sentOffscreen 은 '완전히'
+      // 벗어난 경우만 잡는데 긴 문장은 꼬리가 걸쳐 있어 거기 안 걸린다 — 아래로만 가고 위로는
+      // 못 돌아오는 편도 통행이 됐던 것. 이건 반복 여부와 무관하게 항상 되돌린다.
+      const sentClipped = sRelTop < 0 && sRelBot > 0;
       // 하단 안전선: KR 번역 패널(.tx-notes)이 켜져 있으면 .tx-scroll 하단을 덮는 오버레이라, '실제로
       // 안 가려진' 높이만 안전하다. 예전엔 h 의 고정 비율(58%)로 어림했는데 — 그 비율은 오디오 모드
       // (h 가 큼)에서만 우연히 맞았고, 영상 모드(h 가 훨씬 작음 — 패널이 그 안에서 차지하는 비중이
@@ -898,11 +920,26 @@ export async function renderEpisode(root, idStr, tStr) {
         // 가려짐 — else 분기만 고치는 걸로는 부족했다). 패널이 켜져 있으면 활성 문장이 안전선 위에
         // 오도록 한 번 더 끌어올린다(문단-상단 앵커가 이미 충분히 위라면 이 보정은 자연히 no-op).
         if (notesOn) {
+          // 세 경로(문단진입/문장추적/패널성장 재앵커)가 같은 규칙을 써야 한다:
+          // 문장이 안 가려진 높이 안에 들어가면 → 꼬리가 패널 위로 오게, 안 들어가면 → 시작을
+          // 보여준다. 예전엔 이 분기만 '꼬리 맞추기' 뿐이라, 긴 문장에서 머리가 화면 위로
+          // 잘렸다(계측 KR-TOP-CLIP). 두 조건을 동시에 만족하는 건 물리적으로 불가능하고,
+          // 읽기는 위에서 시작하므로 시작을 보여주는 쪽이 맞다(KR 패널엔 그 문장의 번역이 뜬다).
+          // 두 요구를 하나의 상한으로 표현한다: '꼬리가 패널 위로' 오려면 최소 이만큼 내려야 하고
+          // (sentAbsBottom - (safeBottom-10)), '머리가 안 잘리려면' 이보다 더 내리면 안 된다
+          // (sentAbsTop - 8). 문장이 안 가려진 높이보다 길면 둘을 동시에 만족할 수 없는데, 그때는
+          // 머리 쪽을 지킨다(min) — 읽기는 위에서 시작하고 패널엔 그 문장의 번역이 떠 있으니까.
+          // 분기 없이 min 하나로 세 경로가 같은 규칙을 쓴다.
+          const sentAbsTop = sRelTop + scroll.scrollTop;
           const sentAbsBottom = sRelBot + scroll.scrollTop;
-          const minSafeTarget = sentAbsBottom - (safeBottom - 10);
-          if (minSafeTarget > target) target = minSafeTarget;
+          // 문단 앵커 위치에서 잰 뒤 ①꼬리가 가리면 더 내리고 ②머리를 자르면 거기서 멈춘다
+          // (reanchorForNotesGrowth 와 같은 규칙 — 세 경로가 같은 결과를 내야 한다).
+          const afterPara = sRelBot + scroll.scrollTop - target;   // 문단 앵커 적용 후의 화면상 꼬리 위치
+          if (afterPara > safeBottom - 10) target = sentAbsBottom - (safeBottom - 10);
+          const topCapPara = sentAbsTop - 8;
+          if (target > topCapPara) target = topCapPara;
         }
-      } else if (sentOffscreen || tooLow || (!inLoopPara && tooHigh)) {
+      } else if (sentOffscreen || sentClipped || tooLow || (!inLoopPara && tooHigh)) {
         // 문장 상단을 usable 기준 ≈22% 지점으로 끌어올린다 — 영상 모드처럼 usable 이 작아지면 이
         // 여백도 함께 줄어들어 항상 문장 전체가 패널 위 안전지대 안에 들어온다.
         // ⚠ inLoopPara 게이트는 tooHigh 에만 남긴다. 원래 이 게이트는 '되감기 직후 화면이 아래로
