@@ -82,6 +82,40 @@ const FIX_SENTS = [
   [95,  'Practice it repeatedly until it becomes second nature.'],
   [110, 'Thanks for listening and we will see you next time.'],
 ];
+// ?fx=loop → 쉐도잉 '반복 되감기 앵커' 검증용 픽스처. 한 회차 안에서 문단 길이를 끝에서 끝까지
+// 훑는다(3단어 한 문장 … 26단어 두 문장). 사용자 신고의 핵심이 "문장이 길 때와 짧을 때 배지 위치가
+// 다르다" 였으므로, 길이 스펙트럼 자체가 픽스처의 목적이다.
+// 문단 경계는 groupIntoParagraphs 의 gap>1.6 규칙으로 강제한다(문단 사이 3.0s, 문장 사이 0.3s).
+// ⚠ resegment 가 이 문장들을 다시 쪼개면 픽스처의 의도가 무너진다 → 두 규칙을 지킨다:
+//   ① 한 문장 ≤13단어(하드캡 14, dur>9s 도 회피)  ② 문장 중간에 대문자 STARTER(The/It/They…)나
+//      11번째 단어 이후의 접속사(and/but/so…)를 두지 않는다. 콤마는 7단어 이전에만.
+const LOOP_PARAS = [
+  ['Shana opens the lesson.'],                                                       // 4단어 — 아주 짧은 1문장
+  ['Today our topic covers a surprisingly common English speaking habit.'],          // 10단어 — 보통 1문장
+  ['Listeners often ask about pronunciation details.',                               // 6+6 — 2문장
+   'Practice makes real progress happen quickly.'],
+  ['Learners sometimes struggle enormously with unfamiliar idiomatic expressions during fast natural everyday conversation.'],  // 13단어 — 긴 1문장
+  ['Understanding these subtle differences takes considerable patience from every dedicated language learner worldwide.',       // 13+13 — 가장 긴 문단
+   'Repetition through shadowing builds genuine fluency faster than passive listening ever possibly could.'],
+  ['Repeat that phrase.'],                                                           // 3단어 — 가장 긴 문단 '바로 뒤'의 가장 짧은 문단
+  ['Careful listening reveals connected speech patterns inside ordinary casual American conversation.',                          // 11+12
+   'Shadowing along slowly trains your mouth muscles for those unfamiliar sound combinations.'],
+  ['Thanks for listening everyone, we will see you again next week.'],               // 마지막 문단 — 스크롤 한계(--loop-tail) 검증
+];
+function buildLoopTranscript(){
+  const segments = []; let t = 2, idx = 0;
+  for (const para of LOOP_PARAS) {
+    for (const text of para) {
+      const toks = text.split(' '), per = 0.45;
+      const words = toks.map((w,j)=>({start:+(t+per*j).toFixed(2), end:+(t+per*(j+1)).toFixed(2), word:(j?' ':'')+w}));
+      const en = +(t+per*toks.length).toFixed(2);
+      segments.push({idx: idx++, start:t, end:en, text, words});
+      t = +(en + 0.3).toFixed(2);     // 문장 사이 0.3s → 같은 문단으로 묶인다
+    }
+    t = +(t + 2.7).toFixed(2);        // 문단 사이 합계 3.0s → gap>1.6 으로 문단 강제 분할
+  }
+  return {language:'en', duration:+(t+5).toFixed(2), aligned:true, segments};
+}
 function buildTranscript(){
   const segments = FIX_SENTS.map((s,i)=>{
     // 현실적 발화속도(~0.45s/단어)로 단어를 앞쪽에 채우고, 문장 사이는 자연스러운 쉼으로 남긴다.
@@ -93,6 +127,13 @@ function buildTranscript(){
   return {language:'en', duration:122, aligned:true, segments};
 }
 export async function getEpisode(id){
+  // ?fx=loop 인 페이지만 문단길이 스윕 픽스처를 쓴다 — 기존 하니스 흐름은 1바이트도 안 바뀐다.
+  const loopFx = new URLSearchParams(location.search).get('fx') === 'loop';
+  if (loopFx) {
+    return { id, title:'Loop Anchor Fixture', season:1, episode_no:1, pub_date:'2026-01-01',
+             duration_sec:200, audio_url:'https://example.com/test.mp3', transcribed_at:'2026-01-01',
+             show:'aep', description:'', vocab:[], transcript: buildLoopTranscript() };
+  }
   const transcript = buildTranscript();
   // id 4 = wh(백악관 브리핑) 회차 — video_id 있음 → 📺 Video 토글 노출 검증용(실제 iframe 은 절대
   // 안 띄움, mount() 를 호출하지 않는 한 네트워크 무관 — 과제 요구사항: 하니스에서 실제 YouTube
@@ -2018,11 +2059,132 @@ def main() -> int:
                           and dbcache_hits["transcript"] == 2)
             pg2.close()
 
+            # === 🔁 반복 되감기 앵커 — 문단 길이 전 구간 스윕 (LOOP-HEAD-ANCHOR) ===
+            # 사용자 신고 2026-08-10: "문단을 읽고 다시 그 문단의 처음으로 돌아올라갈 때, 문장이
+            # 길면 반복횟수 배지가 화면에서 사라지고 짧으면 다시 보인다 — 들쭉날쭉."
+            # 요구사항 그대로 검증한다: 문단 길이를 전 구간(3단어 … 26단어) 훑으면서 매 되감기마다
+            #  ① 배지가 화면 안에 있고 ② '항상 같은 높이'에 오고 ③ 그 바로 밑에 문단 첫 문장이 보이는가.
+            # 두 레이아웃에서 돌린다 — 오디오 모드(스크롤 영역이 큼) + 영상 모드·최대 글자크기
+            # (문단이 스크롤 영역보다 확실히 길어지는 조건 = 예전에 배지가 잘려 나가던 조건).
+            LOOP_GAP = 26      # episode.js::LOOP_HEAD_GAP 과 같은 값(상단 mask 페이드 22px 바깥)
+
+            def _settle_any(page, max_wait=3.0):
+                prev, stable, waited = None, 0, 0.0
+                while waited < max_wait:
+                    cur = page.evaluate("() => { const s=document.querySelector('.tx-sheet.open .tx-scroll');"
+                                        " return s ? Math.round(s.scrollTop) : -1; }")
+                    stable = stable + 1 if cur == prev else 0
+                    if stable >= 2:
+                        return
+                    prev = cur
+                    time.sleep(0.1); waited += 0.1
+
+            MEASURE_JS = """() => {
+              const sheet = document.querySelector('.tx-sheet.open');
+              const sc = sheet && sheet.querySelector('.tx-scroll');
+              const badge = sheet && sheet.querySelector('.tx-loop-badge');
+              if (!sc || !badge) return { badge: false };
+              const pEl = badge.closest('.tx-para');
+              const first = pEl && pEl.querySelector('.tx-sent');
+              if (!pEl || !first) return { badge: false };
+              const c = sc.getBoundingClientRect(), b = badge.getBoundingClientRect();
+              const p = pEl.getBoundingClientRect(), f = first.getBoundingClientRect();
+              return {
+                badge: true,
+                pIdx: [...sc.querySelectorAll('.tx-para')].indexOf(pEl),
+                paraH: Math.round(p.height), viewH: Math.round(sc.clientHeight),
+                badgeTop: Math.round(b.top - c.top), badgeBot: Math.round(b.bottom - c.top),
+                // 배지가 스크롤 영역 안에 '온전히' 들어와 있는가(위로 잘리는 게 원래 증상).
+                badgeInside: b.top >= c.top - 0.5 && b.bottom <= c.bottom + 0.5,
+                absHead: Math.round(b.top - c.top + sc.scrollTop), scrollTop: Math.round(sc.scrollTop),
+                firstTop: Math.round(f.top - c.top),
+                firstVisible: f.top >= c.top - 1 && f.top < c.bottom - 4,
+                atMaxScroll: Math.round(sc.scrollTop) >= Math.round(sc.scrollHeight - sc.clientHeight) - 1,
+                text: first.textContent.trim().slice(0, 26),
+              };
+            }"""
+
+            loop_errs = []   # ep_ok 는 이 블록보다 앞에서 계산되므로 errs 에 넣으면 아무도 안 본다.
+
+            def _loop_sweep(video_mode, scale):
+                page = b.new_page()
+                page.on("pageerror", lambda e: loop_errs.append("LOOPPAGE: " + str(e)))
+                page.on("console", lambda m: loop_errs.append(f"LOOPPAGE {m.type}: {m.text}")
+                        if m.type == "error" else None)
+                page.add_init_script("try{localStorage.setItem('aep-tx-scale','%s')}catch(e){}" % scale)
+                page.route("**/api.mymemory.translated.net/**", _mm)
+                page.set_viewport_size({"width": 390, "height": 780})
+                page.goto("http://localhost:8123/_harness.html?fx=loop")
+                page.wait_for_function("window.__ready===true", timeout=10000)
+                page.click("#np-tx-btn"); time.sleep(0.4)
+                if video_mode and page.query_selector("#tx-video-toggle"):
+                    page.eval_on_selector("#tx-video-toggle", "el=>el.click()"); time.sleep(0.4)
+                # KR 패널은 켠 상태로 — safeBottom/usable 이 개입하는(예전에 규칙이 갈리던) 조건이다.
+                if page.eval_on_selector("#tx-trans", "el=>el.getAttribute('aria-pressed')") != "true":
+                    page.click("#tx-trans"); time.sleep(0.2)
+                page.click("#tx-shadow"); time.sleep(0.2)      # off → 3× Smart
+                meta = page.evaluate("""() => {
+                  const sc = document.querySelector('.tx-sheet.open .tx-scroll');
+                  return [...sc.querySelectorAll('.tx-para')].map((p) => {
+                    const ss = [...p.querySelectorAll('.tx-sent')];
+                    return { n: ss.length, starts: ss.map((s) => parseFloat(s.dataset.start)),
+                             end: parseFloat(ss[ss.length - 1].dataset.end) };
+                  });
+                }""")
+                rows = []
+                for p, m in enumerate(meta):
+                    # ① 반복 대상을 이 문단으로 옮긴다. 문단 사이 3s 공백이 loopEnd+1.5s 임계를 넘겨
+                    #    confirmLoopBoundary 가 '지금 위치의 문단'으로 재지정한다(앞으로 시크 규약).
+                    page.evaluate("t => window.__player.seek(t)", m["starts"][0] + 0.2)
+                    time.sleep(0.05)
+                    # ② 문단을 끝까지 '읽는다' — 화면이 문장을 따라 아래로 내려가는 실제 상태 재현.
+                    for st in m["starts"]:
+                        page.evaluate("t => window.__player.seek(t)", st + 0.25)
+                        time.sleep(0.05)
+                    _settle_any(page)
+                    # ③ 문단 끝 도달 → 되감기(여기가 사용자가 말한 '문단 처음으로 돌아올라갈 때').
+                    page.evaluate("t => window.__player.seek(t)", m["end"] + 0.3)
+                    time.sleep(0.1); _settle_any(page)
+                    r = page.evaluate(MEASURE_JS)
+                    r["want"] = p
+                    rows.append(r)
+                page.close()
+                return rows
+
+            loop_rows_audio = _loop_sweep(video_mode=False, scale="1.0")
+            loop_rows_video = _loop_sweep(video_mode=True, scale="1.5")
+            loop_ok = True
+            for tag, rows in (("audio/1.0", loop_rows_audio), ("video/1.5", loop_rows_video)):
+                print(f"LOOP-HEAD-ANCHOR [{tag}]:")
+                for r in rows:
+                    print("   ", r)
+                tops = [r.get("badgeTop") for r in rows if r.get("badge")]
+                # 세 가지를 본다. '일정한 위치'가 요구사항의 핵심이라 spread 를 직접 단언한다.
+                per_row = all(
+                    r.get("badge") is True and r.get("pIdx") == r["want"]
+                    and r.get("badgeInside") is True
+                    and abs((r.get("badgeTop") or 0) - LOOP_GAP) <= 2
+                    and r.get("firstVisible") is True
+                    and (r.get("firstTop") or 0) >= (r.get("badgeTop") or 0)
+                    for r in rows)
+                spread = (max(tops) - min(tops)) if tops else 999
+                # 픽스처가 실제로 '전 구간'을 덮었는지도 확인한다 — 짧은 문단만 돌고 통과하면
+                # 이 테스트는 원래 버그를 못 잡는다(긴 문단에서만 나던 증상이었다).
+                heights = [r.get("paraH") or 0 for r in rows]
+                view = rows[0].get("viewH") or 1
+                covered = len(rows) >= 6 and min(heights) < view * 0.25 and max(heights) > view * 0.6
+                print(f"    spread={spread}px  paraH={min(heights)}..{max(heights)} viewH={view}"
+                      f"  per_row={per_row} covered={covered}")
+                loop_ok = loop_ok and per_row and spread <= 2 and covered
+            if loop_errs:
+                print("LOOP-PAGE-ERRORS:", loop_errs[:6])
+            loop_ok = loop_ok and not loop_errs
+
             # 실패 시 어느 묶음인지 바로 보이게 한다 — 예전엔 RESULT: FAIL 만 나와서 큰 논리곱을
             # 사람이 눈으로 되짚어야 했다(2026-08-10: 이것 때문에 한참 헤맸다).
             _groups = {"ep": ep_ok, "study": study_ok, "timeline": timeline_ok, "settings": settings_ok,
                        "srs": srs_ok, "router": router_ok, "realvideo": realvideo_ok,
-                       "ytblocked": ytblocked_ok, "dbcache": dbcache_ok}
+                       "ytblocked": ytblocked_ok, "dbcache": dbcache_ok, "loopanchor": loop_ok}
             print("GROUPS-FAILED:", [k for k, v in _groups.items() if not v] or "none")
             ok = all(_groups.values())
             b.close()

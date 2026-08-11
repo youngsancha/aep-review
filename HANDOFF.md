@@ -1,6 +1,6 @@
 # E-Podcast (aep-review) — Session Handoff
 
-**Written:** 2026-08-10 · **Live:** v1.67.0 (verified on prod) · **Branch:** main, clean, HEAD == origin/main
+**Written:** 2026-08-10 · **Live:** v1.68.0 (verified on prod) · **Branch:** main, clean, HEAD == origin/main
 
 Read this first, then the auto-memory topic file
 `~/.claude/projects/-Users-youngsancha/memory/aep-review-project.md` (full accumulated trap history).
@@ -73,6 +73,12 @@ The machinery stays in place and is worth keeping:
   raised its chrome on every seek. A transparent `.tx-video-tap` layer gives back tap-to-play/pause.
 - ✅ Toolbar is one row **structurally** (`flex-wrap: nowrap` + `overflow-x: auto`), not by pixel budget.
 - ✅ Active sentence stays in the upper half and is never clipped at the top (§6).
+- ✅ **Shadow rewind lands on the same screen every time.** Returning to the top of a repeated
+  paragraph puts the countdown badge exactly `LOOP_HEAD_GAP` (26 px) below the top of `.tx-scroll`,
+  with the paragraph starting right under it — independent of paragraph or sentence length.
+  Owned by `atLoopHead()` / `loopHeadTarget()` / `anchorLoopHead()` in `ui/views/episode.js`;
+  the two `.tx-scroll.loop-tail::before/::after` spacers give the first and last paragraphs the
+  scroll room to reach that position. Locked by `_pwtest` group `loopanchor` (§6).
 - ⬜ **Header (title/date) compaction for the normal sheet — never started.** Still wanted.
 
 ---
@@ -86,6 +92,8 @@ The machinery stays in place and is worth keeping:
 - **v1.65.0** active sentence kept in the upper half instead of sinking to the bottom.
 - **v1.66.0** one row guaranteed by CSS; chips widened for the device.
 - **v1.67.0** active sentence never pushed above the top of the scroll area.
+- **v1.68.0** shadow rewind always lands on the same screen (badge pinned, paragraph right below);
+  `smoothScrollTo` now actually reaches its target.
 
 ## 6. Traps this session added (details in the memory topic file)
 
@@ -119,6 +127,26 @@ The machinery stays in place and is worth keeping:
   invariant structural.
 - **Two `.tx-sheet.open` elements exist in parts of `_pwtest`.** Any unscoped `document.querySelector`
   there measures the wrong sheet. Scope from `#tx-video-toggle` → `.closest('.tx-sheet')`.
+- **`smoothScrollTo` used to stop ~4 px short of its target, silently.** `easeScroll` moved
+  `diff × 0.12` per frame; once `diff` fell to ~4 px that step is 0.48 px, the browser quantises it
+  away, `scrollTop` stops changing — and because the arrival test was `|diff| < 0.5`, the rAF loop
+  kept spinning without ever arriving (so the arrival callback never fired either). Every auto-scroll
+  in the app landed up to 4 px off. It now enforces a 1 px minimum step. **This looked exactly like
+  "the anchor calculation is wrong"** — the fix only became findable by logging the target *and* the
+  reached value: the target was right all along.
+- **A measuring function must not mutate layout.** The first version of `loopHeadTarget()` adjusted
+  the scroller's bottom padding while computing. Shrinking padding makes the browser clamp
+  `scrollTop` on the spot, so the geometry it had just read no longer described reality — the badge
+  drifted 4–106 px per rewind. Reserve space in a *separate* step, before anchoring.
+- **`clientHeight` includes padding, so sizing padding from it explodes.** Setting
+  `--loop-tail = clientHeight` fed back on itself: measured 585 → 798 → 4720 → … → 33 554 432 px.
+  Setting it to `0px` and re-reading in the same task does **not** reliably give the padding-free
+  height either. The reserve is now pure CSS in viewport units (`100vh`), which cannot self-reference.
+- **`_pwtest` group `loopanchor` sweeps paragraph length end to end** (`?fx=loop` fixture: 3-word
+  single sentence … 26-word two-sentence paragraph) in two layouts, and asserts the badge's *spread*
+  across all of them is ≤ 2 px — not just that each one looks reasonable. It also asserts the fixture
+  really covered both `« viewport` and `» viewport` paragraphs; a sweep of only short paragraphs
+  would have passed while the reported bug (long paragraphs) survived.
 
 ## 7. Open / deferred
 
@@ -128,6 +156,9 @@ The machinery stays in place and is worth keeping:
   (`92vh` → `flex:1` → `flex:1`) is correct, and the device renders fine — so suspect the harness
   page's height context (`html`/`body`). Worth fixing: this inflated height is what makes the KR-panel
   `usable` area unrealistically small and has distorted other judgements all session. Filed.
+  Re-confirmed 2026-08-10 after the v1.68.0 work: the numbers are byte-identical (`sc` height 1324
+  inside a 717 px card), so nothing since has touched it. Note the scoping fix is already in — all
+  four rects come from the same sheet — so "two open sheets" is *not* the explanation any more.
 - Old `aep`/`allears` `_ko.json` are **60–70% stale** (ep100 243/413, ep400 347/478, ep520 272/393),
   from resegment changes accumulated long before this session. Online it is masked by on-demand
   translation; offline those lines show nothing. ~480 episodes — needs a cost decision. Filed.

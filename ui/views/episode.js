@@ -496,10 +496,12 @@ export async function renderEpisode(root, idStr, tStr) {
         if (loopCount < (loopTarget || 5)) {
           drv.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
           updateLoopBadge();                          // 카운트다운 갱신(남은 횟수)
+          anchorLoopHead();   // 배지+문단 머리를 항상 같은 자리로(seek 이 유발한 하이라이트보다 뒤 = 최종 결정)
         } else {
           loopCount = 0;
           if (setLoopPara(loopPara + 1)) {
             drv.seek(toAudio(loopStart) + 0.01);   // 다음 문단으로(광고 건너뜀)
+            anchorLoopHead();                      // 새 문단도 같은 자리에서 시작
           } else {
             endShadow();                              // 마지막 문단 → 쉐도잉 종료
           }
@@ -517,6 +519,59 @@ export async function renderEpisode(root, idStr, tStr) {
     paraEl: el.closest('.tx-para'),
   }));
   const paraEls = Array.from(document.querySelectorAll('.tx-para'));
+
+  // === 반복 되감기 앵커 — 문단 처음으로 돌아올 때는 '항상 같은 화면' ===
+  // 사용자 신고 2026-08-10: 반복 중 문단 끝→처음으로 되감으면 카운트다운 배지(.tx-loop-badge)가
+  // 어떤 문단에선 사라지고 어떤 문단에선 다시 보였다 — 문단/문장 길이에 따라 들쭉날쭉.
+  // 원인: 이 순간의 화면 위치를 '문장' 기준 일반 앵커링에 맡겨 뒀는데, 그 규칙은 문단 위 18px 에
+  // 떠 있는 배지를 전혀 모른다. 문장이 usable 보다 길면 여백 없이 문장 머리를 8px 에 붙이므로
+  // (episode.js 의 sentH+margin>usable 분기) 배지가 스크롤 영역 위로 밀려 잘렸고, 짧은 문장에선
+  // 22% 여백이 붙어 우연히 배지가 들어왔다. 길이에 따라 규칙이 갈리니 위치가 일정할 수 없었다.
+  // → 되감기(그리고 다음 문단으로 이동)만큼은 '문단+배지'를 기준으로 한 자리에 고정한다.
+  // ⚠ 26px 인 이유: .tx-scroll 상단 mask-image 페이드가 22px 다. 그보다 위에 두면 배지가 반투명하게
+  //   흐려진다 — 사라지는 것만 문제가 아니라 '흐릿하게 보이는' 것도 일정한 화면이 아니다.
+  const LOOP_HEAD_GAP = 26;
+  // 지금 활성 문장이 '반복 문단의 첫 문장'인가 = 되감아 온 직후의 상태.
+  function atLoopHead(idx = lastActiveSent) {
+    if (!inRepeatMode() || loopPara < 0 || idx < 0) return false;
+    const s = sentRanges[idx];
+    if (!s || s.paraEl !== paraEls[loopPara]) return false;
+    return idx === 0 || sentRanges[idx - 1].paraEl !== s.paraEl;
+  }
+  // 배지 윗변이 스크롤 영역 상단에서 LOOP_HEAD_GAP 아래에 오는 scrollTop(클램프 전).
+  // ⚠ 순수 계측이어야 한다. 첫 구현은 여기서 하단 패딩(--loop-tail)을 '모자란 만큼만' 조절했는데,
+  //   패딩이 줄면 브라우저가 그 자리에서 scrollTop 을 클램프한다 → 방금 잰 지오메트리와 실제
+  //   위치가 어긋나 되감기마다 배지가 4~106px 씩 흔들렸다(계측 LOOP-HEAD-ANCHOR).
+  //   여유 확보는 updateLoopBadge() 가 '반복 시작 시 한 번' 미리 깔아 둔다.
+  function loopHeadTarget(scroll, cont) {
+    const pEl = paraEls[loopPara];
+    if (!pEl) return null;
+    const badge = pEl.querySelector('.tx-loop-badge');
+    const pTop = pEl.getBoundingClientRect().top;
+    const headTop = badge ? Math.min(pTop, badge.getBoundingClientRect().top) : pTop;
+    return headTop - cont.top + scroll.scrollTop - LOOP_HEAD_GAP;
+  }
+  // 되감기 직후 호출 — _highlightImpl 에만 맡길 수 없다: 문단이 문장 하나뿐이면 되감아도 활성
+  // 문장 인덱스가 안 바뀌어 _highlightImpl 이 조기 return 한다(idx === lastActiveSent).
+  function anchorLoopHead() {
+    if (!($sheet && $sheet.classList.contains('open'))) return;
+    if (loopPara < 0 || Date.now() < userScrolledUntil) return;
+    const scroll = document.querySelector('.tx-scroll');
+    if (!scroll) return;
+    const target = loopHeadTarget(scroll, scroll.getBoundingClientRect());
+    if (target == null) return;
+    const clamped = Math.max(0, Math.min(target, scroll.scrollHeight - scroll.clientHeight));
+    const ref = scrollTarget != null ? scrollTarget : scroll.scrollTop;
+    if (Math.abs(clamped - ref) > 2) smoothScrollTo(clamped);
+    // 진단 훅(__DIAG_KR 과 같은 규약). 이 앵커의 버그는 '계산이 틀린 것'과 '이징이 목표에 못 간
+    // 것'이 겉보기에 똑같아서, 목표와 도달값을 같이 봐야 구분된다 — 실제로 그렇게 잡았다.
+    if (window.__DIAG_LOOP) {
+      (window.__LOOPDIAG = window.__LOOPDIAG || []).push({
+        ref: Math.round(ref), target: Math.round(target), clamped: Math.round(clamped),
+        moved: Math.abs(clamped - ref) > 2,
+      });
+    }
+  }
 
   // 광고 바(프리롤 + 미드롤/엔드롤): 각 바는 자기 시간구간[start,end) 동안 강조되고,
   // 탭하면 그 광고가 끝나는 지점(본편 재개)으로 점프한다.
@@ -590,6 +645,10 @@ export async function renderEpisode(root, idStr, tStr) {
     if (Date.now() < userScrolledUntil) { _d?.('user-scrolled'); return; }   // 사용자가 직접 스크롤/탭한 직후면 손대지 않는다
     const idx = lastActiveSent;
     if (idx < 0 || !sentRanges[idx]) { _d?.('no-idx'); return; }
+    // 반복 되감기 앵커가 잡아 둔 화면은 건드리지 않는다. 아래 상한 규칙은 '문장 머리를 8px 에'
+    // 붙이는데, 그러면 문단 위 18px 에 있는 배지를 다시 화면 밖으로 밀어낸다 — 되감을 때마다
+    // 배지가 잠깐 떴다가 이 함수가 지워 버리는 형태로 증상이 되살아난다.
+    if (atLoopHead()) { _d?.('loop-head'); return; }
     if (!$notes || !$notes.classList.contains('show')) { _d?.('no-notes'); return; }
     const scroll = document.querySelector('.tx-scroll');
     if (!scroll) return;
@@ -730,7 +789,7 @@ export async function renderEpisode(root, idStr, tStr) {
     if (!sc || scrollTarget == null) return;
     const cur = sc.scrollTop;
     const diff = scrollTarget - cur;
-    if (Math.abs(diff) < 0.5) {
+    if (Math.abs(diff) < 1) {
       sc.scrollTop = scrollTarget; scrollTarget = null;
       // 이징이 '도착한' 이 순간이 KR 패널 겹침을 판정할 수 있는 유일하게 옳은 시점이다.
       // reanchorForNotesGrowth 를 fillTranslation 안에서만 부르면 항상 한 박자 이르다: renderNotes()
@@ -743,7 +802,13 @@ export async function renderEpisode(root, idStr, tStr) {
       reanchorForNotesGrowth();
       return;
     }
-    sc.scrollTop = cur + diff * SCROLL_EASE;
+    // ⚠ 최소 1px 은 반드시 움직인다. 브라우저는 scrollTop 을 정수 픽셀로 스냅하므로 남은 거리가
+    // ~4px 이하가 되면 diff*0.12 < 0.5 라 한 프레임의 이동이 통째로 사라진다 → cur 이 안 변하고
+    // 이징이 그 자리에 멈춘 채 rAF 만 계속 돈다(도착 콜백도 영영 안 온다). 실측 2026-08-10:
+    // 목표 214 인데 218 에서 정지 — 반복 되감기마다 배지가 4px 씩 어긋난 원인이 이거였다.
+    // (겉보기 증상이 '앵커 계산이 틀렸다' 로 보이지만 계산은 맞고 도착을 못 한 것이다.)
+    const step = Math.max(1, Math.abs(diff) * SCROLL_EASE) * Math.sign(diff);
+    sc.scrollTop = cur + step;
     scrollRaf = requestAnimationFrame(easeScroll);
   }
   function smoothScrollTo(top) {
@@ -910,7 +975,12 @@ export async function renderEpisode(root, idStr, tStr) {
       const usable = notesOn ? safeBottom : h;
       const tooLow = sRelBot > usable * 0.5;
       const tooHigh = sRelTop < h * 0.04;
-      if (paraChanged) {
+      if (atLoopHead(idx)) {
+        // 반복 문단의 첫 문장 = 되감아 온 상태. 문장/문단 길이와 무관하게 '항상' 같은 자리 —
+        // 배지가 상단 고정, 문단은 그 바로 밑. 아래 두 분기(문단진입/문장추적)는 문장만 보므로
+        // 길이에 따라 결과가 갈렸다(사용자 신고: 배지가 보였다 안 보였다).
+        target = loopHeadTarget(scroll, cont);
+      } else if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
         target = pTop - Math.max(8, usable * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
         // ⚠ 실측(2026-08-07 회귀검증)으로 드러난 두 번째 자리: 이 문단-시작 앵커는 '문단 맨 위'만
@@ -1260,7 +1330,11 @@ export async function renderEpisode(root, idStr, tStr) {
   // (3×/2×/1× Smart, N× Auto)가 "↻ N" 으로 남은 횟수 카운트다운(사용자 요청 2026-07-17).
   // 모드 종료/문단 이동 시 이전 배지는 제거된다.
   function updateLoopBadge() {
+    const scroll = document.querySelector('.tx-scroll');
     document.querySelectorAll('.tx-loop-badge').forEach((b) => b.remove());
+    // 반복 중에만 콘텐츠 끝에 한 화면치 여유(.loop-tail ::after)를 붙인다 — 트랜스크립트 마지막
+    // 문단까지 '맨 위'로 끌어올 수 있어야 되감기 위치가 모든 문단에서 같아진다. 반복이 꺼지면 뗀다.
+    scroll?.classList.toggle('loop-tail', inRepeatMode() && loopPara >= 0);
     if (!inRepeatMode() || loopPara < 0) return;
     const pEl = paraEls[loopPara];
     if (!pEl) return;

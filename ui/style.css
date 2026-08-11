@@ -919,6 +919,24 @@ body.on-episode {
      문장을 패널 위로 끌어올릴 여지 자체가 없었다 — 사용자 신고, 영상 모드에서 특히 심함). */
   padding-bottom: calc(110px + var(--kr-overlay, 0px));
 }
+/* 쉐도잉 반복 중에만 붙는 꼬리 여유 — 반복 문단을 '항상 화면 맨 위(카운트다운 배지 포함)'에
+   놓으려면 트랜스크립트 끝 문단에서도 그만큼 올릴 스크롤 여지가 있어야 한다. 없으면 마지막
+   문단들만 배지가 화면 중턱에 남아 위치가 또 들쭉날쭉해진다(episode.js::anchorLoopHead).
+   ⚠ 이걸 JS 로 재서 padding-bottom 에 넣으면 안 된다: clientHeight 는 패딩을 '포함'하므로 그
+   값으로 패딩을 정하면 자기참조 폭주가 난다(실측 585 → 798 → 4720 → … 33554432px). 뷰포트
+   단위(vh)는 요소 크기와 무관해 그 고리가 아예 없다. */
+.tx-scroll.loop-tail::after { content: ''; display: block; height: 100vh; }
+/* 같은 이유의 머리쪽 여유 — 첫 문단을 반복할 때도 배지가 같은 높이에 와야 한다. 이게 없으면
+   scrollTop 0 이 한계라 첫 문단만 배지가 스크롤 영역 맨 위(상단 mask 페이드 안)에 붙는다.
+   높이 = LOOP_HEAD_GAP(26px) + 배지가 문단 위로 떠 있는 거리(18px × --tx-scale) − 18px
+        = 8px + 18px × scale. 배지는 본문 글자크기에 비례해 커지므로(.tx-loop-badge 의 top 이
+   calc(-18px * var(--tx-scale))) 이 여유도 같이 커져야 한다 — 고정 26px 이면 A 칩을 키운 사용자만
+   첫 문단에서 배지가 17px 로 올라붙었다(실측 LOOP-HEAD-ANCHOR video/1.5).
+   ⚠ 26 = episode.js 의 LOOP_HEAD_GAP. 둘이 어긋나면 _pwtest 의 LOOP-HEAD-ANCHOR 가 잡는다. */
+.tx-scroll.loop-tail::before {
+  content: ''; display: block;
+  height: calc(8px + 18px * var(--tx-scale, 1));
+}
 
 /* ========== 🖥 풀스크린 스터디 모드 (사용자 요청) ==========
    episode.js::enterFullscreen()/exitFullscreen() 가 .tx-sheet-card 에 토글하는 클래스. 헤더가
