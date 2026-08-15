@@ -167,3 +167,49 @@ The machinery stays in place and is worth keeping:
 - Android home-screen widget: options laid out, owner has not picked.
 - R2 keys are in the Keychain vault; they were pasted into a chat transcript, so rolling that token is
   still worth doing (the GitHub Actions token is separate and unaffected).
+- **Korean translation quality pass is RUNNING — see §8.** Do not start a second one, and do not run
+  any `_ko.json` cleanup while it is alive.
+
+---
+
+## 8. 🔄 IN PROGRESS — Korean translation quality pass (started 2026-08-15)
+
+**The owner's report was "the translations are too literal; I want the speaker's actual intent."
+Measuring first showed that was not a translation-quality problem at all.** Coverage of the LLM
+pre-translations across the newest 50 episodes of each show (73,748 sentences):
+
+| show | sentences | translated | coverage |
+|---|---|---|---|
+| aep | 18,496 | 5,744 | **31.1 %** |
+| allears | 21,063 | 2,026 | **9.6 %** |
+| wh | 34,189 | 34,171 | 99.9 % |
+
+A sentence whose key is missing from `_ko.json` does **not** show as "no translation" — the app
+silently falls back to MyMemory, a free MT API that translates each sentence in isolation and so
+loses pronouns, idioms and discourse flow. That fallback, not the stored translations, is what read
+as wooden Korean. For the newest All Ears English episodes coverage was **0.0 %** — every single
+line came from MyMemory. Two causes were mixed together: episodes with no `_ko.json` at all, and
+episodes whose file exists but whose keys were invalidated by later `resegment()` changes.
+
+**What runs:** LaunchAgent `com.roy.aep-ko-quality` → `scripts/ko_quality_pass.sh`, 4 shards.
+- Phase A `scripts.translate_transcripts` — fills every missing sentence.
+- Phase B `scripts.refine_translations` — re-reviews the *existing* translations against the same
+  rules and returns only the lines that need fixing. This is the only path that can ever improve an
+  already-translated line: `translate_transcripts` is idempotent and never looks at one twice.
+- Both are checkpointed; a stop for what looks like a Claude usage limit exits non-zero so
+  `KeepAlive` resumes it after 30 min. Logs: `~/Library/Logs/aep-ko-quality.log` + `aep-ko-*-N.log`.
+- ⚠ The run holds a lock dir. Two writers on one `_ko.json` lose work — the checkpoint uploads the
+  whole file, so the last writer wins.
+
+**Verified after the first episodes:** 624/522/520/521/267 all went to **100.0 %** coverage
+(re-read from Storage, not inferred from logs).
+
+**New tooling:** `scripts/audit_ko_coverage.py` is the measurement that was missing — no gate could
+see this rot because the app shows a translation either way. `--min-pct 95` exits 1, so it can be
+wired into a gate or a cron. **Run it after any `resegment()` change**: changing sentence boundaries
+invalidates `_ko.json` keys wholesale, and nothing else will tell you.
+
+**Also found, deliberately not fixed yet:** `_ko.json` files accumulate orphan keys from older
+segmentations — ep 520 carries 283 dead keys for 386 sentences (~42 % of the file). The app
+downloads the whole file per episode, so this is wasted weight on offline pins and load. Filed.
+Cleanup must not run while the quality pass is alive.
