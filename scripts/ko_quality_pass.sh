@@ -71,17 +71,23 @@ cd "$ROOT" || exit 1
 say "=== 대상 목록 생성: 쇼별 최근 ${PER_SHOW}편 ==="
 "$PY" - "$PER_SHOW" "$IDS" <<'PY' || { say "목록 생성 실패 — 중단"; exit 1; }
 import sys
+from itertools import chain, zip_longest
 from ingest import store
 n, out = int(sys.argv[1]), sys.argv[2]
-sb, ids = store.client(), []
+sb, per = store.client(), []
 for show in ("aep", "allears", "wh"):
     rows = sb.table("episodes").select("id").eq("show", show).not_.is_(
         "transcribed_at", "null").order("id", desc=True).limit(n).execute().data
     got = [r["id"] for r in rows]
-    ids += got
+    per.append(got)
     print(f"{show}: {len(got)}편 ({min(got)}~{max(got)})" if got else f"{show}: 0편")
+# ⚠ 쇼를 이어 붙이면(aep 50 + allears 50 + wh 50) 샤드가 ids[i::n] 을 가져가도 '모든 샤드가
+# aep 를 먼저' 끝낸다 — 실측으로 완료 17편이 전부 aep 였다. 이 잡은 쿼터로 중간에 멈출 수 있으므로
+# 그 순서면 '한 쇼만 완성되고 나머지 둘은 손도 못 댄 상태'로 끝날 수 있다. 라운드로빈으로 섞어
+# 어디서 끊기든 세 쇼가 고르게 좋아지게 한다.
+ids = [i for i in chain.from_iterable(zip_longest(*per)) if i is not None]
 open(out, "w").write("\n".join(map(str, ids)) + "\n")
-print(f"총 {len(ids)}편 → {out}")
+print(f"총 {len(ids)}편 → {out} (쇼 라운드로빈)")
 PY
 say "$(wc -l < "$IDS") 편"
 
