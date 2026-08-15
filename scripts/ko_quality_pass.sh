@@ -107,9 +107,18 @@ run_phase() {   # $1=이름  $2=모듈  $3=로그접두사
 
 run_phase "A(backfill)" scripts.translate_transcripts aep-ko-backfill
 a_rc=$?
+# ⚠ rc 는 '남은 일이 있다'가 아니라 '일찍 멈췄다'는 뜻이다. 쿼터 가드(MAX_CONSECUTIVE_FAILS)는
+# 샤드 하나만 걸려도 단계 전체를 rc=2 로 만든다. 그 둘을 같은 것으로 취급했더니 백필이 사실상
+# 끝났는데도 B 가 영영 시작되지 않았다 — 실측 2026-08-15: 06:18 / 06:48 / 07:18 세 번 연속
+# rc=2, 그 사이 실제 신규번역은 0 · 59 · 519문장뿐(= 할 일이 없어서 끝난 것)이고 커버리지는
+# 이미 99.7% 였다. 판정은 종료코드가 아니라 '실제 남은 문장'으로 한다.
 if [ "$a_rc" -ne 0 ]; then
-  say "Phase A 미완(rc=$a_rc, 대개 쿼터) — B 로 넘어가지 않고 종료해 나중에 이어서 한다"
-  exit "$a_rc"
+  if "$PY" -m scripts.audit_ko_coverage --newest "$PER_SHOW" --min-pct 99 >/dev/null 2>&1; then
+    say "Phase A rc=$a_rc 였지만 커버리지 99% 이상 — 남은 일이 없다고 보고 B 로 진행"
+  else
+    say "Phase A 미완(rc=$a_rc) + 커버리지 미달 — 여기서 멈추고 나중에 이어서 한다"
+    exit "$a_rc"
+  fi
 fi
 
 run_phase "B(refine)" scripts.refine_translations aep-ko-refine
