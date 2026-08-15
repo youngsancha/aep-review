@@ -208,16 +208,42 @@ def _json_object(text: str) -> dict:
         return {}
 
 
+# 번역 지침 — 사전번역(신규)과 정제 패스(scripts/refine_translations.py)가 같은 기준을 쓰도록
+# 한 곳에 둔다. 두 잡이 서로 다른 기준으로 돌면 정제가 사전번역을 되돌리는 싸움이 난다.
+#
+# 왜 이렇게 길어졌나(2026-08-15 사용자 요청): "완전히 원어민이 말했던 그 의도와 뉘앙스로 이해하면서
+# 공부하고 싶다". 예전 지침은 "natural, not word-for-word" 한 줄이라 문장 단위로는 자연스러워도
+# 화자의 태도(농담·비꼼·머뭇거림·강조)와 담화표지가 통째로 증발했다. 학습자가 원하는 건 '뜻'이
+# 아니라 '그 사람이 그 말을 왜 그렇게 했는지'다.
+TRANSLATION_RULES = (
+    "You are translating an American English podcast transcript for a Korean learner who wants to "
+    "understand exactly what the speaker MEANT — the intent and the nuance, not the dictionary words.\n"
+    "Rules:\n"
+    "1. Translate meaning, never word order. If a literal rendering and a natural Korean sentence "
+    "differ, always choose the natural Korean one.\n"
+    "2. Idioms, phrasal verbs, slang and set phrases become the Korean expression a native speaker "
+    "would actually use in that situation. Never translate their parts separately.\n"
+    "3. Preserve the speaker's attitude: humour, sarcasm, exaggeration, hedging, excitement, "
+    "hesitation, emphasis. A flat Korean sentence for a joking English one is a wrong translation.\n"
+    "4. Discourse markers (well, I mean, you know, like, right?, actually, so) carry conversational "
+    "function, not content. Render the function in Korean (그러니까, 사실, 뭐랄까, 그쵸?) or drop them "
+    "when Korean would not use one — never translate them literally.\n"
+    "5. Keep pronoun references, tense and discourse flow coherent with 'context_before'.\n"
+    "6. Keep proper nouns, brand names, show names and people's names in their original form.\n"
+    "7. The source is speech-to-text and can be imperfect: split numbers ('episode 26 15' = 2615화), "
+    "missing punctuation, mis-heard words. Translate what the speaker clearly meant to say.\n"
+    "8. Polite conversational register (~요체). As short as natural Korean allows, but never shorten "
+    "at the cost of the meaning.\n"
+    "9. No romanization, no bracketed glosses, no explanations, no English left in the output "
+    "except proper nouns.\n"
+)
+
+
 def build_prompt(lines: list[str], context_before: str) -> str:
     items = [{"i": str(k), "en": en} for k, en in enumerate(lines)]
     return (
-        "You are translating an American English podcast transcript for a Korean learner.\n"
-        "Translate each English line into NATURAL, conversational Korean — the way a fluent Korean "
-        "speaker would actually say it, NOT word-for-word. Convey the real meaning, tone and nuance; "
-        "render idioms / phrasal verbs as their natural Korean equivalents; keep pronoun references and "
-        "discourse flow coherent across lines. Use polite conversational register (~요체). Keep each "
-        "translation concise. No romanization, no explanations.\n"
-        "Use 'context_before' only as context for pronouns/flow — translate ONLY the numbered 'lines'.\n"
+        TRANSLATION_RULES
+        + "Use 'context_before' only as context for pronouns/flow — translate ONLY the numbered 'lines'.\n"
         "Return ONLY a JSON object mapping each line id (string) to its Korean translation. "
         "No code fence, no commentary.\n\n"
         f"context_before: {json.dumps(context_before, ensure_ascii=False)}\n"
@@ -278,6 +304,19 @@ def fetch_transcript(ep_id: int) -> dict | None:
     if p.exists():
         return json.loads(Path(p).read_text(encoding="utf-8"))
     return None
+
+
+def parse_ids(spec: str) -> list[int]:
+    """'1,2,3' 또는 '@경로'(줄바꿈·쉼표 구분) → id 리스트. 중복 제거하되 준 순서를 지킨다."""
+    if spec.startswith("@"):
+        from pathlib import Path
+        spec = Path(spec[1:]).read_text(encoding="utf-8")
+    out, seen = [], set()
+    for tok in re.split(r"[,\s]+", spec.strip()):
+        if tok.isdigit() and int(tok) not in seen:
+            seen.add(int(tok))
+            out.append(int(tok))
+    return out
 
 
 def episode_ids() -> list[int]:
@@ -362,6 +401,10 @@ def main() -> None:
                    help="claude CLI 모델 별칭(sonnet/haiku/opus). 번역은 변환 작업이라 상위 모델이 "
                         "꼭 필요하지 않다 — 기본 sonnet 으로 쿼터를 아낀다. 빈 문자열이면 CLI 기본값.")
     p.add_argument("--shard", type=str, default=None, help="병렬 샤딩 'i/n' (예: 0/4) — ids[i::n] 만 처리")
+    p.add_argument("--ids", type=str, default=None,
+                   help="처리할 에피소드 id 목록: '1,2,3' 또는 '@파일'(줄바꿈/쉼표 구분). "
+                        "쇼별 '최근 N편'처럼 임의의 대상 집합을 돌릴 때 쓴다 — 전체 스캔보다 "
+                        "훨씬 싸고, 어디까지 했는지가 목록으로 남는다.")
     args = p.parse_args()
     global _MODEL
     _MODEL = args.model or ""
@@ -371,7 +414,12 @@ def main() -> None:
         translate_episode(args.sample, dry=True)
         return
 
-    ids = [args.only] if args.only else episode_ids()
+    if args.only:
+        ids = [args.only]
+    elif args.ids:
+        ids = parse_ids(args.ids)
+    else:
+        ids = episode_ids()
     if args.shard:                       # 다중 프로세스 병렬: 각 프로세스가 서로 다른 에피소드를 맡음
         i, n = (int(x) for x in args.shard.split("/"))
         ids = ids[i::n]

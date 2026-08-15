@@ -25,3 +25,10 @@
 - [ ] **P2** _pwtest LIBRARY-VIDEO-LAYOUT 실패: 하네스에서 .tx-scroll 이 .tx-sheet-card 보다 918px 크게 잡힘(sc.bottom 1698 vs card.bottom 780). CSS 체인(92vh → flex:1 → flex:1)은 정상이고 실기기는 멀쩡함 — 하네스 페이지의 높이 컨텍스트(html/body height) 의심. 이 값이 KR 패널 기하 계산의 usable 을 비현실적으로 작게 만들어 다른 판정까지 왜곡함
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:09b04df0-44b6-4ecc-b402-32a2d3b95a8b -->
+
+## 2026-08-14 09:00 넘어옴
+
+- [ ] **P3** 완료된 aep-wh-ingest LaunchAgent 은퇴: launchctl bootout + plist 보관 (08-08 브리핑 64/64 인제스트 완료)
+  - 메모: agent-fleet INVENTORY.md F5
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:8881312d-d519-43ba-bbff-174c92cb1dbe -->
