@@ -248,3 +248,62 @@ class TestServiceAccountAuth:
         assert gc._access_token() == "tok"
         assert len(calls) == 1
         gc._token_cache.clear()
+
+
+# ── thinking 예산: 모델별로 0 을 받아주지 않는 경우가 있다 ────────────────────
+class _Resp:
+    status_code = 200
+    text = "{}"
+
+    @staticmethod
+    def json():
+        return {"candidates": [{"content": {"parts": [{"text": "{}"}]}}]}
+
+
+def _capture_body(monkeypatch):
+    """call_gemini 가 실제로 Vertex 에 보내는 body 를 가로챈다."""
+    from ingest import gemini_client as gc
+
+    sent = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        sent.update(json or {})
+        return _Resp()
+
+    monkeypatch.setattr(gc.httpx, "post", fake_post)
+    monkeypatch.setattr(gc, "_endpoint", lambda m: ("https://x", {}))
+    return sent
+
+
+def test_flash_disables_thinking(monkeypatch):
+    from ingest import gemini_client as gc
+
+    monkeypatch.setenv("GEMINI_MODEL_FAST", "gemini-2.5-flash")
+    sent = _capture_body(monkeypatch)
+    gc.call_gemini("p", max_output_tokens=8192)
+    cfg = sent["generationConfig"]
+    assert cfg["thinkingConfig"]["thinkingBudget"] == 0
+    assert cfg["maxOutputTokens"] == 8192
+
+
+def test_pro_never_gets_a_zero_budget(monkeypatch):
+    """gemini-2.5-pro 는 thinkingBudget:0 을 하드 400 으로 거부한다(2026-08-23 실측).
+    fail-open 이라 이 400 은 아무 데도 안 보이고 기능만 조용히 멈춘다."""
+    from ingest import gemini_client as gc
+
+    monkeypatch.setenv("GEMINI_MODEL_FAST", "gemini-2.5-pro")
+    sent = _capture_body(monkeypatch)
+    gc.call_gemini("p", max_output_tokens=8192)
+    assert sent["generationConfig"]["thinkingConfig"]["thinkingBudget"] > 0
+
+
+def test_pro_gets_its_thinking_budget_as_EXTRA_output(monkeypatch):
+    """thinking 토큰은 maxOutputTokens 에서 차감된다 — 그대로 두면 본문이 잘린 채 200 이
+    돌아온다. 본문 예산은 지키고 생각 몫만 더해야 한다."""
+    from ingest import gemini_client as gc
+
+    monkeypatch.setenv("GEMINI_MODEL_FAST", "gemini-2.5-pro")
+    sent = _capture_body(monkeypatch)
+    gc.call_gemini("p", max_output_tokens=8192)
+    cfg = sent["generationConfig"]
+    assert cfg["maxOutputTokens"] == 8192 + cfg["thinkingConfig"]["thinkingBudget"]

@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -190,6 +192,26 @@ def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
         envelope = {"result": proc.stdout}
     text = _result_text(envelope, proc.stdout)
     return _json_object(text)
+
+
+def _call_llm(prompt: str, timeout_sec: int = 300) -> dict:
+    """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약(AEP_LLM_BACKEND).
+
+      (미설정)/"claude-cli" → `claude -p` (기존 동작 그대로, Max 구독이라 과금 0)
+      "gemini"             → HTTP. claude CLI 가 못 뜨는 cron/CI 에서 번역을 살린다.
+      "auto"               → CLI 가 PATH 에 있으면 그것, 없으면 Gemini.
+
+    기본값이 claude-cli 라 env 를 안 건드리면 이전과 완전히 동일하게 동작한다.
+    """
+    choice = (os.environ.get("AEP_LLM_BACKEND") or "claude-cli").strip().lower()
+    if choice == "auto":
+        choice = "claude-cli" if shutil.which("claude") else "gemini"
+    if choice == "gemini":
+        from ingest.gemini_client import call_gemini
+
+        # 한 배치가 32문장이라 출력이 길다 — 잘리면 그 배치가 통째로 버려진다.
+        return _json_object(call_gemini(prompt, timeout_sec=timeout_sec, max_output_tokens=16384))
+    return _call_claude(prompt, timeout_sec=timeout_sec)
 
 
 def _json_object(text: str) -> dict:
@@ -362,14 +384,14 @@ def translate_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int]:
         lines = [sentences[k] for k in idxs]
         global _consec_fails
         try:
-            res = _call_claude(build_prompt(lines, ctx))
+            res = _call_llm(build_prompt(lines, ctx))
             _consec_fails = 0
         except Exception:
             _consec_fails += 1
             log.exception("ep %s 배치 %d 실패 → 건너뜀 (연속 %d)", ep_id, bstart, _consec_fails)
             if _consec_fails >= MAX_CONSECUTIVE_FAILS:
                 raise ClaudeUnavailable(
-                    f"claude 호출이 연속 {_consec_fails}회 실패 — 사용 한도로 보인다. "
+                    f"LLM 호출이 연속 {_consec_fails}회 실패 — 사용 한도/장애로 보인다. "
                     f"여기서 멈춘다(체크포인트 저장됨, 나중에 같은 명령으로 이어서 진행)."
                 ) from None
             continue

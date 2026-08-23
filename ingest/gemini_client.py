@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 
 import httpx
@@ -95,6 +96,16 @@ def _access_token() -> str | None:
 DEFAULT_LOCATION = "us-central1"
 DEFAULT_MODEL = "gemini-2.5-flash"
 
+# thinkingBudget:0 을 하드 400 으로 거부하는 모델들. Vertex us-central1 에서 2026-08-23 실측:
+# gemini-2.5-pro 는 "The model does not support setting thinking_budget to 0" 을 돌려준다.
+# 모델만 pro 로 올리면 전 호출이 실패하는데, 이 프로젝트는 fail-open 이라 조용히 멈춘다.
+ALWAYS_THINKS = re.compile(r"^gemini-2\.5-pro\b")
+
+# thinking 을 끌 수 없을 때 부여하는 '생각 전용' 예산. thinking 토큰은 maxOutputTokens 에서
+# 차감되고 출력 단가로 과금되므로, 그냥 두면 답이 잘린 채 HTTP 200 으로 돌아온다(실측: 3토큰
+# 답변에 thinking 144토큰). 딱 이만큼을 '추가로' 줘서 본문 예산은 그대로 지킨다.
+THINKING_BUDGET = 1024
+
 
 def model_name() -> str:
     return os.environ.get("GEMINI_MODEL_FAST") or DEFAULT_MODEL
@@ -163,14 +174,17 @@ def call_gemini(prompt: str, timeout_sec: int = 300, max_output_tokens: int = 81
     url, headers = _endpoint(model)
     log.info("calling gemini model=%s backend=%s prompt_chars=%d", model, backend(), len(prompt))
 
+    # vocab 추출은 결정적 작업이라 thinking 은 끄는 게 원칙이다. 다만 0 을 거부하는 모델이
+    # 있어서, 그런 모델에는 '상한이 있는' 예산과 그만큼의 추가 출력량을 준다 — 끄지 못한다고
+    # 무제한으로 두면 본문이 잘리거나 과금이 부푼다.
+    thinks = bool(ALWAYS_THINKS.match(model))
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {
-            "maxOutputTokens": max_output_tokens,
+            "maxOutputTokens": max_output_tokens + (THINKING_BUDGET if thinks else 0),
             "temperature": 0,
             "responseMimeType": "application/json",
-            # vocab 추출은 결정적 작업 — thinking 토큰은 출력 단가로 과금되므로 끈다.
-            "thinkingConfig": {"thinkingBudget": 0},
+            "thinkingConfig": {"thinkingBudget": THINKING_BUDGET if thinks else 0},
         },
     }
 
