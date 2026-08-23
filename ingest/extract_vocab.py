@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import shutil
 import subprocess
 from typing import Any
 
@@ -139,6 +141,28 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
     return _parse_vocab_json(_result_text(envelope, proc.stdout))
 
 
+def call_llm(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
+    """백엔드 중립 진입점. AEP_LLM_BACKEND 로 고른다.
+
+      (미설정) / "claude-cli"  → `claude -p` (기본값, 기존 동작 그대로. Max 구독이라 과금 0)
+      "gemini"                 → HTTP. claude CLI 없는 서버/CI/cron 에서 vocab 단계를 살린다.
+      "auto"                   → claude CLI 가 PATH 에 있으면 그것, 없으면 Gemini 로 폴백.
+
+    기본값이 claude-cli 라 env 를 안 건드리면 이 파일 이전과 완전히 동일하게 동작한다.
+    """
+    choice = (os.environ.get("AEP_LLM_BACKEND") or "claude-cli").strip().lower()
+
+    if choice == "auto":
+        choice = "claude-cli" if shutil.which("claude") else "gemini"
+
+    if choice == "gemini":
+        from ingest.gemini_client import call_gemini
+
+        return _parse_vocab_json(call_gemini(prompt, timeout_sec=timeout_sec))
+
+    return call_claude(prompt, timeout_sec=timeout_sec)
+
+
 def _result_text(envelope: Any, raw: str) -> str:
     if isinstance(envelope, dict):
         return envelope.get("result") or raw
@@ -195,7 +219,7 @@ def extract_for_episode(episode_id: int, title: str | None = None, show: str | N
 
     text = _build_transcript_text(transcript)
     prompt = build_prompt(title, text)
-    parsed = call_claude(prompt)
+    parsed = call_llm(prompt)
 
     vocab_list = parsed.get("vocab", [])
     if not isinstance(vocab_list, list):

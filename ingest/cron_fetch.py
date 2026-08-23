@@ -10,6 +10,7 @@ CLI:
     python -m ingest.cron_fetch --no-vocab       # vocab 추출 스킵 (claude CLI 없을 때)
     python -m ingest.cron_fetch --time-budget-min 50   # 50분 안에 끝날 만큼만 (CI)
     python -m ingest.cron_fetch --no-rss --shard 0 --shards 4   # 백필 병렬 샤드
+    AEP_LLM_BACKEND=auto python -m ingest.cron_fetch   # claude CLI 없으면 Gemini(HTTP)로 폴백
 """
 from __future__ import annotations
 
