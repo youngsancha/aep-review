@@ -34,6 +34,16 @@ SHOWS: list[dict[str, str | None]] = [
         # whitehouse.gov 영상 목록에서 'press-briefings' 플레이리스트 필터.
         "listing": "https://www.whitehouse.gov/videos/?query-inherit-playlist_term=press-briefings",
     },
+    {
+        "slug": "cnn10",
+        "name": "CNN 10",
+        "source": "rss",
+        # ⚠ rss.cnn.com/services/podcasting/cnn10/rss.xml 은 죽은 피드다 — video/mp4 이고
+        # 마지막 항목이 2020-11 이다. 실제 오디오 피드는 Apple Podcasts(id 1766786641)
+        # 역조회로 얻은 이 Megaphone 주소이고, aep/allears 와 같은 호스트라 기존
+        # megaphone clean-URL/R2 재전사 싱크가 그대로 적용된다.
+        "rss": "https://feeds.megaphone.fm/WMHY2232473209",
+    },
 ]
 
 SHOW_BY_SLUG: dict[str, dict[str, str | None]] = {s["slug"]: s for s in SHOWS}

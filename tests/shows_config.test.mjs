@@ -10,10 +10,10 @@ import {
 // rss 는 source==='rss' 쇼만 필수(wh 는 whitehouse.gov 스크레이프라 rss 없음).
 const REQUIRED = ['slug', 'name', 'host', 'level', 'cover'];
 
-test('SHOWS: aep + allears + wh 세 쇼, 필수 필드 완비', () => {
-  assert.equal(SHOWS.length, 3);
+test('SHOWS: aep + allears + wh + cnn10 네 쇼, 필수 필드 완비', () => {
+  assert.equal(SHOWS.length, 4);
   const slugs = SHOWS.map((s) => s.slug);
-  assert.deepEqual(slugs, ['aep', 'allears', 'wh']);
+  assert.deepEqual(slugs, ['aep', 'allears', 'wh', 'cnn10']);
   for (const s of SHOWS) {
     for (const f of REQUIRED) assert.ok(s[f] && String(s[f]).trim(), `${s.slug}.${f} 비어있음`);
     assert.ok(s.cover && String(s.cover).trim(), `${s.slug}.cover 없음`);
@@ -54,7 +54,7 @@ test('showMeta/showCover: 기본=aep, 미지 slug 는 첫 쇼로 폴백', () => 
 
 test('showOptions: 선택기 렌더 데이터 — 기본 쇼(aep)만 active', () => {
   const opts = showOptions();
-  assert.equal(opts.length, 3);
+  assert.equal(opts.length, 4);
   const aep = opts.find((o) => o.slug === 'aep');
   const aee = opts.find((o) => o.slug === 'allears');
   assert.equal(aep.active, true);          // node: localStorage 없음 → currentShow=aep 가 active

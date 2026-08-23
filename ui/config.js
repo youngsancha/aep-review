@@ -43,6 +43,7 @@ export const MULTISHOW = true;
 // 쇼 커버(megaphone imgix — w/h 리사이즈·webp 자동). RSS itunes:image 에서 가져온 공식 아트워크.
 const _AEP_COVER = 'https://megaphone.imgix.net/podcasts/15526600-fb41-11ee-92ae-93bb88e95bb6/image/17f5482ab2cc597b1acfc1f8b7dc45e8.jpg?auto=format,compress&fit=crop';
 const _AEE_COVER = 'https://megaphone.imgix.net/podcasts/88b85f10-a0c0-11ec-9e52-bfcf9441f742/image/All_Ears_English_New_Cover_with_Michelle_Under_500_KB.jpg?ixlib=rails-4.3.1&fit=crop&auto=format,compress';
+const _CNN10_COVER = 'https://megaphone.imgix.net/podcasts/642870d2-5a7b-11ef-a320-db1aac295786/image/34e52f51ea1ae5a06e58fb8c37bc51e2.jpg?ixlib=rails-4.3.1&fit=crop&auto=format,compress';
 
 export const SHOWS = [
   {
@@ -75,6 +76,15 @@ export const SHOWS = [
     source: 'whitehouse',
     rss: null,
     cover: '/icons/wh-cover.png?v=1',   // whitehouse.gov 공식 앱 아이콘(apple-touch-icon 180²). ?v=1 로 뷰의 &w=..&h=.. 부착이 유효 쿼리
+  },
+  {
+    slug: 'cnn10',
+    name: 'CNN 10',
+    short: 'CNN 10',
+    host: 'CNN Podcasts',
+    level: '중급 · 시사 뉴스 10분',
+    rss: 'https://feeds.megaphone.fm/WMHY2232473209',
+    cover: _CNN10_COVER,
   },
 ];
 export const SHOW_BY_SLUG = Object.fromEntries(SHOWS.map((s) => [s.slug, s]));
