@@ -233,13 +233,34 @@ def transcribe_pending(limit: int | None = None, show: str | None = None,
                 data = transcribe_one(apath)
             except Exception:
                 log.exception("transcribe failed ep=%s", ep_id)
-                continue
-            finally:
                 apath.unlink(missing_ok=True)
+                continue
 
             data["aligned"] = True  # clean URL 기준 정렬됨 → 클라이언트 offset 0
             store.upload_transcript(ep_id, data)
             store.mark_transcribed(ep_id, data.get("duration"))
+
+            # ⚠ 방금 STT 한 '바로 이 파일'을 그대로 R2 에 올린다 — 지우기 전에.
+            #
+            # 예전엔 여기서 파일을 버리고, 호스팅은 별도 잡(scripts/host_audio.py, GitHub Actions
+            # 매일 17시)이 '같은 clean URL 을 다시 받아서' 처리했다. megaphone 은 동적광고(DAI)라
+            # 같은 URL 도 시점이 다르면 다른 광고가 박힌다. 기존 쇼는 두 시점 사이에 CDN 캐시가
+            # 같은 광고를 서빙해 우연히 통했지만, CNN 10 에서 깨졌다(2026-08-24 실측, ep 633):
+            #   자막(STT 시점) 첫 문장 = "Hey, what's your story?"  (Ancestry 광고)
+            #   R2(재다운로드)  첫 문장 = "This episode is brought to you by PayPal."
+            # 길이는 703.87s vs 704.0s 로 0.13초 차이였다 — 즉 **길이 검사로는 절대 못 잡는다**.
+            # 광고가 '같은 길이의 다른 광고'로 바뀌기 때문이다. 재다운로드를 없애는 것이 유일한
+            # 확실한 해법이다: 자막을 만든 바이트와 앱이 스트리밍할 바이트가 같은 파일이 된다.
+            try:
+                store.upload_audio_r2(ep_id, apath)
+                store.mark_hosted(ep_id)
+                log.info("hosted ep=%s (자막을 만든 바로 그 오디오)", ep_id)
+            except Exception:
+                # 호스팅 실패는 치명적이지 않다 — 앱이 megaphone 으로 폴백하고 드리프트 안내를
+                # 띄운다. 자막은 이미 저장됐으므로 다음 호스팅 잡이 다시 시도할 수 있다.
+                log.exception("R2 host failed ep=%s — megaphone 폴백으로 남는다", ep_id)
+            finally:
+                apath.unlink(missing_ok=True)
             count += 1
             # 실측은 다운로드+STT 전체(=예산이 실제로 소비되는 시간) 기준으로 잡는다.
             took = time.monotonic() - ep_started
