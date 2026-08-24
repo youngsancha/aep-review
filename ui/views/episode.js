@@ -1791,19 +1791,31 @@ export async function renderEpisode(root, idStr, tStr) {
   const off = drv.on(refresh);
 
   // === 단어 단위 따라가기 (karaoke) — rAF 로 timeupdate(4Hz)보다 부드럽게 ===
-  const wordTimed = Array.from(document.querySelectorAll('.tx-scroll .w'))
-    .map((el) => ({ el, s: parseFloat(el.dataset.s) }))
-    .filter((w) => Number.isFinite(w.s));
+  // 한 회차의 단어 span 은 실측 1,662~9,107개다(백악관 47분 회차가 9,107). 예전엔 이 목록을
+  // 만들 때 한 번, 아래 '찾아본 단어' 표시에서 또 한 번, 전체를 두 번 훑었다 — 시트를 여는
+  // 순간 그 두 순회가 파싱·레이아웃과 같은 프레임에 겹쳤다. 한 번만 훑는다.
+  const allW = document.querySelectorAll('.tx-scroll .w');
+  const wordTimed = [];
+  for (const el of allW) {
+    const sv = parseFloat(el.dataset.s);
+    if (Number.isFinite(sv)) wordTimed.push({ el, s: sv });
+  }
   let lastWordIdx = -1;
   // 이미 찾아본 단어(aep-wordko 캐시)는 점선 밑줄로 표시 — 어휘 진도가 한눈에 보이고 다시 찾기 쉽다.
+  // 이건 '열자마자' 필요한 정보가 아니다(장식). 유휴 시간으로 미뤄 첫 프레임을 비워 준다 —
+  // 9,107개 단어에 cleanWord + 객체 조회를 도는 동안 시트가 멈춰 있었다.
   (function markLookedWords() {
-    try {
-      const known = loadWordKo();
-      if (!Object.keys(known).length) return;
-      for (const el of document.querySelectorAll('.tx-scroll .w')) {
-        if (known[cleanWord(el.textContent).toLowerCase()]) el.classList.add('looked');
-      }
-    } catch (e) {}
+    const run = () => {
+      try {
+        const known = loadWordKo();
+        if (!Object.keys(known).length) return;
+        for (const el of allW) {
+          if (known[cleanWord(el.textContent).toLowerCase()]) el.classList.add('looked');
+        }
+      } catch (e) {}
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 2000 });
+    else setTimeout(run, 0);
   })();
   function updateWord() {
     if (!wordTimed.length) return;

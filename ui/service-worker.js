@@ -13,7 +13,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.68.0';
+const VERSION = '1.69.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -109,7 +109,33 @@ async function trimCache(name, max) {
 // 전에 잘려 '핀했는데 doc 캐시가 비어 있다' 는 바로 이 기능이 고치려는 버그가 재발한다(실측:
 // networkFirst 콘솔 로그로는 write 가 시작됐는데 caches.open(DOC_CACHE) 가 끝내 비어 있었음).
 // DATA_CACHE 트림은 소프트 캐시라 기존처럼 fire-and-forget 으로 둬도 무해(최악=몇 번 더 트림 지연).
+// 캐시 히트를 '지금 당장' 꺼내오는 헬퍼 — 오프라인 경로와 실패 폴백이 같은 순서(핀 → 데이터)를
+// 쓰도록 한 곳에 둔다. 순서가 갈리면 오프라인에서만 다른 응답이 나오는 버그가 생긴다.
+async function cachedFor(req, pinId) {
+  // ⚠ 여기서 pinnedEpisodeIds.has() 를 요구하면 안 된다. 그 집합은 SW 가 재시작되면 비는데
+  // (상단 주석) DOC_CACHE 에 써 둔 항목은 그대로 남는다. 집합으로 게이트하면 재시작 직후
+  // 오프라인에서 핀 회차가 DOC_CACHE 를 건너뛰고, 트림됐을 수 있는 DATA_CACHE 로 떨어진다 —
+  // 핀 기능이 고치려던 바로 그 버그다. 집합 검사는 '무엇을 미러링할지' 정하는 쓰기 경로에만.
+  if (pinId != null) {
+    // ignoreVary: 저장 응답의 Vary(Accept-Encoding 등) 때문에 오프라인 매칭이 어긋나지 않게.
+    const doc = await caches.open(DOC_CACHE).then((c) => c.match(req, { ignoreVary: true })).catch(() => null);
+    if (doc) return doc;
+  }
+  return caches.open(DATA_CACHE).then((c) => c.match(req, { ignoreVary: true })).catch(() => null);
+}
+
 async function networkFirst(req, pinId, event) {
+  // ⛔ 오프라인이면 네트워크를 먼저 두드리지 않는다. 오프라인의 fetch 실패는 즉시가 아니다 —
+  // DNS/연결 시도가 수 초씩 걸리고, 캡티브 포털이나 약한 셀룰러에서는 훨씬 길다. 회차 상세·자막·
+  // vocab 이 전부 이 경로라 자막 한 번 여는 데 그 대기를 여러 번 통과했다(사용자 보고: "offline 만
+  // 들어가면 랙이 심함"). 캐시엔 이미 다 있는데 브라우저가 이미 아는 사실을 매번 다시 확인한 셈.
+  //
+  // navigator.onLine 은 false 일 때만 믿는다(true 여도 실제로는 끊겨 있을 수 있음 — translate.js 와
+  // 같은 규칙). 즉 '오프라인 확정'일 때만 지름길을 타고, 캐시에 없으면 그때 네트워크로 내려간다.
+  if (self.navigator && self.navigator.onLine === false) {
+    const hit = await cachedFor(req, pinId);
+    if (hit) return hit;
+  }
   const cache = await caches.open(DATA_CACHE);
   try {
     const res = await fetch(req);
@@ -130,12 +156,7 @@ async function networkFirst(req, pinId, event) {
     }
     return res;
   } catch (err) {
-    // ignoreVary: 저장 응답의 Vary(Accept-Encoding 등) 때문에 오프라인 매칭이 어긋나지 않게.
-    if (pinId != null) {
-      const doc = await caches.open(DOC_CACHE).then((c) => c.match(req, { ignoreVary: true }));
-      if (doc) return doc;
-    }
-    const cached = await cache.match(req, { ignoreVary: true });
+    const cached = await cachedFor(req, pinId);
     if (cached) return cached;
     throw err;   // 오프라인 + 미캐시 → 호출부가 빈 데이터로 처리(앱은 graceful degrade)
   }
