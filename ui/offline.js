@@ -11,7 +11,7 @@
 //  · 자막 재싱크(transcribed_at 변경) 시 해당 오디오 + doc 캐시를 지우고 다시 받는다(자막=오디오
 //    일치 유지 — 오디오·자막이 같은 META_KEY 로 무효화되므로 둘이 어긋날 수 없다).
 //  · 트리거: app.js 가 로그인 후 잠시 뒤 백그라운드로 1회 호출(ensureOfflineCache).
-import { listEpisodes, getEpisode, episodeNav, hostedSet, transcriptUrl } from '/db.js';
+import { listEpisodes, getEpisode, episodeNav, hostedSet, transcriptUrl, transcriptKoUrl } from '/db.js';
 import { hostedAudioUrl } from '/config.js';
 import { toast } from '/app.js';
 import { loadPins, pinEpisode, unpinEpisode } from '/offline-pins.js';
@@ -54,7 +54,16 @@ async function episodeDocReady(id, transcribedAt) {
     });
     if (!hasRow) return false;
     if (!transcribedAt) return true;   // 이 회차엔 자막이 없다(아직 STT 전) — 회차행만으로 충분
-    return !!(await cache.match(transcriptUrl(id, transcribedAt), { ignoreVary: true }));
+    if (!(await cache.match(transcriptUrl(id, transcribedAt), { ignoreVary: true }))) return false;
+    // ⚠ 한국어 사전번역(_ko.json)까지 있어야 '준비됨'이다. 예전엔 자막만 봤는데, 이 판정이 참이면
+    // ensureOfflineCache 가 getEpisode() 를 통째로 건너뛴다 → 나중에 사전번역이 생겨도 그 회차는
+    // 영영 받지 않는다. 실제로 2026-08-23 에 커버리지를 62%→99.4% 로 채운 직후, 이미 받아둔
+    // 회차들이 오프라인에서 "Translation needs a connection" 을 띄웠다(사용자 보고).
+    // 지우는 쪽(deleteEpisodeDoc)과 SW 의 pinnedEpisodeIdFor 는 둘 다 _ko.json 을 알고 있었는데
+    // 받는 쪽만 몰랐던, 비대칭이 원인이다.
+    // 사전번역이 아예 없는 회차는 매 세션 한 번 더 요청하게 되지만(캐시에 안 남으므로), 커버리지가
+    // 99%+ 라 사실상 없고, 생기는 즉시 스스로 채워진다.
+    return !!(await cache.match(transcriptKoUrl(id, transcribedAt), { ignoreVary: true }));
   } catch (e) { return false; }
 }
 
