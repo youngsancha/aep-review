@@ -13,7 +13,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.69.1';
+const VERSION = '1.70.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -122,6 +122,44 @@ async function cachedFor(req, pinId) {
     if (doc) return doc;
   }
   return caches.open(DATA_CACHE).then((c) => c.match(req, { ignoreVary: true })).catch(() => null);
+}
+
+// ─────────── HEAD(count) 캐싱 ───────────
+// studyOverview() 는 카운트 8개를 전부 HEAD + `Prefer: count=exact` 로 가져온다(본문 없음, 개수는
+// Content-Range 헤더). 예전엔 SW 가 GET 아닌 요청을 통째로 무시했으므로 오프라인이면 첫 await 가
+// throw 하고 Study 홈이 아예 못 떴다 — 데이터가 없어서가 아니라 '메서드' 때문에 막힌 것이다.
+//
+// ⚠ Cache API 는 HEAD 요청을 키로 저장할 수 없다(스펙상 cache.put 이 TypeError). 그래서 GET 키로
+// 바꿔 저장하는데, 같은 조건의 실제 GET 과 URL 이 똑같아서 그대로 쓰면 칸을 공유한다 — 본문이 빈
+// HEAD 응답이 GET 요청에 반환되어 호출부가 행을 하나도 못 받는 사고가 난다. 마커로 분리한다.
+function headCacheKey(url) {
+  const u = new URL(url);
+  u.searchParams.set('__sw_head', '1');
+  return new Request(u.toString(), { method: 'GET' });
+}
+
+async function headFirst(req) {
+  const key = headCacheKey(req.url);
+  const cache = await caches.open(DATA_CACHE);
+  const readCache = () => cache.match(key, { ignoreVary: true }).catch(() => null);
+
+  // networkFirst 와 같은 규칙: onLine 은 false 일 때만 믿는다.
+  if (self.navigator && self.navigator.onLine === false) {
+    const hit = await readCache();
+    if (hit) return hit;
+  }
+  try {
+    const res = await fetch(req);
+    if (res && res.status === 200 && (res.type === 'cors' || res.type === 'basic')) {
+      // 본문이 없는 응답이라 clone 이 사실상 헤더 복사다(Content-Range 가 개수를 들고 있다).
+      cache.put(key, res.clone()).then(() => trimCache(DATA_CACHE, DATA_MAX)).catch(() => {});
+    }
+    return res;
+  } catch (err) {
+    const hit = await readCache();
+    if (hit) return hit;
+    throw err;
+  }
 }
 
 async function networkFirst(req, pinId, event) {
@@ -258,6 +296,14 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  // HEAD 는 count 쿼리(studyOverview)뿐이고 Supabase REST 로만 나간다. 그 조합만 받고
+  // 나머지 비-GET(POST/PATCH — 복습 채점 등 쓰기)은 예전처럼 손대지 않는다.
+  if (req.method === 'HEAD') {
+    if (url.hostname.endsWith('.supabase.co') && url.pathname.includes('/rest/v1/')) {
+      e.respondWith(headFirst(req));
+    }
+    return;
+  }
   if (req.method !== 'GET') return;
 
   // ① Supabase 데이터/Storage(자막·번역·vocab·essentials 등) → network-first(오프라인 열람 가능).
