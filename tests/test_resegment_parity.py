@@ -49,8 +49,13 @@ def js_output() -> dict:
     # 비교했고, 새로 받은 회차(백악관 브리핑처럼 분절 분기가 다른 것)는 픽스처를 넣어도 영영
     # 비교 대상에 못 들어갔다 — 2026-08-07 에 U.S./Ms. 약어 분절 버그를 고치면서 드러났다.
     # 양끝(오래된 것 + 최신)을 함께 잡는다.
+    # ⛔ 예전엔 `[존재하는 SAMPLE_IDS] or (disk[:5]+disk[-5:])` 였다. `or` 는 앞이 비었을
+    # 때만 뒤를 쓰므로, SAMPLE_IDS 중 하나만 디스크에 있어도 양끝 폴백이 통째로 죽는다 —
+    # [:8] 을 고치면서 없앴다고 본 그 실명이 형태만 바꿔 남아 있었다. 이제 둘을 '합친다'.
     disk = sorted(_disk_ids(), key=int)
-    ids = [i for i in SAMPLE_IDS if (TX_DIR / f"{i}.json").exists()] or (disk[:5] + disk[-5:])
+    picked = [i for i in SAMPLE_IDS if (TX_DIR / f"{i}.json").exists()]
+    # 항상 양끝을 포함한다: 가장 오래된 쪽(초기 aep)과 가장 최신 쪽(새 쇼가 들어오는 자리).
+    ids = sorted({*picked, *disk[:5], *disk[-5:]}, key=int)
     if not ids:
         pytest.skip("data/transcripts 픽스처 없음")
     proc = subprocess.run(

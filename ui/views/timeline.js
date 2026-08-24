@@ -213,14 +213,14 @@ function showSwitchHtml() {
   if (!MULTISHOW) return '';
   const opts = showOptions();
   if (opts.length < 2) return '';
+  // 커버만 노출한다. 쇼가 넷이 되자 이름·레벨이 폭에 눌려 "A중 A중 W고 C중" 으로 잘렸는데,
+  // 앞의 둘은 글자까지 같아서 구분이 아예 불가능했다. 커버 아트는 넷 다 확연히 달라서
+  // 잘릴 일이 없다. 다만 보이는 글자가 사라지면 버튼의 '접근성 이름'도 같이 사라지므로
+  // 전체 이름을 aria-label 로 옮긴다(스크린리더), title 로도 둔다(데스크톱 호버).
   const segs = opts.map((s) => `
-    <button class="show-seg${s.active ? ' active' : ''}" data-show="${s.slug}" aria-pressed="${s.active}">
+    <button class="show-seg${s.active ? ' active' : ''}" data-show="${s.slug}"
+            aria-pressed="${s.active}" aria-label="${escapeHtml(s.name)}" title="${escapeHtml(s.name)}">
       <img class="show-seg-cover" src="${s.cover}&w=120&h=120" alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
-      <span class="show-seg-txt">
-        <span class="show-seg-name">${escapeHtml(s.short || s.name)}</span>
-        <span class="show-seg-level">${escapeHtml(s.level)}</span>
-      </span>
-      <span class="show-seg-check" aria-hidden="true">✓</span>
     </button>`).join('');
   return `<div class="show-switch" role="group" aria-label="Choose podcast">${segs}</div>`;
 }
