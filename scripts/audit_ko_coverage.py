@@ -36,9 +36,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ingest import store
+from ingest.shows import show_slugs
 from scripts.translate_transcripts import resegment, trkey
 
-SHOWS = ("aep", "allears", "wh")
+# ⛔ Derived, never hardcoded. This was frozen at ("aep", "allears", "wh") while ingest/shows.py and
+# ui/config.js had grown a fourth show (cnn10), so a "whole catalogue" audit silently skipped it and
+# still printed 전체 totals. A stale list of what to measure is invisible in the output by design.
+SHOWS = tuple(show_slugs())
 
 
 _PAGE = 500   # PostgREST hard-caps a response at 1000 rows; stay well under and paginate.

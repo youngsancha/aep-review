@@ -25,15 +25,18 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "transcripts"
 DEST = ROOT / "tests" / "fixtures" / "transcripts"
 
-# (episode id, segments to keep). Spread across all three shows so a show-specific segmentation
+# (episode id, segments to keep). Spread across all FOUR shows so a show-specific segmentation
 # branch cannot fall outside the comparison — the failure that hid the U.S./Ms. abbreviation bug.
+# ⚠ ep1024 is CNN 10, not a White House briefing (it was mislabelled here at first). That show
+# matters most for this test: measured 2026-08-26, its sentences hit resegment's 14-word cap
+# roughly twice as often as aep's, so its segmentation exercises the cap branch hardest.
 SPEC: list[tuple[str, int]] = [
     ("470", 40),    # allears
     ("509", 60),    # allears — alone reaches full line coverage
     ("521", 40),    # aep
     ("522", 40),    # aep
     ("554", 60),    # wh briefing
-    ("1024", 20),   # wh briefing, newest profile
+    ("1024", 20),   # cnn10 — a 4th show, and the one whose segmentation differs most from aep
 ]
 
 
