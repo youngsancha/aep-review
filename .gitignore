@@ -17,3 +17,9 @@ logs/
 node_modules/
 .vercel
 .env*
+
+# Playwright harness fixtures written by scripts/_pwtest.py at run time (13 files, all ui/_*).
+# They must never be committed: scripts/release.py runs `git add -A`, so a release taken after a
+# test run would otherwise ship test scaffolding to production. release.py's own tracked-asset
+# guard already treats `_`-prefixed files as throwaway — this makes git agree with it.
+ui/_*

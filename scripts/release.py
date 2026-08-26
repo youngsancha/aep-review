@@ -1,11 +1,25 @@
-"""밤샘 빌드용 원클릭 릴리스: APP_VERSION 과 SW VERSION 을 동시에 bump → commit → push.
+"""One-click release for overnight builds: bump APP_VERSION and the SW VERSION together, commit, push.
 
-루프 매 반복에서 코드 변경이 있으면 호출한다:
-    python -m scripts.release "feat: 문장 반복(쉐도잉) 토글"
+Call it from each loop iteration that changed code:
 
-ui/index.html 의 window.APP_VERSION 과 ui/service-worker.js 의 VERSION 은 반드시
-같은 값이어야 한다(SW 캐시 키·importmap 쿼리스트링). 둘을 한 번에 올려 push 하면
-폰 PWA 의 service worker 가 새 셸을 받아 즉시 갱신된다 → 밤새 진행상황을 폰에서 확인 가능.
+    python -m scripts.release "feat: 문장 반복(쉐도잉) 토글"      # minor bump (default): 1.70.0 -> 1.71.0
+    python -m scripts.release --patch "fix: typo"                   # 1.70.0 -> 1.70.1
+    python -m scripts.release --major "feat!: new shell"            # 1.70.0 -> 2.0.0
+    python -m scripts.release --set 2.0.0 "feat!: new shell"        # explicit
+    python -m scripts.release --dry-run "..."                       # print the plan, touch nothing
+
+`window.APP_VERSION` in ui/index.html and `VERSION` in ui/service-worker.js MUST hold the
+same value (they key the SW cache and the importmap query string). Bumping both in one step and
+pushing makes the phone PWA's service worker fetch the new shell immediately.
+
+⛔ Both constants are semver (MAJOR.MINOR.PATCH). An earlier version of this script assumed an
+integer counter, so it died on 1.x.y with "APP_VERSION 을 index.html 에서 못 찾음" and versions
+had to be bumped by hand — the exact drift risk this script exists to remove. Worse, its
+service-worker guard only checked that the literal prefix `const VERSION = '` was present, then
+called re.sub; re.sub silently returns the text unchanged when the pattern misses, so a
+non-matching SW version would have been written back untouched with no error at all. Every write
+below is therefore asserted by substitution count, and the result is re-read from disk and
+compared before anything is committed.
 """
 from __future__ import annotations
 
@@ -24,24 +38,122 @@ ROOT = Path(__file__).resolve().parent.parent
 INDEX = ROOT / "ui" / "index.html"
 SW = ROOT / "ui" / "service-worker.js"
 
+# (file, human label, regex with the version string as group 2)
+APP_RE = re.compile(r"(window\.APP_VERSION = ')([^']*)(')")
+SW_RE = re.compile(r"(const VERSION = ')([^']*)(')")
+SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
-def bump() -> str:
-    idx = INDEX.read_text(encoding="utf-8")
-    m = re.search(r"window\.APP_VERSION = '(\d+)'", idx)
-    if not m:
-        raise SystemExit("APP_VERSION 을 index.html 에서 못 찾음")
-    new = str(int(m.group(1)) + 1)
-    INDEX.write_text(
-        re.sub(r"(window\.APP_VERSION = ')\d+(')", rf"\g<1>{new}\g<2>", idx),
-        encoding="utf-8",
+LEVELS = ("major", "minor", "patch")
+
+
+def _read_version(path: Path, pattern: re.Pattern[str], label: str) -> str:
+    """Return the single semver literal `pattern` finds in `path`, or exit with why not."""
+    text = path.read_text(encoding="utf-8")
+    found = pattern.findall(text)
+    if not found:
+        raise SystemExit(f"release aborted — no {label} literal in {path.relative_to(ROOT)}")
+    if len(found) > 1:
+        raise SystemExit(
+            f"release aborted — {label} appears {len(found)}x in {path.relative_to(ROOT)}; "
+            "a bump would be ambiguous. Keep exactly one assignment."
+        )
+    value = found[0][1]
+    if not SEMVER_RE.match(value):
+        raise SystemExit(
+            f"release aborted — {label} is {value!r} in {path.relative_to(ROOT)}, "
+            "which is not MAJOR.MINOR.PATCH. Fix it by hand, then re-run."
+        )
+    return value
+
+
+def _rewritten(path: Path, pattern: re.Pattern[str], new: str, label: str) -> str:
+    """Return `path`'s text with its one `label` literal set to `new`. Writes nothing.
+
+    ⛔ re.sub reports success by returning a string, not by raising — a missed pattern hands back
+    the original text unchanged. Only the count tells the truth, so it is asserted here.
+
+    Both files are rewritten in memory before either is written, so a failure on the second file
+    can never leave the first one half-bumped — which would be the very drift this script exists
+    to prevent.
+    """
+    text = path.read_text(encoding="utf-8")
+    out, n = pattern.subn(rf"\g<1>{new}\g<3>", text)
+    if n != 1:
+        raise SystemExit(
+            f"release aborted — expected exactly 1 {label} substitution in "
+            f"{path.relative_to(ROOT)}, made {n}. Nothing written."
+        )
+    return out
+
+
+def next_version(current: str, level: str) -> str:
+    major, minor, patch = (int(x) for x in current.split("."))
+    if level == "major":
+        return f"{major + 1}.0.0"
+    if level == "minor":
+        return f"{major}.{minor + 1}.0"
+    return f"{major}.{minor}.{patch + 1}"
+
+
+def bump(level: str = "minor", explicit: str | None = None, dry_run: bool = False) -> str:
+    """Move both constants to the next version. Returns the new version.
+
+    The two files are read first and BOTH must already agree; a pre-existing mismatch means a
+    hand-edit went half-applied and a deploy is already serving a new shell against a stale SW
+    cache. The bump unifies them, but it says so loudly rather than papering over it.
+    """
+    app_v = _read_version(INDEX, APP_RE, "window.APP_VERSION")
+    sw_v = _read_version(SW, SW_RE, "service-worker VERSION")
+    # ⛔ Bump from whichever constant is HIGHER, not from APP_VERSION. If they have drifted, the
+    # next version has to clear BOTH, or the bump can land exactly on the value the other file
+    # already holds — the service-worker cache key would then not change and phones would keep
+    # serving the stale shell, which is the whole failure this script exists to prevent.
+    base = max(app_v, sw_v, key=lambda v: tuple(int(x) for x in v.split(".")))
+    if app_v != sw_v:
+        print(
+            f"⚠ drift found before bump: APP_VERSION={app_v} but service-worker VERSION={sw_v}. "
+            f"They must match (SW cache key). Bumping from the higher of the two ({base}) so the "
+            "new version clears both, and unifying them."
+        )
+
+    if explicit is not None:
+        if not SEMVER_RE.match(explicit):
+            raise SystemExit(f"release aborted — --set {explicit!r} is not MAJOR.MINOR.PATCH.")
+        new = explicit
+    else:
+        new = next_version(base, level)
+
+    if new == app_v or new == sw_v:
+        raise SystemExit(
+            f"release aborted — new version {new} equals a current one "
+            f"(APP_VERSION={app_v}, SW={sw_v}); the SW cache key would not change."
+        )
+
+    plan = (
+        f"  ui/index.html        window.APP_VERSION  {app_v} -> {new}\n"
+        f"  ui/service-worker.js VERSION             {sw_v} -> {new}"
     )
-    sw = SW.read_text(encoding="utf-8")
-    if "const VERSION = '" not in sw:
-        raise SystemExit("VERSION 을 service-worker.js 에서 못 찾음")
-    SW.write_text(
-        re.sub(r"(const VERSION = ')\d+(')", rf"\g<1>{new}\g<2>", sw),
-        encoding="utf-8",
-    )
+    if dry_run:
+        print(f"[dry-run] would bump ({explicit and 'explicit' or level}):\n{plan}")
+        print("[dry-run] no files written, no commit, no push.")
+        return new
+
+    index_out = _rewritten(INDEX, APP_RE, new, "window.APP_VERSION")
+    sw_out = _rewritten(SW, SW_RE, new, "service-worker VERSION")
+    INDEX.write_text(index_out, encoding="utf-8")
+    SW.write_text(sw_out, encoding="utf-8")
+
+    # Post-write verification: re-read from disk so the guarantee is about the files that will be
+    # committed, not about what this process believes it wrote.
+    after_app = _read_version(INDEX, APP_RE, "window.APP_VERSION")
+    after_sw = _read_version(SW, SW_RE, "service-worker VERSION")
+    if not (after_app == after_sw == new):
+        raise SystemExit(
+            "release aborted — post-write check failed: "
+            f"APP_VERSION={after_app}, SW VERSION={after_sw}, expected {new} for both. "
+            "Files are on disk in that state; fix before committing."
+        )
+    print(f"bumped both constants: {app_v} -> {new}")
     return new
 
 
@@ -91,10 +203,41 @@ def check_ui_tracked() -> None:
             )
 
 
+def parse_args(argv: list[str]) -> tuple[str, str, str | None, bool]:
+    """-> (commit message, level, explicit version or None, dry_run)."""
+    level = "minor"
+    explicit: str | None = None
+    dry_run = False
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("--major", "--minor", "--patch"):
+            level = a[2:]
+        elif a == "--dry-run":
+            dry_run = True
+        elif a == "--set":
+            i += 1
+            if i >= len(argv):
+                raise SystemExit("release aborted — --set needs a version, e.g. --set 2.0.0")
+            explicit = argv[i]
+        elif a.startswith("--set="):
+            explicit = a.split("=", 1)[1]
+        elif a.startswith("--"):
+            raise SystemExit(f"release aborted — unknown flag {a!r}")
+        else:
+            rest.append(a)
+        i += 1
+    msg = rest[0] if rest else "update"
+    return msg, level, explicit, dry_run
+
+
 def main() -> None:
-    msg = sys.argv[1] if len(sys.argv) > 1 else "update"
+    msg, level, explicit, dry_run = parse_args(sys.argv[1:])
     check_ui_tracked()   # 배포 누락 가드(아래 bump/commit 전에)
-    new = bump()
+    new = bump(level=level, explicit=explicit, dry_run=dry_run)
+    if dry_run:
+        return
     full = f"{msg}\n\nv{new}\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
     subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)
     subprocess.run(["git", "commit", "-q", "-m", full], cwd=ROOT, check=True)
