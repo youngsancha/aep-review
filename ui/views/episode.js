@@ -607,7 +607,9 @@ export async function renderEpisode(root, idStr, tStr) {
   // 문장 길이·'가' 텍스트크기 설정에 따라 1~3줄로 높이가 바뀌므로 상수를 쓰지 않고 매번 실측한다.
   // _highlightImpl 의 스크롤 앵커 계산도 이 패널의 실측 위치를 그대로 재사용한다(아래).
   function syncNotesOverlayPad() {
-    const scroll = document.querySelector('.tx-scroll');
+    // ⛔ Scope to this sheet. $notes already is; leaving the scroller as a bare document query let
+    // the two measurements come from different sheets whenever a stale one was still in the DOM.
+    const scroll = ($sheet || document).querySelector('.tx-scroll');
     if (!scroll || !$notes) return;
     if (!$notes.classList.contains('show')) { scroll.style.setProperty('--kr-overlay', '0px'); return; }
     // ⚠ 실측(2026-08-07)으로 드러난 첫 시도의 버그: 패널 '높이'만 패딩에 더했더니 컨트롤 알약이
@@ -616,10 +618,26 @@ export async function renderEpisode(root, idStr, tStr) {
     // 만큼 위에서 시작한다. 높이 대신 실측 gap(스크롤 뷰포트의 실제 하단 - 패널의 실제 top)을
     // 직접 재면 bottom 오프셋이 얼마든(컨트롤 표시/숨김 무관) 항상 정확하다 — _highlightImpl 의
     // safeBottom 계산과 같은 두 rect 비교, 방향만 반대(패널이 '가리는' 쪽 높이).
-    const scrollRect = scroll.getBoundingClientRect();
+    // ⛔⛔ The reference edge must be the CARD's bottom, never the scroller's own.
+    // `--kr-overlay` feeds .tx-scroll's padding-bottom, and box-sizing is border-box globally, so
+    // a flex item's used height floors at its padding sum — min-height:0 shrinks the content box
+    // to zero but can never shrink padding. The moment the padding exceeds the height flex gave
+    // the scroller, the scroller's own bottom edge starts moving down with the padding. Reading
+    // scrollRect.bottom here therefore fed this function's output back into its own input: each
+    // call added the current overflow again, and _pwtest measured it at 1200px on a 780px
+    // viewport, forcing .tx-scroll to 1328px inside a 718px card. Same family as the
+    // clientHeight-includes-padding explosion (585 -> 798 -> 4720 -> 33554432) that the loop-tail
+    // reserve hit; that one was moved to pure CSS vh, this one was missed.
+    // The card is height:92vh (100dvh in fullscreen) — it does not move when this padding changes,
+    // and nothing is laid out below the scroller, so its bottom is the same edge the old code
+    // meant to measure from. Same number in the healthy case, no feedback term.
+    const host = scroll.closest('.tx-sheet-card') || scroll.parentElement;
+    const hostRect = host.getBoundingClientRect();
     const notesRect = $notes.getBoundingClientRect();
-    const gap = Math.max(0, scrollRect.bottom - notesRect.top) + 14;   // +14 = 패널 바로 위 여백
-    scroll.style.setProperty('--kr-overlay', `${Math.ceil(gap)}px`);
+    const gap = Math.max(0, hostRect.bottom - notesRect.top) + 14;   // +14 = 패널 바로 위 여백
+    // Belt and braces: the reserve can never exceed the card, so no future measurement mistake can
+    // push the scroller outside its own sheet again.
+    scroll.style.setProperty('--kr-overlay', `${Math.min(Math.ceil(gap), Math.floor(hostRect.height))}px`);
   }
   // _highlightImpl 의 앵커 계산은 '활성 문장이 바뀌는 시점'에만 돈다(성능·기존 설계). 하지만 패널이
   // 덮는 영역은 그 사이에도 두 가지 이유로 바뀐다: ① 번역이 placeholder('…')에서 실제 문장으로

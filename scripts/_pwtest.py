@@ -1176,6 +1176,48 @@ def main() -> int:
               return { tb: r(tb), vw: r(vw), sc: r(sc), card: r(card) };
             }""")
             print("LIBRARY-VIDEO-LAYOUT:", lv_geo)
+            # A bare geometry verdict cannot be acted on: "sc.bottom 1698 vs card.bottom 780" says
+            # a box is too tall but not which ancestor stopped constraining it, and this check sat
+            # red for two weeks partly for that reason. On failure, dump the layout chain from
+            # .tx-scroll up to .tx-sheet, plus how many sheets/scrolls are live — the two things
+            # that actually distinguish a CSS bug from leftover DOM state in this suite.
+            def _lv_diag():
+                d = pg.evaluate("""() => {
+                  const sheet = document.getElementById('tx-video-toggle')?.closest('.tx-sheet')
+                             || document.querySelector('.tx-sheet.open');
+                  if (!sheet) return {error: 'no sheet'};
+                  const sc = sheet.querySelector('.tx-scroll');
+                  if (!sc) return {error: 'no .tx-scroll in sheet'};
+                  const chain = [];
+                  for (let el = sc; el; el = el.parentElement) {
+                    const cs = getComputedStyle(el), b = el.getBoundingClientRect();
+                    chain.push(`${el.tagName.toLowerCase()}.${(el.className||'').toString().trim()}`
+                      + ` display=${cs.display} flex=${cs.flex} minH=${cs.minHeight}`
+                      + ` maxH=${cs.maxHeight} h=${Math.round(b.height)} top=${Math.round(b.top)}`
+                      + ` bottom=${Math.round(b.bottom)} ovY=${cs.overflowY} cv=${cs.contentVisibility}`);
+                    if (el.classList.contains('tx-sheet')) break;
+                  }
+                  return {
+                    sheetsTotal: document.querySelectorAll('.tx-sheet').length,
+                    sheetsOpen: document.querySelectorAll('.tx-sheet.open').length,
+                    scrollsInDoc: document.querySelectorAll('.tx-scroll').length,
+                    scrollsInSheet: sheet.querySelectorAll('.tx-scroll').length,
+                    cardsInSheet: sheet.querySelectorAll('.tx-sheet-card').length,
+                    scScrollHeight: sc.scrollHeight, scClientHeight: sc.clientHeight,
+                    krOverlay: getComputedStyle(sc).getPropertyValue('--kr-overlay'),
+                    scPadBottom: getComputedStyle(sc).paddingBottom,
+                    scClassList: [...sc.classList],
+                    chain,
+                  };
+                }""")
+                print("LIBRARY-VIDEO-LAYOUT-DIAG:")
+                for k, v in (d or {}).items():
+                    if k == "chain":
+                        for line in v:
+                            print("    ", line)
+                    else:
+                        print(f"     {k} = {v}")
+
             lv_layout_ok = False
             if isinstance(lv_geo, dict):
                 tb, vw, sc, card = lv_geo["tb"], lv_geo["vw"], lv_geo["sc"], lv_geo["card"]
@@ -1187,6 +1229,8 @@ def main() -> int:
                     and sc["bottom"] <= card["bottom"] + 1     # 자막이 시트 안에 담김(넘치지 않음)
                     and 1.5 < vw_ratio < 2.0                   # 영상이 대략 16:9(≈1.78) 그대로(우리쪽 레터박스 없음)
                 )
+            if not lv_layout_ok:
+                _lv_diag()
             # 껐을 때 원상복구(요구사항 #4) — 다시 토글해 .tx-video-wrap 이 hidden 되고 .tx-scroll 이
             # 그 공간을 도로 흡수하는지 확인한다.
             if pg.query_selector("#tx-video-toggle"):
