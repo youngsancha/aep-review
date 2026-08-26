@@ -3,7 +3,10 @@
 //   new Function 으로 평가 → DOM/네트워크 의존 없이 진짜 앱 코드를 돌린다.
 //   tests/test_resegment_parity.py 가 이 출력을 Python 포팅(scripts/translate_transcripts.py)과 대조.
 //
-//   사용: node scripts/resegment_parity.mjs [--ids 1,2,3]   (없으면 data/transcripts/*.json 전부)
+//   사용: node scripts/resegment_parity.mjs [--ids 1,2,3] [--dir <path>]
+//   --dir defaults to data/transcripts (gitignored pipeline output). The parity test also points
+//   it at tests/fixtures/transcripts, which IS committed, so the comparison runs on a fresh
+//   checkout instead of skipping itself into a false green.
 //   출력(stdout, JSON): { "<id>": { "sents": [...문장...], "keys": [...trKey...] } }
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -32,12 +35,13 @@ const body =
   'return { resegment, trKey };';
 const { resegment, trKey } = new Function(body)();
 
-// --ids 파싱
+// --ids / --dir 파싱
 let ids = null;
 const ai = process.argv.indexOf('--ids');
 if (ai >= 0 && process.argv[ai + 1]) ids = process.argv[ai + 1].split(',').map((s) => s.trim()).filter(Boolean);
 
-const txDir = join(ROOT, 'data/transcripts');
+const di = process.argv.indexOf('--dir');
+const txDir = di >= 0 && process.argv[di + 1] ? process.argv[di + 1] : join(ROOT, 'data/transcripts');
 if (!ids) {
   ids = readdirSync(txDir)
     .filter((f) => /^\d+\.json$/.test(f))
