@@ -30,6 +30,11 @@
   - **작업량은 사실상 allears 하나다: 95% 미만 90편 중 78편이 allears 이고 미번역 16,393문장(85%).** aep 는 5편 745문장, wh 는 7편 2,007문장뿐. 쇼별 커버리지 aep 99.3% · allears 86.9% · wh 95.5%.
   - 최악 회차: allears ep288(1.3%) ep537(2.5%) ep528(2.7%) ep304(4.0%) ep282(14.8%), aep ep1(14.6%), wh ep558(22.9%).
   - ⛔⛔ **첫 측정치는 믿지 마라 — 이 항목의 앞선 숫자(커버리지 88.1%, "_ko.json 이 아예 없는 회차 29편", 미번역 31,261)는 틀렸다.** `_download` 가 모든 예외를 삼켜서 **일시적 네트워크 실패를 '파일 없음'과 구분하지 못했다**. 45분 간격 두 번 실행이 **89편에 대해 서로 다른 답**을 냈고 방향이 양쪽 다였다(자막없음→정상 43편, 정상→자막없음 8편) — 워커 탓이 아니라 계측 탓. 재시도 3회 + 404 와 그 외 오류 구분 + 실패 건수 표시로 고쳤고, 위 수치는 **다운로드 실패 0편**인 실행에서 나온 것이다. 실제로 `_ko.json` 이 없는 회차는 **0편**이다.
+  - ⛔⛔ **2026-08-26 재측정 — 위 숫자도 전체가 아니었다.** `audit_ko_coverage.SHOWS` 가 `("aep","allears","wh")` 로 하드코딩돼 있어 **네 번째 쇼 cnn10 393편이 통째로 빠진 채** '전 회차' 총계를 찍고 있었다(`ingest/shows.py`·`ui/config.js` 는 이미 4개 쇼). `ingest.shows.show_slugs()` 에서 파생하도록 고치고 다시 잰 값 (1,026편, 다운로드 실패 0편):
+    - **전체 커버리지 76.2%** (273,134/358,332), 미번역 **85,198문장** — 3개 쇼만 볼 때의 93.2%/19,264 가 아니다.
+    - **cnn10 1.7%** (1,243/73,127) — **393편 중 385편에 `_ko.json` 이 아예 없다.** 미번역 71,884문장 = 전체 미번역의 **84%**.
+    - aep 99.5% (미번역 601) · allears 91.4% (미번역 10,706) · wh 95.5% (미번역 2,007).
+    - 즉 **재번역 예산 문제는 allears 가 아니라 cnn10 이고, 성격도 '재번역'이 아니라 '한 번도 번역 안 됨'이다.** allears 는 ko-quality 패스가 계속 메우는 중(86.9% → 91.4%).
   - 재측정: `python -m scripts.audit_ko_coverage --all -w 8` (633편에 약 2분). 출력 맨 아래 "다운로드 실패 N편" 줄을 **반드시** 확인할 것 — 0 이 아니면 그 수치는 불완전하다.
   - ⚠ 이 스냅샷도 `com.roy.aep-ko-quality` Phase A 가 쇼별 최근 50편을 백필하는 도중에 찍었다.
   - 상세 회차별 JSON 을 원하면 위 명령에 `--json <path>`.
@@ -60,9 +65,38 @@
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:431eebb2-a1f5-4718-8ac5-99a35fa535fb -->
 
+## 2026-08-26 세션에서 발견 (td-task 로도 등록됨)
+
+- [ ] **P1** cnn10 한국어 사전번역이 393편 중 385편 없음 — 미번역 71,884문장 = 전체 미번역의 84%
+  - 커버리지 1.7% (1,243/73,127). 다른 쇼는 aep 99.5% · allears 91.4% · wh 95.5% 라 사실상 cnn10 단일 이슈다.
+  - 감사 도구의 `SHOWS` 가 3개 쇼로 하드코딩돼 있어 이 쇼가 통째로 빠져 있었다(2026-08-26 고침).
+  - 앱은 키가 없으면 조용히 MyMemory 로 폴백하므로 화면엔 번역이 보인다 — 오프라인에선 한국어가 아예 안 보인다.
+
+- [ ] **P2** resegment 의 14단어/9초 상한이 aep 전용 튜닝이라 wh·cnn10 문장을 구조적으로 자른다
+  - 실측 2026-08-26 (1,026편 358,332문장, `python -m scripts.audit_segmentation --all`):
+    **문장 중간 절단률** aep 9.2% · allears 11.6% · **cnn10 16.9%** · **wh 22.7%**
+    (= 상한에 걸려 닫혔고 ⑤ 꼬리 되돌리기로도 종결부호를 못 얻은 문장)
+  - 원인 두 가지가 겹친다. ① Whisper 구두점 밀도와 절단률의 상관이 **Pearson r = −0.842**(1,000회차) — 문장이 길어서가 아니라 구두점이 드물어서다. ② 종결부호 사이 자연 문장 길이 중간값이 aep 10단어 · allears 7 · cnn10 13 · **wh 14** — **WH 는 상한이 중간값과 같아 문장 절반이 정의상 잘린다.**
+  - 상한을 올렸을 때 '반드시 잘리는 문장' 비율: wh 51.4%(cap14) → 39.1%(18) → 33.7%(20) → 23.0%(25). cnn10 47.4% → 32.6% → 26.3% → 14.5%.
+  - ⚠ 트레이드오프: 상한은 쉐도잉 반복 단위 길이이기도 하다. 올리면 절단은 줄지만 반복 단위가 길어진다 — 쇼별 상수로 나누는 게 자연스럽다(현재는 전역 상수).
+  - ⛔ **상한을 바꾸면 그 쇼의 `_ko.json` 키가 전부 무효가 된다**(문장 텍스트가 곧 키다). cnn10 은 어차피 385편이 미번역이라 지금이 가장 싼 시점이다.
+
+- [ ] **P2** `ingest/transcribe.py` 의 구두점 품질 게이트가 **구조적으로 죽어 있다**
+  - `beam_size = int(os.getenv("AEP_WHISPER_BEAM", "5"))` 인데 재시도 조건이 `_punct_ratio(data) < PUNCT_MIN and beam_size < 5` — 기본값이 5 라 `beam_size < 5` 가 **항상 False**. 실행으로 확인(구두점 비율 0.0 인 가짜 입력에도 재시도 안 함).
+  - 주석은 "어떤 회차도 '구두점 없는 자막'으로 저장되지 않게 자가복구"라고 적혀 있지만 실제로는 한 번도 동작한 적이 없다. 그 게이트가 막으려던 증상이 바로 위 항목이다(주석에도 "구두점이 없으면 클라이언트가 문장을 구 중간에서 자른다(사용자 보고 근본원인)"라고 쓰여 있다).
+  - 임계값 미달 회차: aep 4/269 · allears 10/276 · **wh 9/64** · **cnn10 28/391** = 51편. 게이트가 살아 있었다면 전부 재시도 대상이었다.
+  - ⚠ 조건을 고치는 건 쉽지만, **beam 을 올리면 구두점이 실제로 좋아지는지는 미검증**이다. 재STT 는 비싸니(회차당 ~22분 CPU) 고치기 전에 1~2편으로 효과부터 재는 게 맞다.
+
 ## 2026-08-24 09:00 넘어옴
 
 - [x] **P3** aep-review scripts/release.py is broken for semver versions — 고침 2026-08-25 (semver 매치 + 두 상수 dry-run 검증)
   - 메모: release.py bumps both APP_VERSION and the service worker VERSION in one step, but its regex is window\.APP_VERSION = .(\\d+). — it assumes an integer version like 137. The project moved to semver (1.68.0), so the match fails and the script exits with "APP_VERSION 을 index.html 에서 못 찾음". Versions have to be bumped by hand meanwhile, which is exactly the drift the script exists to prevent: the two constants MUST stay equal or a deploy serves a new shell against an old service worker cache.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:b321d7b1-026c-4017-8d77-ae39fd75ad96 -->
+
+## 2026-08-26 09:00 넘어옴
+
+- [ ] **P2** _pwtest download 서브체크 red: 오디오를 캐시에 심어도 오프라인 칩이 Saved 로 안 바뀐다
+  - 메모: 2026-08-25 측정: EP-SUBFAILED 에 download 가 들어 있다(OFFLINE-CHIP: idle=Offline saved=Offline, 기대값 saved=Saved). libvideo 를 고친 뒤에도 남아 있고, 오늘 밤 첫 실행(아무것도 안 고친 상태)에서도 이미 red 였으니 내 변경 탓이 아니다. 프로젝트 메모리엔 v1.68.0 기준 알려진 red 가 libvideo 하나뿐이라고 적혀 있으므로, v1.69/v1.70 의 오프라인 관련 커밋 4건(HEAD count 캐시, ko 사전번역까지 있어야 ready, 네트워크 실패 안 기다리기, 오디오 업로드) 사이에서 생긴 회귀일 가능성이 높다. 확인한 것: 캐시 이름은 offline.js/service-worker.js/하니스 셋 다 aep-review-audio-v1 로 일치, isEpisodeCached 는 여전히 오디오만 본다. 다음 단계는 __seedAudio 가 실제로 캐시에 들어가는지(캐시 키 URL 대조) 확인.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:eff30852-0f07-4ac7-9625-c64381115720 -->
