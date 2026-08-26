@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ingest import store
@@ -66,19 +67,59 @@ def newest_ids(show: str, n: int | None) -> list[int]:
     return out[:n] if n is not None else out
 
 
-def _download(path: str):
-    try:
-        return json.loads(store.client().storage.from_("transcripts").download(path))
-    except Exception:
-        return None
+def _is_not_found(exc: Exception) -> bool:
+    """A genuine 404 from Supabase storage, as opposed to any other failure."""
+    if str(getattr(exc, "status", "")) == "404" or getattr(exc, "code", None) == "not_found":
+        return True
+    return "not_found" in str(exc) or "Object not found" in str(exc)
+
+
+def _download(path: str, tries: int = 3):
+    """-> (parsed json or None, state) where state is "ok" | "missing" | "error".
+
+    ⛔⛔ This used to `except Exception: return None`, which made a transient network failure
+    IDENTICAL to a missing file. Measured 2026-08-26: two --all runs 45 minutes apart disagreed
+    about **89 episodes**, and the flips went BOTH ways (43 "no transcript" -> ok, but also 8
+    ok -> "no transcript"), so it was not the backfill worker. The audit was reporting failed
+    downloads as dead episodes and inflating the re-translation estimate by roughly 3x. A metric
+    whose whole job is to reveal silent rot must not itself read silence as data.
+    """
+    last: Exception | None = None
+    for attempt in range(tries):
+        try:
+            return json.loads(store.client().storage.from_("transcripts").download(path)), "ok"
+        except Exception as e:                      # noqa: BLE001 - classified immediately below
+            if _is_not_found(e):
+                return None, "missing"
+            last = e
+            if attempt < tries - 1:
+                time.sleep(0.4 * (2 ** attempt))    # 0.4s, 0.8s
+    print(f"  ⚠ download failed after {tries} tries: {path} ({type(last).__name__})", file=sys.stderr)
+    return None, "error"
 
 
 def audit_episode(ep_id: int) -> dict:
-    tx = _download(f"{ep_id}.json")
+    tx, tx_state = _download(f"{ep_id}.json")
+    if tx_state == "error":
+        # Not measurable this run. Reported separately and excluded from every conclusion —
+        # never folded into "dead", which is what made the previous numbers untrustworthy.
+        return {"id": ep_id, "sent": 0, "hit": 0, "pct": None, "ko_keys": 0,
+                "orphan_keys": 0, "orphan_pct": None, "note": "다운로드 실패"}
     if not tx:
-        return {"id": ep_id, "sent": 0, "hit": 0, "pct": None, "note": "자막 없음"}
+        # ⛔ Returning here without reading _ko.json would drop this episode's dead keys from the
+        # orphan total — and they are the deadest of all: with no transcript there is no sentence
+        # that can ask for any of them, so every key is an orphan by definition. Coverage still
+        # excludes the episode (pct=None); only the orphan weight is counted.
+        ko, _ = _download(f"{ep_id}_ko.json")
+        ko = ko or {}
+        return {"id": ep_id, "sent": 0, "hit": 0, "pct": None,
+                "ko_keys": len(ko), "orphan_keys": len(ko),
+                "orphan_pct": 100.0 if ko else None, "note": "자막 없음"}
     sents = [s for s in resegment(tx.get("segments", [])) if s.strip()]
-    ko = _download(f"{ep_id}_ko.json")
+    ko, ko_state = _download(f"{ep_id}_ko.json")
+    if ko_state == "error":
+        return {"id": ep_id, "sent": len(sents), "hit": 0, "pct": None, "ko_keys": 0,
+                "orphan_keys": 0, "orphan_pct": None, "note": "다운로드 실패"}
     note = "" if ko is not None else "_ko.json 없음"
     ko = ko or {}
     # `hit` counts SENTENCES that find a translation, so it drives the coverage percentage.
@@ -133,6 +174,7 @@ def main() -> None:
                          "missing": tot_s - tot_h, "pct": pct,
                          "ko_keys": keys, "orphan_keys": orph,
                          "orphan_pct": round(orph / keys * 100, 1) if keys else None,
+                         "eps_failed": sum(1 for r in show_rows if r.get("note") == "다운로드 실패"),
                          "eps_no_ko": sum(1 for r in show_rows if r.get("note") == "_ko.json 없음"),
                          "eps_under_50": sum(1 for r in show_rows
                                              if r["pct"] is not None and r["pct"] < 50)}
@@ -174,6 +216,15 @@ def main() -> None:
     for r in worst_orph:
         print(f"           ⚠ ep {r['id']} ({r['show']}): 고아 {r['orphan_keys']}/{r['ko_keys']}"
               f" = {r['orphan_pct']}%  (문장 {r['sent']}, 적중 {r['hit']})")
+    # ⛔ A run with failed downloads measured LESS than the whole catalogue. Say so at the bottom,
+    # where the totals are, so the numbers above can never be quoted as complete when they are not.
+    g_failed = sum(v["eps_failed"] for v in summary.values())
+    if g_failed:
+        print(f"\n⛔ 다운로드 실패 {g_failed}편 — 이 회차들은 위 수치에서 통째로 빠졌다."
+              "\n   '죽은 회차'로 세지 않는다(그게 예전에 수치를 3배 부풀린 원인이다). 다시 돌려라.")
+    else:
+        print(f"\n다운로드 실패 0편 — {sum(v['eps'] for v in summary.values())}편 전부 실측됨.")
+
     print("\n미번역 문장은 앱에서 MyMemory(문장 고립 기계번역)로 폴백한다 — 화면엔 번역이 보이므로"
           "\n이 수치를 재지 않으면 품질 저하를 아무도 눈치채지 못한다."
           "\n채우기: python -m scripts.translate_transcripts --ids <id,...>")
@@ -183,6 +234,9 @@ def main() -> None:
             json.dump({"summary": summary, "episodes": rows}, f, ensure_ascii=False, indent=1)
         print(f"\n상세 → {args.json_out}")
 
+    # A gate must not pass on data it failed to read.
+    if args.min_pct is not None and g_failed:
+        failed.append(f"다운로드 실패 {g_failed}편 — 측정 자체가 불완전")
     if failed:
         print("\nFAIL: " + " · ".join(failed))
         sys.exit(1)
