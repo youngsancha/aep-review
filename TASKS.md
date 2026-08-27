@@ -100,3 +100,10 @@
   - 메모: 2026-08-25 측정: EP-SUBFAILED 에 download 가 들어 있다(OFFLINE-CHIP: idle=Offline saved=Offline, 기대값 saved=Saved). libvideo 를 고친 뒤에도 남아 있고, 오늘 밤 첫 실행(아무것도 안 고친 상태)에서도 이미 red 였으니 내 변경 탓이 아니다. 프로젝트 메모리엔 v1.68.0 기준 알려진 red 가 libvideo 하나뿐이라고 적혀 있으므로, v1.69/v1.70 의 오프라인 관련 커밋 4건(HEAD count 캐시, ko 사전번역까지 있어야 ready, 네트워크 실패 안 기다리기, 오디오 업로드) 사이에서 생긴 회귀일 가능성이 높다. 확인한 것: 캐시 이름은 offline.js/service-worker.js/하니스 셋 다 aep-review-audio-v1 로 일치, isEpisodeCached 는 여전히 오디오만 본다. 다음 단계는 __seedAudio 가 실제로 캐시에 들어가는지(캐시 키 URL 대조) 확인.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:eff30852-0f07-4ac7-9625-c64381115720 -->
+
+## 2026-08-27 09:00 넘어옴
+
+- [ ] **P1** cnn10 한국어 사전번역이 393편 중 385편 없음 (미번역 71,884문장 = 전체의 84%)
+  - 메모: 2026-08-26 실측: cnn10 커버리지 1.7%(1,243/73,127). audit_ko_coverage 의 SHOWS 가 3개 쇼로 하드코딩돼 있어 이 쇼가 감사에서 통째로 빠져 있었다(고침). 앱은 키가 없으면 조용히 MyMemory 로 폴백하므로 화면엔 번역이 보이고, 오프라인에선 한국어가 아예 안 보인다. 다른 쇼는 aep 99.5 / allears 91.4 / wh 95.5 라 사실상 cnn10 단일 이슈. 채우기: python -m scripts.translate_transcripts --ids <id,...> 또는 ko_quality_pass.sh 대상 목록에 cnn10 포함. 비용 판단 필요.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:ac6fd4c0-868c-48f0-b749-cb9c857367d8 -->

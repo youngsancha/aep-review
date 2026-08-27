@@ -56,6 +56,106 @@ export function loadEpisodesSnapshot() {
   } catch (e) { return null; }
 }
 
+// 회차 '상세'(행 + vocab) 스냅샷 — 목록 스냅샷과 같은 이유, 같은 패턴. 회차 화면은 getEpisode()
+// 한 번에 전부를 걸고 있어서(views/episode.js: `const ep = await getEpisode(id)`) 이 읽기가 늦으면
+// 화면이 통째로 스피너에 멈춘다.
+//
+// ⛔ '오프라인이면 SW 캐시(DOC_CACHE)가 받아준다'는 가정은 틀렸다 — 요청이 거기까지 가는 데 걸리는
+//    시간이 문제다. 실측(2026-08-27, 실제 supabase-js·오프라인·만료 세션, 앱 코드 없이 단독 계측):
+//      · 만료 세션 + 오프라인 → PostgREST 읽기 한 건이 **32.6초** 뒤에야 settle. auth 7회 재시도가
+//        _getAccessToken() 안에서 인라인으로 돌고, 그게 끝나야 REST 요청이 나간다.
+//      · 동시 3건도 32.6초(같은 갱신을 함께 기다림) — 곱해지지는 않는다.
+//      · ⛔ app.js 의 오프라인 우회가 부르는 stopAutoRefresh() 로는 1ms 도 안 줄었다(32.59초).
+//        그 주석의 전제("갱신을 멈추면 락이 풀린다")는 지금 supabase-js 에선 더 이상 맞지 않는다 —
+//        비용은 백그라운드 갱신 루프가 아니라 getSession() 안의 '인라인' 갱신이다.
+//      · 아직 안 만료된 세션이어도 오프라인이면 7.3초(REST 재시도 4회).
+//    즉 유일하게 확실한 우회는 supabase-js 를 아예 안 거치는 것이다. 목록이 이미 그렇게 하고 있고
+//    (위 EPS_SNAP), 상세만 빠져 있었다(사용자 신고 2026-08-27 "오프라인모드 안됨": 회차 화면이
+//    스피너에서 안 넘어감 — 실제로는 33초쯤 뒤에 그려지지만 사람이 기다릴 시간이 아니다).
+//
+// 저장 대상은 '행 + vocab' 뿐이다. 자막(.json)·한글번역(_ko.json)·오디오는 인증이 필요 없는 공개
+// Storage/R2 URL 이라 SW 캐시로 오프라인에서 정상 동작한다 — 여기 중복 저장할 이유가 없다.
+//
+// ⚠ 알고 받아들이는 트레이드오프(xcheck 패널 grok 지적, 2026-08-27): 스냅샷을 쓰는데 자막은
+// 네트워크에서 새로 받는 조합에서는, 그 사이 재STT 가 돌았다면 vocab 의 sentence_start_sec 가
+// 옛 자막 기준이라 vocab 탭 점프가 몇 초 어긋날 수 있다(자막 하이라이트 자체는 새 자막 기준이라
+// 정확하다). 오프라인일 때는 자막도 같은 `?v=` URL 로 SW 캐시에서 나오므로 둘이 항상 짝이 맞고,
+// 이 창은 '온라인인데 PostgREST 만 느린' 경우로 좁다. 지금은 클라이언트가 이걸 감지할 방법이
+// 없다 — transcripts/{id}.json 에 transcribed_at 이 안 들어 있고, `?v=` 는 캐시버스터일 뿐
+// 내용을 고르지 않는다(파일은 제자리에서 덮인다). 자막 JSON 에 transcribed_at 을 넣으면
+// 여기서 대조해 어긋난 vocab 시각을 버릴 수 있다 → td-task 로 등록.
+const EP_SNAP_KEY = (id) => `aep-ep-snap-${id}`;
+const EP_SNAP_LRU = 'aep-ep-snap-lru';   // 최근 저장 id 목록(오래된 것부터 앞) — 용량 상한용
+const EP_SNAP_MAX = 40;                  // offlineCount() 상한(30) + 최근에 그냥 열어본 회차 여유
+// 스냅샷이 있으면 '포기 비용'이 싸다 → 빨리 포기하고 즉시 그린다(listEpisodes 와 같은 규칙).
+const EP_SNAP_DEADLINE_MS = 2500;
+
+function epSnapLru() {
+  try {
+    const v = JSON.parse(localStorage.getItem(EP_SNAP_LRU) || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+// 요청 번호 — '늦게 도착한 옛 응답이 더 새 응답을 덮어쓰는' 경합을 막는다. 데드라인을 넘긴 요청은
+// 계속 살아 있다가 나중에 스냅샷을 갱신하는데, 그 사이 온라인 복귀로 다시 읽어 더 새 값이 이미
+// 저장돼 있을 수 있다. 그때 지각 응답이 그냥 쓰면 방금 받은 vocab 이 옛 것으로 되돌아간다.
+// (xcheck 패널 grok 지적, 2026-08-27.)
+let _epReqSeq = 0;
+const _epSnapSeq = new Map();   // id → 그 회차 스냅샷을 마지막으로 쓴 요청 번호
+
+function saveEpisodeSnapshot(id, row, seq) {
+  const key = String(id);
+  if (seq != null) {
+    const last = _epSnapSeq.get(key);
+    if (last != null && last > seq) return;   // 이미 더 새 응답이 저장됐다 — 지각 응답은 버린다
+    _epSnapSeq.set(key, seq);
+  }
+  try {
+    // transcript/transcript_ko 는 붙기 전이지만, 혹시 호출 순서가 바뀌어도 절대 안 들어가게 막는다
+    // (수 MB 짜리라 한 번만 새도 localStorage 가 즉시 터진다).
+    const { transcript: _t, transcript_ko: _tk, ...slim } = row;
+    let lru = epSnapLru().filter((k) => k !== key);
+    lru.push(key);
+    // 상한 초과분 정리 → 그 다음에 쓴다. 쓰기가 quota 로 실패하면 한 개씩 더 비우고 재시도한다
+    // (조용히 실패하면 '오프라인에서 이 회차만 안 열림'이 되는데, 원인을 찾기가 매우 어렵다).
+    for (const old of lru.splice(0, Math.max(0, lru.length - EP_SNAP_MAX))) {
+      try { localStorage.removeItem(EP_SNAP_KEY(old)); } catch (e) {}
+    }
+    const payload = JSON.stringify(slim);
+    let wrote = false;
+    try {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          localStorage.setItem(EP_SNAP_KEY(key), payload);
+          wrote = true;
+          break;
+        } catch (e) {
+          // quota — 가장 오래된 스냅샷을 버리고 다시 시도. 자기 자신만 남으면 포기한다.
+          const victim = lru.find((k) => k !== key);
+          if (!victim) break;
+          lru = lru.filter((k) => k !== victim);
+          try { localStorage.removeItem(EP_SNAP_KEY(victim)); } catch (e2) {}
+        }
+      }
+    } finally {
+      // 끝내 못 썼으면 자기 자신도 색인에서 뺀다 — 색인은 '실제로 저장돼 있는 것'과 정확히 일치해야
+      // 한다. (첫 수정은 이 줄이 없어서 실패한 회차가 그대로 유령으로 남았다 — 테스트가 잡았다.)
+      if (!wrote) { lru = lru.filter((k) => k !== key); _epSnapSeq.delete(key); }
+      // ⛔ 색인은 성공/실패와 무관하게 반드시 쓴다. 예전엔 성공 경로에서만 썼는데, 4번을 다 실패하면
+      // 이미 지운 회차들이 색인에 '유령'으로 남았다 — 다음 저장이 그 유령들을 다시 evict 하려 들고
+      // removeItem 은 no-op 이라 0바이트를 비운 채 재시도를 낭비한다(quota 복구가 영구히 무력화).
+      // (xcheck 패널 gemini 지적, 2026-08-27.)
+      try { localStorage.setItem(EP_SNAP_LRU, JSON.stringify(lru)); } catch (e) {}
+    }
+  } catch (e) { /* 스냅샷은 있으면 좋은 것이지 필수는 아니다 */ }
+}
+export function loadEpisodeSnapshot(id) {
+  try {
+    const v = JSON.parse(localStorage.getItem(EP_SNAP_KEY(id)) || 'null');
+    return v && typeof v === 'object' && v.id != null ? v : null;
+  } catch (e) { return null; }
+}
+
 export async function listEpisodes() {
   // 기다릴 가치는 '포기했을 때 잃는 것'에 비례한다. 스냅샷이 있으면 실패가 싸므로 빨리 포기하고
   // 즉시 목록을 그린다. 스냅샷이 없으면 빈 화면뿐이라 느린 회선에도 끝까지 기다린다.
@@ -188,15 +288,64 @@ export async function audioSrcFor(id, audioUrl) {
 
 // GET /api/episodes/{id} 대체 → { ...episode, vocab, transcript }
 export async function getEpisode(id) {
-  const { data: ep, error } = await supabase
-    .from('episodes')
-    .select(
-      '*, vocab:vocab_cards(id, term, kind, definition, example_sentence, sentence_start_sec, sentence_end_sec)'
-    )
-    .eq('id', id)
-    .single();
-  if (error) throw new Error(error.message);
+  // 스냅샷이 있으면 짧게 기다렸다 그것으로 그린다(위 EP_SNAP 주석: 오프라인 실측 32.6초).
+  // 없으면 이 화면에 그릴 게 아예 없으므로 느린 회선에서도 기본 데드라인까지 기다린다.
+  const snap = loadEpisodeSnapshot(id);
+  // 확실히 오프라인이고 스냅샷이 있으면 아예 안 물어본다 — 기다려서 얻을 게 없다.
+  // (navigator.onLine 은 false 일 때만 믿는다: true 는 도달성을 보장하지 않는다. service-worker.js
+  //  networkFirst·app.js 부팅 예산·translate.js 와 같은 규칙.) 실측으로 오프라인 회차 진입이
+  //  3.6초 → 1초 미만. 온라인 복귀 시엔 app.js 의 'online' 핸들러가 route() 를 다시 돌려 갱신한다.
+  if (snap && navigator.onLine === false) {
+    return hydrateEpisode({ ...snap });
+  }
+  // ⚠ postgrest-js 의 쿼리빌더는 '실행되지 않은 thenable' 이라 .then() 을 부를 때마다 요청이 나간다.
+  // 아래에서 데드라인용 + (포기했을 때만) 지각도착용으로 붙일 수 있으므로, 여기서 한 번만 실행시켜
+  // 진짜 Promise 로 굳힌다 — Promise.resolve 가 thenable 의 then 을 정확히 한 번 부른다.
+  const q = Promise.resolve(
+    supabase
+      .from('episodes')
+      .select(
+        '*, vocab:vocab_cards(id, term, kind, definition, example_sentence, sentence_start_sec, sentence_end_sec)'
+      )
+      .eq('id', id)
+      .single());
+  const seq = ++_epReqSeq;
+  let ep;
+  try {
+    const { data, error } = await withDeadline(
+      q, `getEpisode(${id})`, snap ? EP_SNAP_DEADLINE_MS : READ_DEADLINE_MS);
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error(`episode ${id} not found`);
+    ep = data;
+    saveEpisodeSnapshot(id, ep, seq);
+  } catch (e) {
+    // 데드라인을 넘겨도 원래 요청은 계속 살아 있다(Promise.race 는 취소가 아니다). 포기한 뒤에야
+    // 이 핸들러를 붙이는 이유는 두 벌 저장을 피하기 위해서다 — 제때 도착한 경우는 위에서 이미
+    // 저장했고, 여기서 또 붙이면 같은 응답을 두 번 직렬화해 localStorage 에 쓰게 된다.
+    // 늦게라도 성공하면 스냅샷'만' 갱신한다. 화면은 안 건드린다 — 이미 그려진 회차를 뒤늦게
+    // 덮으면 스크롤·재생 위치가 튄다. seq 로 '지각 응답이 더 새 응답을 덮는' 경합을 막는다.
+    //
+    // ⚠ 스냅샷이 없어 던지는 경우에도 이 핸들러는 붙인다. 예전엔 곧장 던져서, 느린 회선에서 처음
+    // 여는 회차가 8초 뒤 에러 카드를 띄우고 그 직후 도착한 응답을 버렸다 — 다시 눌러도 똑같이
+    // 8초를 기다린다. 붙여 두면 두 번째 시도는 스냅샷으로 즉시 열린다.
+    // (xcheck 패널 gemini 지적, 2026-08-27.)
+    q.then((late) => { if (late && !late.error && late.data) saveEpisodeSnapshot(id, late.data, seq); })
+      .catch(() => {});   // unhandledrejection 로그 방지
+    if (!snap) throw e;
+    console.warn('[db] getEpisode failed → 스냅샷 사용:', e && e.message);
+    // 스냅샷은 재사용되므로 얕은 복사 — 아래에서 audio_url/transcript 를 덮어쓴다.
+    ep = { ...snap };
+  }
 
+  return hydrateEpisode(ep);
+}
+
+// 회차 '행'에 자막·번역·오디오소스를 붙여 화면이 기대하는 모양으로 만든다. 행의 출처(네트워크 /
+// 스냅샷)와 무관하게 **완전히 같은 처리**를 거치게 하려고 따로 뺐다 — 두 경로가 갈라지면 오프라인
+// 에서만 오디오 소스가 다르게 정해지는(=자막과 어긋나는) 버그가 생긴다. 여기서 쓰는 fetch 들은
+// 전부 인증이 필요 없는 공개 URL 이라 SW 캐시로 오프라인에서도 그대로 동작한다.
+async function hydrateEpisode(ep) {
+  const id = ep.id;
   // 원본 정렬: 타임스탬프 있는 것 먼저, 그 안에서 start asc, 그 다음 id asc
   ep.vocab = (ep.vocab || []).sort((a, b) => {
     const an = a.sentence_start_sec, bn = b.sentence_start_sec;
