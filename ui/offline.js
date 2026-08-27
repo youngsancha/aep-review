@@ -11,7 +11,8 @@
 //  · 자막 재싱크(transcribed_at 변경) 시 해당 오디오 + doc 캐시를 지우고 다시 받는다(자막=오디오
 //    일치 유지 — 오디오·자막이 같은 META_KEY 로 무효화되므로 둘이 어긋날 수 없다).
 //  · 트리거: app.js 가 로그인 후 잠시 뒤 백그라운드로 1회 호출(ensureOfflineCache).
-import { listEpisodes, getEpisode, episodeNav, hostedSet, transcriptUrl, transcriptKoUrl } from '/db.js';
+import { listEpisodes, getEpisode, episodeNav, hostedSet, transcriptUrl, transcriptKoUrl,
+  loadEpisodeSnapshot } from '/db.js';
 import { hostedAudioUrl } from '/config.js';
 import { toast } from '/app.js';
 import { loadPins, pinEpisode, unpinEpisode } from '/offline-pins.js';
@@ -45,6 +46,13 @@ function notifyPinnedIds(ids) {
 // 건너뛴다. 회차행은 URL 을 손으로 재현하지 않고(postgrest-js 인코딩에 의존하지 않기 위해) 이미
 // 저장된 키들을 순회해 패턴으로 찾는다. 자막은 db.js::transcriptUrl 이 단일 출처라 안전하게 재사용.
 async function episodeDocReady(id, transcribedAt) {
+  // ⚠ 회차 상세 스냅샷(localStorage)도 '준비됨'의 일부다. 이게 빠지면 이미 받아 둔 회차는 아래
+  // 프리페치 루프가 getEpisode() 를 통째로 건너뛰어(성능 최적화) 스냅샷이 영영 안 생기고, 그
+  // 회차들만 오프라인에서 여전히 32.6초를 기다린다 — 캐시는 멀쩡한데 거기 닿는 데 그만큼 든다.
+  // 이건 바로 아래 _ko.json 주석과 **완전히 같은 실수**의 반복이다: '지우는 쪽/판정하는 쪽'은
+  // 새 자산을 아는데 '받는 쪽'만 몰라서 생기는 비대칭. 새 오프라인 자산을 추가할 때마다 이
+  // 판정에 같이 넣어야 한다.
+  if (!loadEpisodeSnapshot(id)) return false;
   try {
     const cache = await caches.open(DOC_CACHE);
     const keys = await cache.keys();
