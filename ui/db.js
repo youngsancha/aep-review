@@ -37,8 +37,14 @@ function todayStr(d = new Date()) {
 // GET /api/episodes 대체
 // 라이브러리 목록 스냅샷 — 오프라인에서 목록을 '네트워크 없이' 그리기 위한 마지막 성공본.
 // SW 의 DATA_CACHE 에 의존하지 않는 이유: 오프라인에서는 supabase-js 가 실패하는 토큰 갱신을
-// navigator.locks 로 붙들고 있어 REST 요청이 아예 나가지 못한다(실측: auth 7회 / REST 0회).
-// 즉 SW 까지 도달을 못 하므로 캐시가 있어도 못 쓴다. 스냅샷은 그 경로를 통째로 우회한다.
+// navigator.locks 로 붙들고 있어, 뒤따르는 PostgREST 호출이 아주 오래 대기한다. 스냅샷은 그
+// 경로를 통째로 우회한다.
+// ⚠ 이 주석은 원래 "REST 요청이 아예 나가지 못한다(실측: auth 7회 / REST 0회)" 였는데, 지금
+//   supabase-js 에선 더 이상 맞지 않는다. 2026-08-27 재측정(실제 클라이언트 단독, 오프라인 +
+//   만료 세션): auth 7회 재시도가 _getAccessToken() 안에서 인라인으로 돈 뒤 REST 는 실제로
+//   나간다(4회 시도). 달라진 건 결론이 아니라 이유다 — '영원히 안 나간다'가 아니라 '32.6초 뒤에
+//   나간다'. 캐시가 있어도 32초를 기다려야 하므로 스냅샷이 필요하다는 판단은 그대로다.
+//   (이 오해가 회차 상세를 33초 스피너로 방치한 원인이었다 — 아래 EP_SNAP 참고.)
 const EPS_SNAP_KEY = () => 'aep-eps-snap-' + (MULTISHOW ? currentShow() : '_');
 const EPS_SNAP_MAX = 300;
 function saveEpisodesSnapshot(rows) {
