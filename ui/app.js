@@ -283,7 +283,13 @@ document.querySelectorAll('#tabbar a').forEach((tab) => {
 window.addEventListener('online', () => {
   try { supabase.auth.startAutoRefresh?.(); } catch (e) {}
   // 갱신된 세션으로 실제 데이터를 다시 받아온다(스켈레톤/빈 목록에서 자동 회복).
-  if (authed) route();
+  // ⛔ 단, 같은 해시로 재라우팅하면 안 되는 화면은 건너뛴다(canReroute — refreshData 와 같은 판정).
+  // 이 가드 없이 2026-07-29 에 추가됐고, 그 결과 차에서 LTE↔WiFi 가 바뀔 때마다(=브라우저 'online')
+  // renderEpisode 가 hashchange 없이 재실행돼 옛 트랜스크립트 시트가 body 에 남았다. 자동추적은
+  // '첫 번째 .tx-scroll' 을 잡으므로 그 옛 시트를 스크롤하고, 보이는 시트는 하이라이트만 움직인 채
+  // 화면이 안 따라갔다(사용자 신고 2026-08-27 "싱크위치로 안 감", 간헐적 — 트리거가 네트워크였다).
+  // 실측: 'online' 1회 → .tx-sheet 2개, 같은 재생 구간에서 scrollTop 0→139 가 0→0 으로.
+  if (authed && canReroute()) route();
 });
 
 window.addEventListener('load', boot);
@@ -292,6 +298,14 @@ if (document.readyState !== 'loading') boot();
 // 공유 링크(#/episode/5)로 바로 들어오거나 PWA 를 에피소드로 콜드 실행하면 앞선 앱 내 히스토리가
 // 없어 history.back() 이 앱을 벗어나거나 아무 일도 하지 않았다 → 그럴 땐 라이브러리로 보낸다.
 $back.addEventListener('click', () => { if (_inAppNavs > 0) history.back(); else location.hash = '#/'; });
+
+// 같은 해시로 route() 를 다시 돌리면 안 되는 화면. hashchange 가 없어 뷰의 teardown 이 돌지 않는다:
+//   에피소드 — 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다(버그헌트 #1)
+//   복습(#/srs) — renderSrs 재실행이 진행 중 카드 큐·점수를 리셋해 학습 데이터가 조용히 날아간다
+// ⚠ 재라우팅하는 곳(refreshData·'online' 핸들러)은 반드시 이 한 판정을 공유한다 — 한 곳에만 가드를
+// 두면 다음 호출자가 같은 문으로 걸어 들어온다(실제로 그렇게 됐다: 아래 'online' 주석).
+const NO_REROUTE = /^#\/(episode|srs)\b/;
+function canReroute() { return !NO_REROUTE.test(location.hash || ''); }
 
 // 동기화 버튼 재활용 — 신규 에피소드는 GitHub Actions cron 이 Supabase 에 채운다.
 //   탭        = 현재 화면 데이터 새로고침
@@ -312,7 +326,7 @@ function refreshData() {
   // 학습 데이터가 조용히 날아간다(정밀진단 수정). 에피소드와 동일하게 스핀 애니메이션만.
   // 이 두 화면은 의도적으로 재라우팅하지 않는다(아래 사유) → 실제로는 아무것도 새로 받지 않으므로
   // 'Synced to latest' 는 거짓 확인이었다. 사실대로 알린다.
-  if (/^#\/(episode|srs)\b/.test(location.hash || '')) { done('Nothing to refresh here'); return; }
+  if (!canReroute()) { done('Nothing to refresh here'); return; }
   Promise.resolve(route()).finally(done);
 }
 async function signOut() {

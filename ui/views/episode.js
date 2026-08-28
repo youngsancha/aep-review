@@ -10,6 +10,12 @@ import { bindScrub } from '/scrub.js';
 import { addShadowReps } from '/proficiency.js';
 import { initDriveCapture, setDrive, driveOn } from '/marks.js';
 
+// 직전 renderEpisode 의 정리 함수. 정리는 원래 hashchange 에만 묶여 있는데, 같은 해시로 다시 렌더되는
+// 경로(app.js 'online' 재라우팅·route-retry 등)에선 hashchange 가 없어 옛 시트가 body 에 남는다 →
+// '첫 번째 .tx-scroll' 을 잡던 자동추적이 전부 보이지 않는 옛 시트를 스크롤했다(실측 2026-08-27).
+// app.js 가 그런 재라우팅을 막고 있지만, 다음 호출자가 또 걸어 들어와도 여기서 한 번 더 막는다.
+let _teardown = null;
+
 // 현재 쇼 커버(렌더 시 평가) — 멀티-쇼에서 에피소드가 속한 쇼의 아트워크를 보여준다.
 // (라이브러리가 현재 쇼만 노출하므로 열람 중 에피소드 = currentShow). 정적 SHOW_COVER 대체.
 const COVER = () => showCover(currentShow()) + '&w=720&h=720';
@@ -144,6 +150,9 @@ export async function renderEpisode(root, idStr, tStr) {
   const _startHash = location.hash;
   const ep = await getEpisode(id);
   if (location.hash !== _startHash) return;
+  // 같은 해시 재렌더: 직전 렌더가 아직 안 걷혔으면 지금 걷는다(위 _teardown 주석). 정상 해시 이동에선
+  // 옛 렌더의 hashchange 리스너가 위 await 동안 이미 돌아 null 이라 no-op 이다.
+  if (_teardown) { try { _teardown(); } catch (e) { console.error('[episode] teardown failed:', e); } _teardown = null; }
   document.body.classList.add('on-episode');
   // Safeguard: even if we early-return below, ensure the class is removed on nav away.
   // 단, 다른 '회차'로 이동 중이면 on-episode 를 유지(미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지).
@@ -267,6 +276,10 @@ export async function renderEpisode(root, idStr, tStr) {
   // Sheet must be in DOM BEFORE player wiring queries .tx-scroll/.tx-sent below.
   // Wrapped in try/catch so a broken transcript can't kill audio playback.
   let $sheet = null;
+  // 이 시트의 스크롤 영역 — 반드시 $sheet 로 한정한다. txScrollEl() 은 body 에
+  // 시트가 둘 이상이면 DOM 순서상 첫 번째(=옛) 것을 잡아, 보이지 않는 시트를 스크롤하고 보이는 시트는
+  // 하이라이트만 움직인다(2026-08-27 실측). 시트가 없으면 null — 호출부는 전부 null 을 처리한다.
+  const txScrollEl = () => ($sheet ? $sheet.querySelector('.tx-scroll') : null);
   // ⚠ 여는 버튼(#np-tx-btn)은 audio_url 블록 안에서만 렌더된다. 오디오 없이 시트만 만들면
   // 열 방법이 없는 고아 노드가 body 에 남고(cleanup 까지 상주) 사용자에겐 아무 안내도 없었다.
   // → 오디오가 없으면 시트를 만들지 않고, 위에서 안내 문구를 대신 보여준다.
@@ -556,7 +569,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function anchorLoopHead() {
     if (!($sheet && $sheet.classList.contains('open'))) return;
     if (loopPara < 0 || Date.now() < userScrolledUntil) return;
-    const scroll = document.querySelector('.tx-scroll');
+    const scroll = txScrollEl();
     if (!scroll) return;
     const target = loopHeadTarget(scroll, scroll.getBoundingClientRect());
     if (target == null) return;
@@ -609,7 +622,7 @@ export async function renderEpisode(root, idStr, tStr) {
   function syncNotesOverlayPad() {
     // ⛔ Scope to this sheet. $notes already is; leaving the scroller as a bare document query let
     // the two measurements come from different sheets whenever a stale one was still in the DOM.
-    const scroll = ($sheet || document).querySelector('.tx-scroll');
+    const scroll = txScrollEl();
     if (!scroll || !$notes) return;
     if (!$notes.classList.contains('show')) { scroll.style.setProperty('--kr-overlay', '0px'); return; }
     // ⚠ 실측(2026-08-07)으로 드러난 첫 시도의 버그: 패널 '높이'만 패딩에 더했더니 컨트롤 알약이
@@ -668,7 +681,7 @@ export async function renderEpisode(root, idStr, tStr) {
     // 배지가 잠깐 떴다가 이 함수가 지워 버리는 형태로 증상이 되살아난다.
     if (atLoopHead()) { _d?.('loop-head'); return; }
     if (!$notes || !$notes.classList.contains('show')) { _d?.('no-notes'); return; }
-    const scroll = document.querySelector('.tx-scroll');
+    const scroll = txScrollEl();
     if (!scroll) return;
     const cont = scroll.getBoundingClientRect();
     const h = scroll.clientHeight;
@@ -803,7 +816,7 @@ export async function renderEpisode(root, idStr, tStr) {
   const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function easeScroll() {
     scrollRaf = 0;
-    const sc = document.querySelector('.tx-scroll');
+    const sc = txScrollEl();
     if (!sc || scrollTarget == null) return;
     const cur = sc.scrollTop;
     const diff = scrollTarget - cur;
@@ -831,7 +844,7 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function smoothScrollTo(top) {
     if (REDUCED_MOTION) {
-      const sc = document.querySelector('.tx-scroll');
+      const sc = txScrollEl();
       if (sc) sc.scrollTop = top;
       reanchorForNotesGrowth();   // 동작 줄이기 설정에선 이징이 없다 — 도착 시점이 곧 지금
       return;
@@ -901,7 +914,7 @@ export async function renderEpisode(root, idStr, tStr) {
       if (lastActiveSent !== -1) { lastActiveSent = -1; renderNotes(-1); }
       if (lastAdEl !== inAd.el) {                 // 새 광고 진입 → 광고 바를 화면에 보이게
         lastAdEl = inAd.el;
-        const scroll = document.querySelector('.tx-scroll');
+        const scroll = txScrollEl();
         if (scroll && Date.now() >= userScrolledUntil) {
           const rect = inAd.el.getBoundingClientRect(), cont = scroll.getBoundingClientRect();
           const top = rect.top - cont.top + scroll.scrollTop - Math.max(8, scroll.clientHeight * 0.3);
@@ -932,7 +945,7 @@ export async function renderEpisode(root, idStr, tStr) {
     lastActiveSent = idx;
     renderNotes(idx);  // 현재 문장의 어려운 표현 해설을 하단 패널에
 
-    const scroll = document.querySelector('.tx-scroll');
+    const scroll = txScrollEl();
 
     // 문단 played/active 표시 (시각용)
     const newPara = idx >= 0 ? paraEls.indexOf(sentRanges[idx].paraEl) : -1;
@@ -1063,7 +1076,7 @@ export async function renderEpisode(root, idStr, tStr) {
 
   // Detect REAL user-initiated scrolling via wheel/touch — not via 'scroll' event,
   // because our own programmatic smooth-scroll fires scroll events for ~600ms.
-  const $txScroll = document.querySelector('.tx-scroll');
+  const $txScroll = txScrollEl();
   if ($txScroll) {
     // cancel=true 인 실제 스크롤 제스처(휠/드래그/스크롤키)에선 진행 중인 auto-ease 를 즉시 멈춤.
     // 단순 탭(touchstart)은 cancel 하지 않음 → 단어 탭→가운데 정렬 ease 가 살아있게.
@@ -1083,7 +1096,7 @@ export async function renderEpisode(root, idStr, tStr) {
     });
   }
 
-  const $tx = document.querySelector('.tx-scroll');
+  const $tx = txScrollEl();
   // 단어/문장 탭으로 그 지점부터 재생할 때: 이미 화면에 잘 보이면 스크롤하지 않는다(사용자 보고:
   // 탭하면 화면이 '밀리며' 시작되는 위화감 제거 → 탭한 그 자리에서 바로 시작). 머리가 잘리거나
   // 하단 번역·컨트롤에 가리거나 화면 밖일 때만 자동추적과 동일한 22% 줄에 살짝 정렬한다.
@@ -1348,7 +1361,7 @@ export async function renderEpisode(root, idStr, tStr) {
   // (3×/2×/1× Smart, N× Auto)가 "↻ N" 으로 남은 횟수 카운트다운(사용자 요청 2026-07-17).
   // 모드 종료/문단 이동 시 이전 배지는 제거된다.
   function updateLoopBadge() {
-    const scroll = document.querySelector('.tx-scroll');
+    const scroll = txScrollEl();
     document.querySelectorAll('.tx-loop-badge').forEach((b) => b.remove());
     // 반복 중에만 콘텐츠 끝에 한 화면치 여유(.loop-tail ::after)를 붙인다 — 트랜스크립트 마지막
     // 문단까지 '맨 위'로 끌어올 수 있어야 되감기 위치가 모든 문단에서 같아진다. 반복이 꺼지면 뗀다.
@@ -1463,7 +1476,7 @@ export async function renderEpisode(root, idStr, tStr) {
     // 글자 크기 변경 시 '보던 문장 그대로'. 핵심: 자동 따라가기(easeScroll rAF 루프)가 변경 전 목표로
     // scrollTop 을 계속 끌어당겨 내 보정과 싸웠다(그래서 몇 문단씩 밀림). → ease 취소 + 자동추적 잠시
     // 보류 후, 레이아웃 정착(rAF)되면 앵커를 원래 화면 위치로 '딱 한 번' 되돌린다.
-    const sc = preserveAnchor ? document.querySelector('.tx-scroll') : null;
+    const sc = preserveAnchor ? txScrollEl() : null;
     let anchor = null, desired = 0;
     if (sc) {
       const cTop = sc.getBoundingClientRect().top;
@@ -1868,8 +1881,13 @@ export async function renderEpisode(root, idStr, tStr) {
   if (!drv.paused) startRaf();
   updateWord();
 
-  // Cleanup on route change — detach player listener, remove sheet, restore body scroll
-  window.addEventListener('hashchange', () => {
+  // Cleanup on route change — detach player listener, remove sheet, restore body scroll.
+  // 한 번만 실행된다(재진입 가드): hashchange 와 같은-해시 재렌더(_teardown) 두 경로가 모두 부를 수 있다.
+  let _cleanedUp = false;
+  function cleanup() {
+    if (_cleanedUp) return;
+    _cleanedUp = true;
+    if (_teardown === cleanup) _teardown = null;
     off();
     offWord();
     offWake();
@@ -1906,7 +1924,9 @@ export async function renderEpisode(root, idStr, tStr) {
     // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
     if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
     $sheet?.remove();
-  }, { once: true });
+  }
+  window.addEventListener('hashchange', cleanup, { once: true });
+  _teardown = cleanup;
 
   $play.addEventListener('click', () => drv.toggle());
   $back.addEventListener('click', () => drv.skip(-15));

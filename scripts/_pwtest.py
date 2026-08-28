@@ -912,15 +912,18 @@ def main() -> int:
             pg.set_viewport_size(_vp_before)
             pg.evaluate("window.__renderEp(2)"); time.sleep(0.4)
             # v1.45.5(low #9): 자막은 있는데 오디오가 없는 회차 — 여는 버튼(#np-tx-btn)이 렌더되지
-            # 않으므로 시트를 만들면 열 수 없는 고아 노드가 body 에 남는다. 시트 수가 늘지 않아야 하고,
-            # 대신 사용자에게 안내 문구가 보여야 한다. (이전 렌더가 남긴 시트가 있으므로 증가분으로 판정.)
+            # 않으므로 시트를 만들면 열 수 없는 고아 노드가 body 에 남는다. 대신 사용자에게 안내 문구가
+            # 보여야 한다. 예전 오라클은 "시트 수가 늘지 않는다"(이전 렌더가 남긴 시트가 있어 증가분으로
+            # 판정)였는데, 그 '남긴 시트' 자체가 버그였다(2026-08-27: 같은 해시 재렌더가 옛 시트를 body 에
+            # 남겨 자동추적이 그걸 스크롤했다). 이제 renderEpisode 가 직전 렌더를 먼저 걷으므로 오디오
+            # 없는 회차 뒤에는 시트가 **0개**여야 한다 — 고아도, 잔존도 없이.
             sheets_before = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
             pg.evaluate("window.__renderEp(3)"); time.sleep(0.5)
             sheets_after = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
             noaudio_btn = pg.query_selector("#np-tx-btn") is None
             noaudio_note = pg.evaluate(
                 "[...document.querySelectorAll('.empty')].some(e=>/Transcript opens once/.test(e.textContent))")
-            noaudio_ok = (sheets_after == sheets_before and noaudio_btn is True and noaudio_note is True)
+            noaudio_ok = (sheets_after == 0 and noaudio_btn is True and noaudio_note is True)
             print("NO-AUDIO-EP: sheets", sheets_before, "->", sheets_after, " no_tx_btn=", noaudio_btn,
                   " note=", noaudio_note, " ok=", noaudio_ok)
             # 📺 Video 모드 토글(v1.58.0): ep.transcript.video_id 가 있고 온라인일 때만 시트 툴바에
@@ -1918,6 +1921,14 @@ def main() -> int:
             # 부팅 1.6초 뒤 반드시 뜬다. #toast 는 단일 슬롯이라 '비어있지 않음'을 기다리면 그 토스트를
             # 잡거나 확인 직전에 덮여 간헐 실패한다 → 먼저 지나가게 두고, 기대 문구와 '같아질 때'까지 기다린다.
             time.sleep(2.2)
+            # 'online' 재라우팅 가드(2026-08-27): 에피소드 화면에선 브라우저 'online'(차에서 LTE↔WiFi 전환)이
+            # route() 를 다시 돌리면 안 된다 — hashchange 없는 재렌더는 시트를 중복 생성하고 자동추적이 옛
+            # 시트를 스크롤한다(refreshData 가 막아 둔 버그헌트 #1 을 'online' 핸들러가 다시 열었었다).
+            # ⚠ 위 2.2초 뒤에 재야 한다: 이 페이지가 이 실행에서 실제 app.js 를 처음 띄우는 곳이라 그 사이
+            # SW 설치 → controllerchange → reload 가 일어나고, 그 전에 evaluate 하면 컨텍스트가 죽는다.
+            rt_n0 = pg.evaluate("window.__renders.length")
+            pg.evaluate("window.dispatchEvent(new Event('online'))"); time.sleep(0.5)
+            rt_online_ep = pg.evaluate("window.__renders.length") - rt_n0       # 기대 0
             pg.click("#sync-btn")
             try:
                 pg.wait_for_function(
@@ -1930,6 +1941,11 @@ def main() -> int:
             pg.click("#back-btn"); time.sleep(0.5)
             rt_back_hash = pg.evaluate("location.hash")
             rt_still_alive = pg.evaluate("!!document.getElementById('tabbar')")
+            # 반대로 라이브러리에선 'online' 이 목록을 다시 받아야 한다(스켈레톤/빈 목록 자동 회복) — 가드가
+            # 너무 넓어져 회복 경로까지 막히면 안 된다.
+            rt_n1 = pg.evaluate("window.__renders.length")
+            pg.evaluate("window.dispatchEvent(new Event('online'))"); time.sleep(0.5)
+            rt_online_lib = pg.evaluate("window.__renders.length") - rt_n1      # 기대 1
             # #25: 404 는 뒤로가기 버튼·탭 강조·제목을 초기화해야 한다
             pg.evaluate("location.hash='#/episode/1'"); time.sleep(0.4)
             pg.evaluate("location.hash='#/nope'"); time.sleep(0.4)
@@ -1951,11 +1967,13 @@ def main() -> int:
                          and rt_back_hash == "#/" and rt_still_alive is True
                          and rt_404_back is True and rt_404_tabs == 0 and rt_404_title == "E-Podcast"
                          and rt_scroll_before > 100 and rt_scroll_after == 0
+                         and rt_online_ep == 0 and rt_online_lib == 1
                          and not rt_err)
             print("ROUTER: deep=", rt_deep, " back_shown=", rt_back_shown, " sync_toast=", repr(rt_toast_ep),
                   " back_hash=", rt_back_hash, " alive=", rt_still_alive,
                   " 404[back_hidden=", rt_404_back, " tabs_lit=", rt_404_tabs, " title=", repr(rt_404_title), "]",
-                  " scroll", rt_scroll_before, "->", rt_scroll_after, " err=", rt_err, " ok=", router_ok)
+                  " scroll", rt_scroll_before, "->", rt_scroll_after,
+                  " online_rerender[episode=", rt_online_ep, " library=", rt_online_lib, "]", " err=", rt_err, " ok=", router_ok)
 
             # === 📺 Library→Video 진입 체인 풀-통합 재현 (사용자 실기기 신고, v1.58.0) ==============
             # 위 라우터 검증과 달리 뷰를 전혀 스텁하지 않는다 — 진짜 timeline.js 카드의 진짜 <a> 를
@@ -1982,12 +2000,21 @@ def main() -> int:
             rv_wrap_visible = pg.eval_on_selector("#tx-video-wrap", "el=>el.hidden===false") if pg.query_selector("#tx-video-wrap") else None
             rv_yt_mounted = pg.evaluate("(window.__ytMounts||[]).length")
             rv_sheets_count = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
+            # 브라우저 'online'(차에서 LTE↔WiFi 전환)이 에피소드 화면에서 route() 를 다시 돌리면 hashchange 가
+            # 없어 옛 시트가 body 에 남고, '첫 번째 .tx-scroll' 을 잡던 자동추적이 그 옛 시트를 스크롤했다
+            # (사용자 신고 2026-08-27 "싱크위치로 안 감" — 하이라이트는 움직이는데 화면만 안 따라감).
+            # 실측: 'online' 1회 → 시트 2개, 같은 재생 구간 scrollTop 0→139 가 0→0. 여기서 그 트리거를 그대로
+            # 쏘고 시트가 여전히 하나인지 본다(app.js canReroute 가드 + episode.js _teardown 두 겹 모두 검증).
+            pg.evaluate("window.dispatchEvent(new Event('online'))"); time.sleep(0.8)
+            rv_sheets_after_online = pg.eval_on_selector_all(".tx-sheet", "els=>els.length")
             rv_err = pg.evaluate("window.__err||[]")
             print("REALVIDEO: hash=", rv_hash, " sheet_open=", rv_sheet_open,
                   " toggle_pressed=", rv_toggle_pressed, " toggle_on=", rv_toggle_on, " wrap_visible=", rv_wrap_visible,
-                  " yt_mounted=", rv_yt_mounted, " sheets_count=", rv_sheets_count, " err=", rv_err, " console=", errs)
+                  " yt_mounted=", rv_yt_mounted, " sheets_count=", rv_sheets_count,
+                  " sheets_after_online=", rv_sheets_after_online, " err=", rv_err, " console=", errs)
             realvideo_ok = (rv_sheet_open is True and rv_toggle_pressed == "true" and rv_toggle_on is True
-                            and rv_wrap_visible is True and rv_yt_mounted == 1 and rv_sheets_count == 1)
+                            and rv_wrap_visible is True and rv_yt_mounted == 1 and rv_sheets_count == 1
+                            and rv_sheets_after_online == 1)
 
             # === 진짜 근본원인 재현: YouTube IFrame API 스크립트가 안 뜨면(광고차단기·방화벽·일시
             # 네트워크 실패) video.js::loadApi() 가 예전엔 영원히 pending — turnVideoOn() 이 그 안에서
