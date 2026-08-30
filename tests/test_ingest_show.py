@@ -235,3 +235,11 @@ def test_episodes_by_recency_is_not_truncated(big):
         r["audio_url"] = f"http://x/{r['guid']}.mp3"
     assert len(store.episodes_by_recency()) == 1026
     assert len(store.episodes_by_recency(limit=5)) == 5
+
+
+def test_episodes_by_recency_limit_above_the_page_cap(big):
+    """limit 을 크게 줘도 서버는 1,000 에서 자른다 — 요청했다고 받는 게 아니다."""
+    for r in big.seed["episodes"]:
+        r["audio_url"] = f"http://x/{r['guid']}.mp3"
+    assert len(store.episodes_by_recency(limit=1500)) == 1026
+    assert len(store.episodes_by_recency(limit=1200)) == 1026

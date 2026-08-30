@@ -161,9 +161,15 @@ def existing_guids(show: str | None = None,
             found.update(r["guid"] for r in rows)
         return found
 
+    # ⛔⛔ .range() without .order() is not pagination. Postgres does not promise a row
+    # order without ORDER BY, so page 2 can be drawn from a different physical order than
+    # page 1 and a guid falls between them — the same silent omission this function was
+    # rewritten to stop. Ordering by id ASCENDING also makes a concurrent insert harmless:
+    # a new row always lands after every page already read, so it can never shift one.
+    # (Raised by xcheck 2026-08-30.)
     start = 0
     while True:
-        rows = _base().range(start, start + _PAGE - 1).execute().data or []
+        rows = _base().order("id", desc=False).range(start, start + _PAGE - 1).execute().data or []
         found.update(r["guid"] for r in rows)
         if len(rows) < _PAGE:
             return found
@@ -205,9 +211,13 @@ def upsert_episodes(items: list[dict[str, Any]], show: str | None = None) -> tup
             log.error("upsert_episodes: DEDUPE MISSED %d row(s) — inserting with "
                       "on_conflict ignore so the run continues, but this is a bug: %s",
                       len(new_rows), e)
-            (client().table("episodes")
-             .upsert(new_rows, on_conflict="show,guid", ignore_duplicates=True)
-             .execute())
+            res = (client().table("episodes")
+                   .upsert(new_rows, on_conflict="show,guid", ignore_duplicates=True)
+                   .execute())
+            # 시도한 수가 아니라 실제로 들어간 수를 돌려준다 — 이 경로는 이미 dedupe 가
+            # 틀렸다는 뜻이므로, 개수까지 낙관적으로 보고하면 신호가 한 번 더 흐려진다.
+            written = len(res.data or [])
+            return written, len(items) - written
     return len(new_rows), len(items) - len(new_rows)
 
 
@@ -256,24 +266,34 @@ def episodes_by_recency(limit: int | None = None) -> list[dict[str, Any]]:
     초록으로 끝난다. upsert_episodes 를 7 일간 죽인 것과 같은 상한이지만, 이쪽은 에러조차
     내지 않으므로 발견되지 않는다.
     """
+    # 페이지는 **id 오름차순**으로 넘고 정렬은 메모리에서 한다. pub_date 내림차순으로
+    # 페이지를 넘기면 최신 회차가 하나 들어오는 순간 뒤 페이지 전체가 한 칸씩 밀려
+    # 어떤 행은 두 번, 어떤 행은 한 번도 안 나온다. id 는 단조 증가라 새 행이 항상
+    # 읽은 페이지 뒤에 붙는다. (xcheck 지적 2026-08-30)
     def _page(start: int, end: int):
-        q = (client().table("episodes")
-             .select("id, audio_url, pub_date, transcribed_at, duration_sec")
-             .not_.is_("audio_url", "null")
-             .order("pub_date", desc=True).order("id", desc=True))
-        return q.range(start, end).execute().data or []
+        return (client().table("episodes")
+                .select("id, audio_url, pub_date, transcribed_at, duration_sec")
+                .not_.is_("audio_url", "null")
+                .order("id", desc=False)
+                .range(start, end).execute().data or [])
 
-    if limit:
-        return _page(0, limit - 1)
-
-    out: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     start = 0
+    # ⛔ limit > _PAGE 도 서버 상한에 걸린다 — 요청했다고 받는 게 아니다. 그래서 limit
+    # 이 있어도 상한 크기로 나눠 돈다.
     while True:
-        rows = _page(start, start + _PAGE - 1)
-        out.extend(rows)
-        if len(rows) < _PAGE:
-            return out
-        start += _PAGE
+        want = _PAGE if limit is None else min(_PAGE, limit - len(rows))
+        if want <= 0:
+            break
+        page = _page(start, start + want - 1)
+        rows.extend(page)
+        if len(page) < want:
+            break
+        start += want
+
+    rows.sort(key=lambda r: (r.get("pub_date") is None, r.get("pub_date"), r.get("id")),
+              reverse=True)
+    return rows[:limit] if limit else rows
 
 
 def vocab_for_episode(ep_id: int) -> list[dict[str, Any]]:
