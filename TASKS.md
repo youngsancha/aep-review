@@ -107,3 +107,18 @@
   - 메모: 2026-08-26 실측: cnn10 커버리지 1.7%(1,243/73,127). audit_ko_coverage 의 SHOWS 가 3개 쇼로 하드코딩돼 있어 이 쇼가 감사에서 통째로 빠져 있었다(고침). 앱은 키가 없으면 조용히 MyMemory 로 폴백하므로 화면엔 번역이 보이고, 오프라인에선 한국어가 아예 안 보인다. 다른 쇼는 aep 99.5 / allears 91.4 / wh 95.5 라 사실상 cnn10 단일 이슈. 채우기: python -m scripts.translate_transcripts --ids <id,...> 또는 ko_quality_pass.sh 대상 목록에 cnn10 포함. 비용 판단 필요.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:ac6fd4c0-868c-48f0-b749-cb9c857367d8 -->
+
+## 2026-08-28 09:00 넘어옴
+
+- [ ] **P2** 자막 JSON에 transcribed_at 을 넣어 스냅샷-자막 불일치를 감지 가능하게
+  - 메모: ui/db.js getEpisode 가 스냅샷 폴백을 쓰는데 자막은 네트워크에서 새로 받는 조합에서, 그 사이 재STT가 돌았다면 vocab의 sentence_start_sec가 옛 자막 기준이라 vocab 탭 점프가 어긋난다. 지금은 클라이언트가 감지 불가 — transcripts/{id}.json 에 transcribed_at 이 없고 ?v= 는 캐시버스터일 뿐 내용을 고르지 않는다(파일은 제자리에서 덮임). ingest 가 자막 JSON 에 transcribed_at 을 쓰면 db.js 에서 대조해 어긋난 vocab 시각을 버릴 수 있다. xcheck 패널 grok 지적 2026-08-27.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:84e2ae32-609c-4271-a518-b8ff347d4cf1 -->
+- [x] **P2** aep-sync failing since 2026-08-23 — ingest INSERTs an episode that already exists: duplicate key on episodes_show_guid_key (show,guid)=(aep,4ccb65f4-...). Needs an upsert or a pre-check in the aep-sync ingest path.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  - 고침 2026-08-30: upsert 문제가 아니라 **PostgREST 의 조용한 1,000 행 상한**이었다. 일일 cron 은 show=None 으로 돌아 필터 없는 dedupe 조회를 하는데, episodes 가 1,026 행이 되면서 그 집합에 1,000 개만 담겼다. 잘린 26 개 중 하나가 RSS 에 다시 나타나 중복키로 런 전체(전사 포함)가 죽었다 — 코드는 안 바뀌고 데이터가 자라서 깨진 것. existing_guids 가 이제 배치 guid 만 물어보고(테이블 크기와 무관), 배치 없이 부르는 경로는 명시적으로 페이지를 넘긴다. 같은 상한에 걸려 있던 episodes_by_recency 도 고쳤다 — 감사·R2 업로드가 35 개 회차를 아예 못 보고 있었다.
+  <!-- td:e9b1c6f5-c9d1-43d4-b07f-2a80ef45126e -->
+- [ ] **P3** 오프라인 회차 스냅샷 회귀 하네스를 _pwtest 에 편입 (25.5s→1.3s 계측 고정)
+  - 메모: 실제 ui/ + 실제 SW + 실제 supabase-js 로 오프라인 회차 진입 시간을 재는 하네스가 세션 스크래치에만 있다. 리포로 옮기면 이 회귀(무한 스피너)를 CI 에서 잡을 수 있다. ⚠ 하네스 트랩 두 개: (1) goto() 로 해시만 바꾸면 재로드가 안 돼 옛 DOM 을 측정한다(양쪽 arm 이 3ms 로 나왔다) — reload() + window.__preReload 마커로 콜드부팅을 증명할 것. (2) 시나리오가 staged 안 됐으면 pass 로 읽히지 않게 명시적으로 거부할 것.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:3e71e0ce-173e-45cd-b587-d82dde3007b2 -->

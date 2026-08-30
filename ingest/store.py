@@ -17,6 +17,7 @@ import time
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 import edge_tts
@@ -127,12 +128,46 @@ def mark_hosted(ep_id: int) -> None:
 
 
 # ─────────────────────────── episodes ───────────────────────────
-def existing_guids(show: str | None = None) -> set[str]:
-    # show=None(레거시): 전체 guid. show 지정(멀티-쇼): (show, guid) 쇼별 독립 dedupe.
-    q = client().table("episodes").select("guid")
-    if show:
-        q = q.eq("show", show)
-    return {r["guid"] for r in (q.execute().data or [])}
+# ⛔⛔ PostgREST 는 select 를 기본 1,000 행에서 **조용히** 자른다. 에러도 경고도 없고,
+# 응답은 완전한 결과와 구별되지 않는다. 이것이 aep-sync 를 2026-08-23 부터 매일 죽인
+# 원인이다: 일일 cron 은 show=None 으로 돌아 필터 없는 경로를 타고, episodes 가 1,026 행이
+# 되는 순간 dedupe 집합에 1,000 개만 담겼다. 잘려나간 26 개 중 하나가 RSS 에 다시 나타나면
+# 이미 있는 회차를 신규로 보고 insert → episodes_show_guid_key 중복키로 런 전체가 죽는다.
+# 코드는 한 줄도 안 바뀌었고 **데이터가 자라서** 깨졌다.
+_PAGE = 1000        # PostgREST 기본 상한. 여기 맞춰 명시적으로 페이지를 넘긴다.
+_IN_CHUNK = 200     # in_() 한 번에 넣는 guid 수 (URL 길이 안전선)
+
+
+def existing_guids(show: str | None = None,
+                   guids: Sequence[str] | None = None) -> set[str]:
+    """이미 저장된 guid 집합.
+
+    show=None(레거시): 전체 guid. show 지정(멀티-쇼): (show, guid) 쇼별 독립 dedupe.
+
+    ⭐ 검사할 배치를 이미 아는 호출자는 `guids` 를 넘겨라. 그러면 질의가 **테이블 크기가
+    아니라 배치 크기에 비례**하므로 episodes 가 아무리 커져도 절대 잘리지 않는다.
+    `guids` 없이 부르는 경로는 명시적으로 페이지를 넘겨 서버의 조용한 절단을 받지 않는다.
+    """
+    def _base():
+        q = client().table("episodes").select("guid")
+        return q.eq("show", show) if show else q
+
+    found: set[str] = set()
+
+    if guids is not None:
+        todo = list(dict.fromkeys(guids))       # 순서 보존 dedupe
+        for i in range(0, len(todo), _IN_CHUNK):
+            rows = _base().in_("guid", todo[i:i + _IN_CHUNK]).execute().data or []
+            found.update(r["guid"] for r in rows)
+        return found
+
+    start = 0
+    while True:
+        rows = _base().range(start, start + _PAGE - 1).execute().data or []
+        found.update(r["guid"] for r in rows)
+        if len(rows) < _PAGE:
+            return found
+        start += _PAGE
 
 
 def upsert_episodes(items: list[dict[str, Any]], show: str | None = None) -> tuple[int, int]:
@@ -142,7 +177,8 @@ def upsert_episodes(items: list[dict[str, Any]], show: str | None = None) -> tup
     가 채움). show 지정 시 그 슬러그로 기록 + 쇼별 dedupe(멀티-쇼). 이 분기 덕에 일일 cron(show 미지정)
     은 컬럼 유무와 무관하게 동작하고, AEE 적재(--show allears)만 show 컬럼을 쓴다.
     """
-    have = existing_guids(show)
+    # 이 배치의 guid 만 물어본다 → 테이블이 커져도 절대 잘리지 않는다.
+    have = existing_guids(show, guids=[it["guid"] for it in items])
     now = _now()
     new_rows: list[dict[str, Any]] = []
     for it in items:
@@ -158,7 +194,20 @@ def upsert_episodes(items: list[dict[str, Any]], show: str | None = None) -> tup
             row["show"] = show
         new_rows.append(row)
     if new_rows:
-        client().table("episodes").insert(new_rows).execute()
+        try:
+            client().table("episodes").insert(new_rows).execute()
+        except Exception as e:
+            # dedupe 가 제대로면 여기 올 일이 없다. 그래도 한 건의 중복키가 하루치 런
+            # 전체(전사·vocab 포함)를 죽이게 두지는 않는다 — 실제로 그래서 7일을 잃었다.
+            # ⛔ 조용히 넘기지 않는다: 여기 오는 것 자체가 dedupe 버그의 신호다.
+            if "duplicate key" not in str(e):
+                raise
+            log.error("upsert_episodes: DEDUPE MISSED %d row(s) — inserting with "
+                      "on_conflict ignore so the run continues, but this is a bug: %s",
+                      len(new_rows), e)
+            (client().table("episodes")
+             .upsert(new_rows, on_conflict="show,guid", ignore_duplicates=True)
+             .execute())
     return len(new_rows), len(items) - len(new_rows)
 
 
@@ -198,14 +247,33 @@ def mark_vocab_extracted(ep_id: int) -> None:
 
 
 def episodes_by_recency(limit: int | None = None) -> list[dict[str, Any]]:
-    """pub_date 내림차순 episode 목록 (재정렬용). audio_url 있는 것만."""
-    q = (client().table("episodes")
-         .select("id, audio_url, pub_date, transcribed_at, duration_sec")
-         .not_.is_("audio_url", "null")
-         .order("pub_date", desc=True))
+    """pub_date 내림차순 episode 목록 (재정렬용). audio_url 있는 것만.
+
+    ⛔⛔ limit 없이 부르면 **반드시 페이지를 넘겨야 한다.** 호출자 대부분이 "전체"를
+    뜻하고 그걸로 감사·업로드를 돈다: verify_done 은 총 개수를 세고, verify_hosting 과
+    host_audio/upload_audio_r2 는 전 회차를 훑는다. PostgREST 의 조용한 1,000 행 절단을
+    그대로 받으면 1,026 번째부터는 **모든 감사에서 존재하지 않는 회차**가 되고, 감사는
+    초록으로 끝난다. upsert_episodes 를 7 일간 죽인 것과 같은 상한이지만, 이쪽은 에러조차
+    내지 않으므로 발견되지 않는다.
+    """
+    def _page(start: int, end: int):
+        q = (client().table("episodes")
+             .select("id, audio_url, pub_date, transcribed_at, duration_sec")
+             .not_.is_("audio_url", "null")
+             .order("pub_date", desc=True).order("id", desc=True))
+        return q.range(start, end).execute().data or []
+
     if limit:
-        q = q.limit(limit)
-    return q.execute().data or []
+        return _page(0, limit - 1)
+
+    out: list[dict[str, Any]] = []
+    start = 0
+    while True:
+        rows = _page(start, start + _PAGE - 1)
+        out.extend(rows)
+        if len(rows) < _PAGE:
+            return out
+        start += _PAGE
 
 
 def vocab_for_episode(ep_id: int) -> list[dict[str, Any]]:
