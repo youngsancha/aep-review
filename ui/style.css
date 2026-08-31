@@ -1994,6 +1994,22 @@ body.logged-out #app-version { display: none; }
 /* 한→영 말로 생산: 한국어 제시문(영어는 가림 → 직접 산출) */
 .prod-ko { font-size: 20px; font-weight: 700; line-height: 1.5; color: var(--text); letter-spacing: -0.01em; margin: 6px 0; }
 
+/* ── 회화(Talk) — 상대의 턴 + 내 턴의 계측 ── */
+/* 상대의 말은 '내가 따라 읽을 문장'이 아니라 '들어야 할 말'이라 왼쪽 정렬 말풍선으로 둔다 —
+   가운데 정렬된 .speak-target 과 시각적으로 구분되어야 모드를 헷갈리지 않는다. */
+.convo-card { text-align: left; }
+.convo-partner { font-family: var(--font); font-size: 19px; font-weight: 650; line-height: 1.5; color: var(--text); letter-spacing: -0.01em; cursor: pointer; }
+.convo-partner-ko { font-size: 13.5px; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
+.convo-task { font-size: 13.5px; color: var(--tint); font-weight: 650; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--separator-thin); }
+.convo-metrics { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0 4px; }
+.cv-m { font-size: 12px; font-weight: 650; color: var(--text-3); background: var(--surface-2); border-radius: 999px; padding: 4px 10px; }
+.cv-m.ok { color: var(--chip-coll-tx); }      /* 정답 상태색 — .dict-result.correct 와 같은 토큰 */
+.cv-m.no { color: var(--chip-idiom-tx); }     /* 오답 상태색 — .dict-result.wrong 과 같은 토큰 */
+.convo-tips { list-style: none; margin: 10px 0 0; padding: 0; text-align: left; }
+.convo-tips li { font-size: 13px; line-height: 1.55; color: var(--text-2); padding: 7px 10px; background: var(--surface-2); border-radius: 10px; margin-top: 6px; }
+.convo-model { font-size: 13px; line-height: 1.55; color: var(--text-3); margin-top: 12px; text-align: left; }
+.convo-model b { color: var(--text-2); margin-right: 6px; }
+
 /* ── 빈칸 채우기(Cloze) ── */
 .cloze-card { background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-card); padding: 22px 18px; margin-bottom: 14px; }
 .cloze-sent { font-family: var(--font); font-size: 19px; line-height: 1.6; color: var(--text); letter-spacing: -0.01em; }

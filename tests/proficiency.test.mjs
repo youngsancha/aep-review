@@ -181,3 +181,29 @@ test('addShadowReps/getShadowReps: 누적', () => {
   assert.equal(P.getShadowReps(), 5);
   delete globalThis.localStorage;
 });
+
+// ── 자동화(latency)는 '퀴즈 인식지연'만 먹는다 ──────────────────────────────
+// 회화(convo)·발화(speak/prod) 턴의 첫-단어 지연은 분포가 달라(2~6s) 퀴즈 지연(≈2s)과 같은
+// 중앙값에 섞이면, 말하기 연습을 할수록 자동화 점수가 내려가는 거꾸로 된 인센티브가 된다.
+// convo 는 지금 ms 를 기록하지 않지만, 나중에 누군가 기록하더라도 여기서 걸러져야 한다.
+test('rawFromLog: 산출(speak/prod/convo) 모드의 ms 는 자동화 latency 에 섞이지 않는다', () => {
+  const quizOnly = P.rawFromLog([{ mode: 'read', score: 0.8, n: 5, ms: 2000 }]);
+  const mixed = P.rawFromLog([
+    { mode: 'read', score: 0.8, n: 5, ms: 2000 },
+    { mode: 'convo', score: 0.7, n: 3, ms: 9000 },
+    { mode: 'speak', score: 0.7, n: 3, ms: 9000 },
+  ]);
+  assert.equal(mixed.latencyMs, quizOnly.latencyMs, '발화 지연이 중앙값을 밀면 안 된다');
+  assert.equal(mixed.samples.lat, 1);
+  // 반대 방향도 못 박는다: 퀴즈(read/listen)의 ms 는 계속 자동화를 먹여야 한다.
+  assert.equal(quizOnly.latencyMs, 2000);
+  assert.equal(P.rawFromLog([{ mode: 'listen', score: 0.9, n: 4, ms: 1500 }]).latencyMs, 1500);
+});
+
+test('rawFromLog: convo 는 산출(production) 축에 합산된다', () => {
+  const only = P.rawFromLog([{ mode: 'convo', score: 0.6, n: 4 }]);
+  assert.equal(only.production, 0.6);
+  assert.equal(only.samples.prod, 1);
+  const withSpeak = P.rawFromLog([{ mode: 'convo', score: 0.6, n: 4 }, { mode: 'speak', score: 0.8, n: 4 }]);
+  assert.equal(Math.round(withSpeak.production * 100), 70);
+});

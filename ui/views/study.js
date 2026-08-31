@@ -4,6 +4,7 @@ import { escapeHtml, highlightTerm, toast } from '/app.js';
 import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview, getEpisode, createCaptureCard } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
+import { buildTurn, scoreTurn } from '/convo.js';
 import { translateEnKo } from '/translate.js';
 import { loadMarks, removeMark, pickTriageSentences, groupRuns } from '/marks.js';
 import { getProgressMap, getCompletedAt } from '/player.js';
@@ -26,7 +27,7 @@ const AXIS_HELP = {
   breadth:      { how: '아는 표현을 오른쪽으로 스와이프해 <b>Known</b>(마스터)', where: '표현 목록 · Sentences 덱(✓Known)', goal: '전체 표현의 90% 마스터' },
   retention:    { how: '매일 <b>복습(due)</b>을 풀어 간격을 90일↑로 키우기', where: '오늘의 플랜 → 복습(SRS)', goal: '학습카드의 75%가 간격 90일↑' },
   listening:    { how: '<b>받아쓰기·클로즈·듣기</b> 정확도 ↑ — 레벨체크는 처음 보는 문장', where: '✍️Dictation · 🧩Cloze · 🎧Listen · 🎯레벨체크', goal: '정확도 92% (레벨체크 후 unseen만 반영)' },
-  production:   { how: '또박또박 <b>말해서</b> 인식 정확도 ↑', where: '🎤Speak · 🗣️KR→EN (마이크 필요)', goal: '평균 단어일치 85%' },
+  production:   { how: '<b>내 말로</b> 한 턴을 말하기 — 표현 사용·길이·반응속도로 채점', where: '💬Talk · 🎤Speak · 🗣️KR→EN (마이크 필요)', goal: '평균 산출 85%' },
   automaticity: { how: '퀴즈를 <b>빨리 답</b> + 에피소드 <b>쉐도잉 반복</b>', where: 'Quiz/Listen 속도 · 플레이어 🔁Repeat·5×·10×', goal: '응답 ≤2.2초 + 쉐도잉 400회' },
 };
 
@@ -35,12 +36,12 @@ const SESS_KEY = 'aep-session';
 const SESS_SIZE_KEY = 'aep-session-size';
 // 단계별 분량 — S/M/L ≈ 5/10/20분 (복습 ~8s/장 · 새 표현 ~15s/장 · 드릴은 모드별 소요로 산정)
 const SESS_CAPS = {
-  S: { review: 10, fresh: 2, drills: 1, read: 6, dictation: 3, cloze: 4, prod: 3, min: 5 },
-  M: { review: 20, fresh: 3, drills: 1, read: 10, dictation: 5, cloze: 7, prod: 5, min: 10 },
-  L: { review: 40, fresh: 5, drills: 2, read: 12, dictation: 7, cloze: 9, prod: 6, min: 20 },
+  S: { review: 10, fresh: 2, drills: 1, read: 6, dictation: 3, cloze: 4, prod: 3, convo: 3, min: 5 },
+  M: { review: 20, fresh: 3, drills: 1, read: 10, dictation: 5, cloze: 7, prod: 5, convo: 5, min: 10 },
+  L: { review: 40, fresh: 5, drills: 2, read: 12, dictation: 7, cloze: 9, prod: 6, convo: 6, min: 20 },
 };
 // 모드 라벨은 영어 — Practice 리스트(Dictation/Cloze/Quiz…)와 동일 표기(홈 영문화 2026-07-22).
-const DRILL_LABEL = { dictation: '✍️ Dictation', read: '🎯 Speed quiz', prod: '🗣️ KR→EN', cloze: '🧩 Cloze' };
+const DRILL_LABEL = { dictation: '✍️ Dictation', read: '🎯 Speed quiz', prod: '🗣️ KR→EN', cloze: '🧩 Cloze', convo: '💬 Talk' };
 function sessSize() { try { const v = localStorage.getItem(SESS_SIZE_KEY); return SESS_CAPS[v] ? v : 'M'; } catch (e) { return 'M'; } }
 function loadSess() { try { return JSON.parse(localStorage.getItem(SESS_KEY) || 'null'); } catch (e) { return null; } }
 function saveSess(st) { try { localStorage.setItem(SESS_KEY, JSON.stringify(st)); } catch (e) { /* quota */ } }
@@ -328,7 +329,7 @@ export async function renderStudy(root) {
       </div>
       <div id="drive-host"></div>
       <details class="season-group study-practice">
-        <summary class="section-h season-head"><h2>Practice</h2><span class="season-right"><span class="count">8 modes</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
+        <summary class="section-h season-head"><h2>Practice</h2><span class="season-right"><span class="count">9 modes</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
         <div class="study-quiz-row">
           <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span><span class="qb-sub">뜻 보고 표현 고르기</span></button>
           <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span><span class="qb-sub">듣고 뜻 고르기</span></button>
@@ -337,6 +338,7 @@ export async function renderStudy(root) {
           <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span><span class="qb-sub">빈칸에 표현 채우기</span></button>
           <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span><span class="qb-sub">듣고 따라 말하기</span></button>
           <button class="study-quiz-btn" id="study-quiz-prod"><span class="qb-ico">🗣️</span><span class="qb-txt">KR→EN</span><span class="qb-sub">한국어 보고 영어로</span></button>
+          <button class="study-quiz-btn" id="study-quiz-convo"><span class="qb-ico">💬</span><span class="qb-txt">Talk</span><span class="qb-sub">질문에 내 말로 답하기</span></button>
           <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span><span class="qb-sub">문장 카드 반복</span></button>
         </div>
         <div class="study-scope-note">연습 대상: 아래 Expressions 에서 선택한 종류</div>
@@ -744,6 +746,7 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-cloze')?.addEventListener('click', () => startCloze());
     root.querySelector('#study-quiz-speak')?.addEventListener('click', startSpeaking);
     root.querySelector('#study-quiz-prod')?.addEventListener('click', () => startProduction());
+    root.querySelector('#study-quiz-convo')?.addEventListener('click', () => startConversation());
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
     // role="button" 을 선언했으면 키보드도 동작해야 한다(.prof-axis·.study-x-ep 와 동일 패턴).
@@ -773,7 +776,7 @@ export async function renderStudy(root) {
   // 항목 선택: srsQueue(복습 due + 신규) 그대로 → 채점된 카드는 다음 조회에서 자연히 빠지므로
   // 같은 날 재진입(이어서 하기)이 별도 카드 상태 저장 없이 정확하다. 드릴은 prof.scores 의
   // 최약축을 모드로 매핑(콜드스타트 = 받아쓰기). 완료 시에만 markStudyDay(정직한 스트릭).
-  const AXIS_DRILL = { listening: 'dictation', production: 'prod', automaticity: 'read' };
+  const AXIS_DRILL = { listening: 'dictation', production: 'convo', automaticity: 'read' };
   function pickDrills(n) {
     const ranked = ['listening', 'production', 'automaticity']
       .filter((k) => prof.scores[k] != null)
@@ -956,6 +959,7 @@ export async function renderStudy(root) {
       cloze: (v) => v.example_sentence && v.term && v.example_sentence.toLowerCase().includes(v.term.toLowerCase()),
       dictation: (v) => v.example_sentence && v.example_sentence.trim(),
       prod: (v) => v.example_sentence && v.example_sentence.trim().split(/\s+/).length >= 3,
+      convo: (v) => v.term && v.term.trim(),
     }[mode] || (() => true);
     let pool = all.filter((v) => !v.known && valid(v));   // 미마스터 우선(startWeakQuiz 와 동일)
     if (pool.length < 4) pool = all.filter(valid);
@@ -972,6 +976,7 @@ export async function renderStudy(root) {
     if (mode === 'read') startQuiz('read', sliced);
     else if (mode === 'cloze') startCloze(sliced);
     else if (mode === 'prod') startProduction(sliced);
+    else if (mode === 'convo') startConversation(sliced);
     else startDictation(sliced);
   }
 
@@ -1775,6 +1780,210 @@ export async function renderStudy(root) {
     }
 
     paintPr();
+  }
+
+
+  // ── 회화(Conversation) — 상대의 턴을 듣고 '내 말로' 답한다 ──────────────────────
+  // 다른 8개 모드와의 차이는 채점 대상이다: 저기는 정답 문장 하나와의 일치(=암송), 여기는
+  // ① 표현을 실제로 썼는가 ② 한 턴만큼 말했는가 ③ 몇 초 만에 시작했는가 ④ 속도·군말.
+  // 정답이 여러 개인 질문이라 편집거리로는 잴 수 없다 — 채점 로직은 ui/convo.js(순수·테스트됨).
+  function startConversation(source = null) {
+    stopClip();
+    openSub();
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const pool = (source || items).filter((v) => v.term && v.term.trim());
+    if (!pool.length) {
+      const el = root.querySelector('#study-list');
+      if (el) el.innerHTML = '<div class="empty">대화 연습에 쓸 표현이 아직 없어요.</div>';
+      return;
+    }
+    const cards = _shuffle(pool).slice(0, Math.min(10, pool.length));
+    markSeen(cards.map((c) => c.id));
+    let idx = 0, scoreSum = 0, scored = 0, latSum = 0, latN = 0, usedN = 0;
+
+    function finishCv() {
+      const avg = scored ? Math.round((scoreSum / scored) * 100) : 0;
+      const medLat = latN ? Math.round(latSum / latN) : null;
+      // 산출(Production) 축에 기록. ⚠ ms 는 넘기지 않는다 — proficiency 의 latencyMs 는 퀴즈
+      // 인식지연(선택지 고르기)의 중앙값이고, 자유발화의 첫-단어 지연은 분포가 달라 섞으면
+      // 기존 자동화 점수가 조용히 내려간다. 턴 지연은 아래 요약에서 그대로 보여준다.
+      if (scored) recordMeasure('convo', scoreSum / scored, scored);
+      if (_sessNext) { const go = _sessNext; _sessNext = null; return go({ mode: 'convo', correct: scored ? avg : 0, total: scored ? 100 : 0 }); }
+      const msg = !scored ? '연습 완료! 💬' : avg >= 80 ? '대화가 됩니다! 🌟' : avg >= 55 ? '좋아요 — 한 문장씩 더 길게 💪' : '짧아도 좋으니 매 턴 말해보세요 🔁';
+      root.innerHTML = `
+        <div class="quiz-summary">
+          <div class="quiz-sum-msg">${msg}</div>
+          <div class="quiz-sum-score">${scored ? avg + ' pts' : cards.length}</div>
+          <div class="quiz-sum-pct">${scored ? `표현 사용 ${usedN}/${scored}${medLat != null ? ` · 첫 단어 ${(medLat / 1000).toFixed(1)}s` : ''}` : '턴 완료'}</div>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="cv-again">다시</button>
+            <button class="study-cta-btn secondary" id="cv-home">홈으로</button>
+          </div>
+        </div>`;
+      root.querySelector('#cv-again').addEventListener('click', () => startConversation(source));
+      root.querySelector('#cv-home').addEventListener('click', exitToStudyHome);
+    }
+
+    function paintCv() {
+      if (idx >= cards.length) return finishCv();
+      const c = cards[idx];
+      const turn = buildTurn(c);
+      root.innerHTML = `
+        <div class="quiz-bar"><span class="quiz-count">${idx + 1} / ${cards.length}</span><span class="quiz-score">💬 Talk</span></div>
+        <div class="speak-card convo-card">
+          <div class="speak-label">${turn.kind === 'reply' ? '🗨️ 상대의 말' : '❓ 질문'}</div>
+          <div class="convo-partner" id="cv-partner">${escapeHtml(turn.partner)} <span class="speak-spk">🔊</span></div>
+          ${turn.partnerKo ? `<div class="convo-partner-ko">${escapeHtml(turn.partnerKo)}</div>` : ''}
+          <div class="convo-task">${escapeHtml(turn.instruction)}</div>
+        </div>
+        <button class="speak-mic" id="cv-mic"><span class="speak-mic-ico">🎤</span><span id="cv-mic-label">${SR ? '답하기' : '녹음'}</span></button>
+        <div class="speak-hint" id="cv-hint">${SR ? '탭하고 바로 시작하세요 — 첫 단어까지의 시간도 잽니다' : '⚠️ 음성인식 미지원 — 녹음만 됩니다 (Chrome/Android)'}</div>
+        <div id="cv-result"></div>
+        <div class="dict-actions"><button class="study-cta-btn secondary" id="cv-skip">건너뛰기</button></div>
+        <button class="quiz-exit" id="cv-exit">← Study 홈</button>`;
+      // 상대의 턴을 소리로 — reply 는 원어민 예문 클립(이 앱만 가진 자산), ask 는 TTS.
+      const sayPartner = () => (turn.kind === 'reply' ? playExample(c) : speak(turn.partner));
+      root.querySelector('#cv-partner').addEventListener('click', sayPartner);
+      requestAnimationFrame(sayPartner);
+      root.querySelector('#cv-exit').addEventListener('click', exitToStudyHome);
+      root.querySelector('#cv-skip').addEventListener('click', () => { idx++; paintCv(); });
+      const mic = root.querySelector('#cv-mic');
+      if (SR) wireCvRec(mic, c, turn); else wireCvRecorder(mic, c, turn);
+      if (idx + 1 < cards.length) prefetch([cards[idx + 1].example_sentence].filter(Boolean));
+    }
+
+    // 채점·피드백 — 점수 하나가 아니라 '다음 턴에 바꿀 것'을 준다.
+    function revealCv(said, c, turn, timing, recUrl) {
+      const r = scoreTurn({ said, term: turn.term, latencyMs: timing.latencyMs, speakMs: timing.speakMs });
+      if (said) {
+        scoreSum += r.score; scored++;
+        if (r.used) usedN++;
+        if (r.latencyMs != null && r.latencyMs > 0) { latSum += r.latencyMs; latN++; }
+      }
+      const pct = Math.round(r.score * 100);
+      const cls = !said ? 'partial' : pct >= 80 ? 'correct' : pct >= 55 ? 'partial' : 'wrong';
+      const model = (c.example_sentence || '').trim();
+      root.querySelector('#cv-result').innerHTML = `
+        <div class="dict-result ${cls}">
+          <div class="dict-score">${said ? `${pct}점 · 회화` : '모델 답변'}</div>
+          ${said ? `<div class="speak-heard">내 말: “${escapeHtml(said)}”</div>` : ''}
+          ${said ? `<div class="convo-metrics">
+            <span class="cv-m ${r.used ? 'ok' : 'no'}">${r.used ? '✓' : '✗'} “${escapeHtml(turn.term)}”</span>
+            <span class="cv-m">${r.words} words</span>
+            ${r.latencyMs != null ? `<span class="cv-m">${(r.latencyMs / 1000).toFixed(1)}s 시작</span>` : ''}
+            ${r.wpm != null ? `<span class="cv-m">${r.wpm} wpm</span>` : ''}
+          </div>` : ''}
+          <ul class="convo-tips">${r.tips.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
+          ${model ? `<div class="convo-model"><b>모델 답변</b> ${escapeHtml(model)}</div>` : ''}
+          <div id="cv-compare" class="speak-compare"></div>
+          <button class="study-cta-btn" id="cv-next">다음 →</button>
+        </div>`;
+      root.querySelector('#cv-next').addEventListener('click', () => { idx++; paintCv(); });
+      if (recUrl) {
+        const cmp = root.querySelector('#cv-compare');
+        if (cmp) cmp.innerHTML = `<audio class="speak-audio" controls src="${recUrl}"></audio>`;
+      }
+    }
+
+    // 음성인식 + 동시 녹음. Speak/KR→EN 과 같은 정리 계약(registerMediaCleanup)을 따른다.
+    function wireCvRec(mic, c, turn) {
+      let listening = false, rec = null, myRec = null, myStream = null, chunks = [];
+      const label = () => root.querySelector('#cv-mic-label');
+      function reset() { listening = false; mic.classList.remove('listening'); const l = label(); if (l) l.textContent = '다시 답하기'; }
+      mic.addEventListener('click', async () => {
+        if (listening) { try { rec && rec.stop(); } catch (e) {} return; }
+        chunks = [];
+        let recUrl = null;
+        try {
+          myStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          myRec = new MediaRecorder(myStream); myRec.ondataavailable = (e) => chunks.push(e.data);
+          myRec.onstop = () => {
+            try { myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+            if (chunks.length) {
+              recUrl = objUrl(new Blob(chunks, { type: 'audio/webm' }));
+              const cmp = root.querySelector('#cv-compare');
+              if (cmp) cmp.innerHTML = `<audio class="speak-audio" controls src="${recUrl}"></audio>`;
+            }
+          };
+          myRec.start();
+        } catch (e) { myRec = null; }
+        registerMediaCleanup(() => {
+          try { rec && rec.stop(); } catch (e) {}
+          try { myRec && myRec.state !== 'inactive' && myRec.stop(); } catch (e) {}
+          try { myStream && myStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+        });
+        rec = new SR();
+        rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 1; rec.continuous = true;
+        listening = true; mic.classList.add('listening');
+        const l = label(); if (l) l.textContent = '듣는 중… (탭하면 종료)';
+        // ⚠ 첫 단어 지연은 '첫 interim 결과'에서 재야 한다 — final 은 문장이 끝나야 오므로
+        // 길게 말할수록 지연이 커지는(=말을 잘할수록 점수가 깎이는) 엉터리 값이 된다.
+        const t0 = Date.now();
+        let firstAt = null, lastAt = null, finalText = '';
+        rec.onresult = (e) => {
+          const now = Date.now();
+          if (firstAt == null) firstAt = now;
+          lastAt = now;
+          let interim = '';
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += t + ' '; else interim += t;
+          }
+          const h = root.querySelector('#cv-hint'); if (h) h.textContent = (finalText + interim).trim() || 'Listening…';
+        };
+        rec.onerror = (e) => {
+          const h = root.querySelector('#cv-hint');
+          if (h) h.textContent = (e.error === 'not-allowed') ? '🎙️ 마이크 권한을 허용해 주세요'
+            : (e.error === 'no-speech') ? '🎙️ 음성이 안 들려요 — 탭하고 말해보세요' : '인식 오류 — 다시 시도';
+        };
+        rec.onend = () => {
+          reset();
+          try { if (myRec && myRec.state !== 'inactive') myRec.stop(); } catch (e) {}
+          const said = finalText.trim();
+          const timing = {
+            latencyMs: firstAt != null ? firstAt - t0 : null,
+            speakMs: (firstAt != null && lastAt != null && lastAt > firstAt) ? lastAt - firstAt : null,
+          };
+          if (said) revealCv(said, c, turn, timing, recUrl);
+        };
+        try { rec.start(); } catch (e) { reset(); try { myRec && myRec.state !== 'inactive' && myRec.stop(); } catch (e2) {} }
+      });
+    }
+
+    // 인식 미지원(주로 iOS Safari) — 녹음만 하고 모델 답변과 들어 비교. 점수는 매기지 않는다
+    // (받아쓴 텍스트가 없으면 잴 수 있는 게 없다 — 없는 측정을 지어내지 않는다).
+    function wireCvRecorder(mic, c, turn) {
+      let recorder = null, chunks = [], recording = false;
+      const label = () => root.querySelector('#cv-mic-label');
+      mic.addEventListener('click', async () => {
+        if (recording) { try { recorder && recorder.stop(); } catch (e) {} return; }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const h = root.querySelector('#cv-hint'); if (h) h.textContent = '이 브라우저는 녹음을 지원하지 않아요.';
+          mic.disabled = true; return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          recorder = new MediaRecorder(stream); chunks = [];
+          recorder.ondataavailable = (e) => chunks.push(e.data);
+          recorder.onstop = () => {
+            try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+            recording = false; mic.classList.remove('listening');
+            const l = label(); if (l) l.textContent = '다시 녹음';
+            revealCv('', c, turn, { latencyMs: null, speakMs: null }, chunks.length ? objUrl(new Blob(chunks, { type: 'audio/webm' })) : null);
+          };
+          recorder.start(); recording = true; mic.classList.add('listening');
+          registerMediaCleanup(() => {
+            try { recorder && recorder.state !== 'inactive' && recorder.stop(); } catch (e) {}
+            try { stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+          });
+          const l = label(); if (l) l.textContent = '녹음 중… (탭하면 정지)';
+        } catch (e) {
+          const h = root.querySelector('#cv-hint'); if (h) h.textContent = '🎙️ 마이크 권한이 필요해요.';
+        }
+      });
+    }
+
+    paintCv();
   }
 
   // ── 빈칸 채우기(Cloze) — 예문에서 표현을 가리고 떠올려 입력 → 능동 회상 ──

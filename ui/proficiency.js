@@ -24,7 +24,7 @@ const SEEN_MAX = 4000;
 
 // 어느 로그 모드가 어느 축을 먹이는지
 export const LISTEN_MODES = ['listen', 'dictation', 'cloze'];
-export const PROD_MODES = ['speak', 'prod'];
+export const PROD_MODES = ['speak', 'prod', 'convo'];  // convo = 자유 턴(회화) — ui/convo.js 채점
 export const ACC_MODES = ['read', 'listen', 'dictation', 'cloze'];  // 정확도(정답률 pill)
 const DEFAULT_BAND = 'C2';
 
@@ -129,7 +129,13 @@ export function rawFromLog(log, db = {}) {
   const listenAll = log.filter((e) => LISTEN_MODES.includes(e.mode));
   const listenUnseen = listenAll.filter((e) => e.unseen);
   const prod = log.filter((e) => PROD_MODES.includes(e.mode));
-  const lats = log.map((e) => e.ms).filter((m) => m != null && m > 0);
+  // ⚠ 자동화의 latency 는 '퀴즈 인식지연'(선택지 고르기)만 먹인다. 자유발화 턴의 첫-단어 지연은
+  // 분포가 달라(2~6s) 같은 중앙값에 섞으면 기존 자동화 점수를 조용히 끌어내린다. convo 는 ms 를
+  // 기록하지 않지만, 나중에 기록하게 되더라도 여기서 걸러지도록 모드로 명시해 둔다.
+  // ⚠ 과거 데이터가 깎이지는 않는다 — 실측(2026-08-30): ms 를 넘기는 호출부는 startQuiz
+  // ('read'/'listen') 하나뿐이고 speak/prod 는 opts 없이 부르므로 ms 가 애초에 null 이라
+  // 아래 `m != null` 이 이미 걸러 왔다. 이 필터는 의미를 못 박는 가드지 값의 변경이 아니다.
+  const lats = log.filter((e) => !PROD_MODES.includes(e.mode)).map((e) => e.ms).filter((m) => m != null && m > 0);
   return {
     breadthFrac: corpus ? (db.known || 0) / corpus : 0,
     retentionFrac: db.retentionFrac || 0,
