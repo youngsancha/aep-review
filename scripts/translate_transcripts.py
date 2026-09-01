@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import logging
 import os
@@ -30,9 +31,26 @@ import sys
 
 from ingest import store
 from ingest.extract_vocab import _result_text
+from ingest.translation_guard import sane_translation
 
 log = logging.getLogger("translate_transcripts")
-BATCH = 32          # 한 claude 호출에 묶는 문장 수(문맥 유지 + 응답 안정, 호출수 절감)
+# 한 호출에 묶는 문장 수(문맥 유지 + 응답 안정, 호출수 절감).
+BATCH = 32
+# ⛔ 로컬 모델은 이 크기를 못 버틴다. 실측(exaone3.5:7.8b, cnn10 ep1026, 24문장):
+#     batch=1 → 정렬 21/24(4.6s/문장) · batch=2 → 8/24 · batch=4 → 0/24 · batch=6 → 0/24
+# 배치가 커지면 입력 '줄'을 따르지 않고 단어열을 제멋대로 2~3어절로 다시 쪼갠다. 그래서 백엔드별로
+# 기본값을 다르게 둔다 — 안 그러면 AEP_LLM_BACKEND=ollama 만 켠 사람은 한 문장도 못 얻고
+# '정렬 실패' 경고만 잔뜩 보게 된다(조용한 0 진행이야말로 이 리포가 반복해서 당한 사고다).
+OLLAMA_BATCH = 1
+
+
+def batch_size() -> int:
+    if os.environ.get("AEP_TRANSLATE_BATCH"):
+        return max(1, int(os.environ["AEP_TRANSLATE_BATCH"]))
+    backend = (os.environ.get("AEP_LLM_BACKEND") or "").strip().lower()
+    return OLLAMA_BATCH if backend == "ollama" else BATCH
+MIN_BATCH = 4       # 정렬 실패 시 반씩 줄이는 하한 — 이 아래면 '문맥째 번역'이 아니게 된다
+CHECKPOINT_EVERY = 16   # 이 문장 수마다 _ko.json 업로드(배치=1 에서 매번 올리는 낭비 방지)
 CTX_BEFORE = 2      # 배치 앞에 붙여 줄 '맥락용' 직전 문장 수(번역 대상 아님)
 
 # 배치 실패는 '건너뛰고 계속'이 기본이다 — 일시적 오류엔 맞다. 하지만 claude 사용 한도에
@@ -43,6 +61,10 @@ CTX_BEFORE = 2      # 배치 앞에 붙여 줄 '맥락용' 직전 문장 수(번
 # 넘으면 멈춘다(멱등·체크포인트라 나중에 이어서 하면 된다).
 MAX_CONSECUTIVE_FAILS = 12
 _consec_fails = 0
+# 거절 사유별 누계 — 실행 끝에 출력한다. 개수만 남기면 '어느 모델이 어떤 식으로 망가지는가'를
+# 알 수 없고, 그게 백엔드 교체 판단의 유일한 근거다.
+_rejected: "collections.Counter[str]" = collections.Counter()
+_accepted = 0
 _MODEL = ""         # --model 로 설정. 빈 값이면 claude CLI 기본(=세션 모델).
 
 
@@ -194,11 +216,12 @@ def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
     return _json_object(text)
 
 
-def _call_llm(prompt: str, timeout_sec: int = 300) -> dict:
+def _call_llm(prompt: str, timeout_sec: int = 300, n_lines: int = 0) -> dict:
     """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약(AEP_LLM_BACKEND).
 
       (미설정)/"claude-cli" → `claude -p` (기존 동작 그대로, Max 구독이라 과금 0)
       "gemini"             → HTTP. claude CLI 가 못 뜨는 cron/CI 에서 번역을 살린다.
+      "ollama"             → 로컬 LLM. 과금 0 · Claude 한도 0 — 8만 문장 백필의 유일한 현실적 경로.
       "auto"               → CLI 가 PATH 에 있으면 그것, 없으면 Gemini.
 
     기본값이 claude-cli 라 env 를 안 건드리면 이전과 완전히 동일하게 동작한다.
@@ -206,6 +229,11 @@ def _call_llm(prompt: str, timeout_sec: int = 300) -> dict:
     choice = (os.environ.get("AEP_LLM_BACKEND") or "claude-cli").strip().lower()
     if choice == "auto":
         choice = "claude-cli" if shutil.which("claude") else "gemini"
+    if choice == "ollama":
+        from ingest.ollama_client import call_ollama
+
+        return _json_object(call_ollama(prompt, timeout_sec=timeout_sec, max_output_tokens=16384,
+                                        schema=batch_schema(n_lines) if n_lines else None))
     if choice == "gemini":
         from ingest.gemini_client import call_gemini
 
@@ -262,15 +290,149 @@ TRANSLATION_RULES = (
 
 
 def build_prompt(lines: list[str], context_before: str) -> str:
+    """배치 프롬프트. 응답은 id → {en, ko} 다 — 모델에게 원문을 '되읊게' 해서 정렬을 증명시킨다.
+
+    ⛔ 왜 en 을 되받는가 (2026-09-01 실측): id → 한국어 평면 맵을 요구했더니 로컬 모델이 32줄을
+    받아 **29개 키로 답하면서 번호를 0..28 로 다시 매겼다.** JSON 은 유효하고 값은 전부 자연스러운
+    한국어인데 **모든 문장이 옆 문장의 번역과 짝지어진다.** _ko.json 은 멱등 채움이라 한 번 저장되면
+    영구적이므로, 이건 '번역 없음'보다 훨씬 나쁘다. 개별 문자열 검증(sane_translation)으로는 절대
+    잡을 수 없는 종류라 — 각각은 멀쩡하다 — 구조로 막아야 한다.
+    """
     items = [{"i": str(k), "en": en} for k, en in enumerate(lines)]
     return (
         TRANSLATION_RULES
         + "Use 'context_before' only as context for pronouns/flow — translate ONLY the numbered 'lines'.\n"
-        "Return ONLY a JSON object mapping each line id (string) to its Korean translation. "
-        "No code fence, no commentary.\n\n"
+        'Return ONLY {"lines": [ ... ]} — a JSON array with EXACTLY one element per input line, '
+        'in the SAME ORDER as the input. Element k is {"src": <the first four words of input line k, '
+        'in ENGLISH, copied exactly as given — this is an alignment anchor, NEVER translate it>, '
+        '"ko": <Korean translation of the WHOLE line k>}.\n'
+        "Never merge two input lines into one element, never skip a line, never reorder: if a line is "
+        "an incomplete fragment, translate the fragment on its own. The array length MUST equal the "
+        "number of input lines. No code fence, no commentary.\n\n"
         f"context_before: {json.dumps(context_before, ensure_ascii=False)}\n"
         f"lines: {json.dumps(items, ensure_ascii=False)}"
     )
+
+
+_WORD_RE = re.compile(r"[a-z0-9']+")
+_HANGUL_RE = re.compile(r"[가-힣]")
+
+
+def _prefix_overlap(echo: str, line: str, n: int = 4) -> float:
+    """되읊은 앵커가 그 줄의 것인가 — 앞 n어절 토큰 집합의 겹침(0~1).
+
+    ⛔ 전문(全文)을 되읊게 하면 출력 토큰이 2배가 되어 로컬 7B 에서 배치 하나가 분 단위로 늘어난다
+    (실측: 전문 되읊기로 --sample 이 10분 타임아웃). 정렬이 깨질 때 어긋나는 것은 '줄의 시작'이므로
+    앞 4어절만으로도 판별력은 사실상 같다. 모델이 전문을 되읊어도 앞부분만 비교하므로 안전하다.
+    """
+    ea = _WORD_RE.findall(echo.lower())[:n]
+    la = _WORD_RE.findall(line.lower())[:n]
+    if not ea or not la:
+        return 1.0 if ea == la else 0.0
+    m = min(len(ea), len(la))
+    sa, sb = set(ea[:m]), set(la[:m])
+    return len(sa & sb) / max(len(sa), len(sb))
+
+
+ECHO_MIN_OVERLAP = 0.7      # 되읊은 앵커가 이만큼은 겹쳐야 '같은 줄'로 인정
+ALIGN_MIN_VERIFIED = 0.8    # 배치의 이 비율 이상이 정렬 확인돼야 배치를 채택
+
+
+def batch_schema(n: int) -> dict:
+    """응답 문법(JSON Schema). 작은 모델은 '말로 한 지시'를 형태로 옮기지 못한다 — 배열 길이까지
+    스키마로 못 박아야 병합·건너뛰기가 애초에 생성 불가능해진다."""
+    return {
+        "type": "object",
+        "properties": {
+            "lines": {
+                "type": "array",
+                "minItems": n,
+                "maxItems": n,
+                "items": {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}, "ko": {"type": "string"}},
+                    "required": ["a", "ko"],
+                },
+            }
+        },
+        "required": ["lines"],
+    }
+
+
+def align_batch(res, lines: list[str]) -> tuple[list[str | None], str]:
+    """모델 응답 → lines 와 1:1 정렬된 번역 리스트. 정렬을 증명 못 하면 배치를 통째로 버린다.
+
+    반환 (kos, reason). reason 이 비어 있지 않으면 배치 거절.
+    세 응답 형태를 모두 받는다:
+      · {"lines": [{"a": <앞 4어절>, "ko": ...}]}  — 순서로 정렬 + 앵커로 검증(권장·현재 프롬프트)
+      · {"0": {"a": <앞 4어절>, "ko": ...}}  — 앵커로 줄마다 정렬 검증(권장·현재 프롬프트)
+      · {"0": "한국어"}                 — 구형 평면 맵. 증명 수단이 없으므로 **개수 일치**를 요구한다
+                                         (실측된 그 버그가 29 vs 32 였으므로 이것만으로도 잡힌다).
+    """
+    if not isinstance(res, dict) or not res:
+        return [None] * len(lines), "not-a-dict"
+    arr = res.get("lines")
+    if isinstance(arr, list):
+        if len(arr) != len(lines):
+            return [None] * len(lines), f"array-len({len(arr)} vs {len(lines)})"
+        kos_a: list[str | None] = [None] * len(lines)
+        ok_n = 0
+        unverified = 0
+        for i, item in enumerate(arr):
+            if not isinstance(item, dict):
+                continue
+            ko = item.get("ko")
+            if not isinstance(ko, str) or not ko.strip():
+                continue
+            anchor = item.get("src") or item.get("a") or item.get("en") or ""
+            if _HANGUL_RE.search(anchor):
+                # 모델이 앵커까지 한국어로 번역해 버린 경우. 실측(exaone3.5, batch=1): 거절 4건 중
+                # 3건이 이랬고 **번역 자체는 정확했다** — 오정렬로 취급하면 멀쩡한 번역을 30% 버린다.
+                # ⛔ 그렇다고 그냥 통과시키면 '앵커를 전부 번역한 채 한 칸 밀린 배열'이 무사통과한다
+                # (xcheck 2026-09-01 지적, 검증함: 밀린 배열에서는 kos[i]=tr(i-1) 이고 _prev_ko=tr(i-2)
+                # 라 dup-prev 도 못 잡는다). 그래서 **줄이 하나뿐일 때만** 검증 불가를 받아들인다 —
+                # 입력 1줄·출력 1개는 위치가 어긋날 수 없고, 남는 위험('문맥 문장을 대신 번역')은
+                # 그때 정확히 _prev_ko 와 같아지므로 dup-prev 가 잡는다.
+                if len(lines) != 1:
+                    continue
+                kos_a[i] = ko.strip()
+                unverified += 1
+                continue
+            if _prefix_overlap(anchor, lines[i]) < ECHO_MIN_OVERLAP:
+                continue
+            kos_a[i] = ko.strip()
+            ok_n += 1
+        # 명시적으로 '다른 줄'이라고 드러난 것만 오정렬로 본다(검증 불가는 통과시키되 아래에서 거른다).
+        if ok_n + unverified < ALIGN_MIN_VERIFIED * len(lines):
+            return [None] * len(lines), f"misaligned({ok_n}+{unverified}/{len(lines)})"
+        return kos_a, ""
+    kos: list[str | None] = [None] * len(lines)
+    verified = 0
+    echoed = 0
+    for i in range(len(lines)):
+        item = res.get(str(i))
+        if isinstance(item, dict):
+            echoed += 1
+            ko = item.get("ko")
+            en = item.get("a") or item.get("en") or ""    # 'a'=앵커(현재) / 'en'=전문(구형 응답 허용)
+            if not isinstance(ko, str) or not ko.strip():
+                continue
+            if _prefix_overlap(en, lines[i]) < ECHO_MIN_OVERLAP:
+                continue          # 되읊은 원문이 다르다 = 이 자리는 다른 줄의 번역이다
+            kos[i] = ko.strip()
+            verified += 1
+        elif isinstance(item, str) and item.strip():
+            kos[i] = item.strip()
+    if echoed >= max(1, len(lines) // 2):
+        # 되읊기 형태로 답했다 → 정렬을 실제로 검증할 수 있다. 검증 통과 비율로 채택 여부 결정.
+        if verified < ALIGN_MIN_VERIFIED * len(lines):
+            return [None] * len(lines), f"misaligned({verified}/{len(lines)} verified)"
+        return kos, ""
+    # 구형 평면 맵 — 증명이 없으니 개수라도 정확히 맞아야 한다.
+    got = sum(1 for k in kos if k)
+    if got != len(lines):
+        return [None] * len(lines), f"count-mismatch({got} vs {len(lines)})"
+    return kos, ""
 
 
 # ─────────────────────────── Storage I/O ───────────────────────────
@@ -356,6 +518,53 @@ def episode_ids() -> list[int]:
 
 
 # ─────────────────────────── 한 에피소드 처리 ───────────────────────────
+def _call_batch(lines: list[str], ctx: str, ep_id: int, bstart: int) -> tuple[list[str | None], bool]:
+    """한 배치를 LLM 에 보내고 정렬까지 확인. 반환 (번역들, 호출 자체가 실패했는가).
+
+    ⛔ 두 실패를 반드시 구분한다. '호출 실패'(한도·장애)는 쪼개서 다시 해도 나아지지 않고 오히려
+    한도만 더 태운다 — 이 잡이 2026-07-27 에 40분간 5,368건을 실패시킨 사고가 바로 그 모양이었다.
+    쪼개기가 도움이 되는 것은 '정렬 실패'(모델이 줄 수를 못 버팀)뿐이다.
+    """
+    global _consec_fails
+    try:
+        res = _call_llm(build_prompt(lines, ctx), n_lines=len(lines))
+        _consec_fails = 0
+    except Exception:
+        _consec_fails += 1
+        log.exception("ep %s 배치 %d 호출 실패 (연속 %d)", ep_id, bstart, _consec_fails)
+        if _consec_fails >= MAX_CONSECUTIVE_FAILS:
+            raise ClaudeUnavailable(
+                f"LLM 호출이 연속 {_consec_fails}회 실패 — 사용 한도/장애로 보인다. "
+                f"여기서 멈춘다(체크포인트 저장됨, 나중에 같은 명령으로 이어서 진행)."
+            ) from None
+        return [None] * len(lines), True
+    kos, why = align_batch(res, lines)
+    if why:
+        _rejected["align:" + why.split("(")[0]] += len(lines)
+        log.warning("ep %s 배치 %d 정렬 실패(%s) — 배치 폐기", ep_id, bstart, why)
+    return kos, False
+
+
+def _translate_lines(lines: list[str], ctx: str, ep_id: int, bstart: int) -> list[str | None]:
+    """배치를 번역하되, 정렬에 실패하면 반으로 쪼개 다시 시도한다.
+
+    왜 쪼개는가: 작은 모델은 줄이 많을수록 병합·건너뛰기로 번호가 어긋난다(실측: 32줄 → 29키).
+    배치를 통째로 버리기만 하면 그 모델로는 cnn10 이 영원히 번역되지 않는다. 절반으로 줄이면
+    대개 정렬이 살아나므로, 문맥을 조금 잃더라도 진도가 나가는 쪽을 택한다. MIN_BATCH 아래로는
+    쪼개지 않는다 — 한 줄씩 번역하면 문맥 인지라는 이 잡의 존재 이유가 사라진다.
+    """
+    kos, call_failed = _call_batch(lines, ctx, ep_id, bstart)
+    # 호출이 죽은 것이면 쪼개 봐야 같은 이유로 또 죽는다(한도는 배치 크기와 무관하다).
+    if call_failed or any(k for k in kos) or len(lines) <= MIN_BATCH:
+        return kos
+    half = len(lines) // 2
+    log.info("ep %s 배치 %d → %d줄로 쪼개 재시도", ep_id, bstart, half)
+    left = _translate_lines(lines[:half], ctx, ep_id, bstart)
+    right = _translate_lines(lines[half:], " ".join(lines[max(0, half - CTX_BEFORE):half]), ep_id, bstart + half)
+    return left + right
+
+
+
 def translate_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int]:
     tr = fetch_transcript(ep_id)
     if not tr:
@@ -375,38 +584,60 @@ def translate_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int]:
         return (len(sentences), 0)
 
     added = 0
+    saved_at = 0    # 마지막 체크포인트 시점의 added
+    _prev_ko = ""   # 직전에 채택한 번역 — '한 칸 밀림' 검출용
     # 배치는 '연속 인덱스' 윈도우로(문맥 보존). pending 만 번역하되 context_before 는 직전 문장에서.
-    for bstart in range(0, len(sentences), BATCH):
-        idxs = [k for k in range(bstart, min(bstart + BATCH, len(sentences))) if keys[k] not in done]
+    bsz = batch_size()
+    for bstart in range(0, len(sentences), bsz):
+        idxs = [k for k in range(bstart, min(bstart + bsz, len(sentences))) if keys[k] not in done]
         if not idxs:
             continue
         ctx = " ".join(sentences[max(0, idxs[0] - CTX_BEFORE):idxs[0]])
         lines = [sentences[k] for k in idxs]
-        global _consec_fails
         try:
-            res = _call_llm(build_prompt(lines, ctx))
-            _consec_fails = 0
+            kos = _translate_lines(lines, ctx, ep_id, bstart)
+        except ClaudeUnavailable:
+            raise
         except Exception:
-            _consec_fails += 1
-            log.exception("ep %s 배치 %d 실패 → 건너뜀 (연속 %d)", ep_id, bstart, _consec_fails)
-            if _consec_fails >= MAX_CONSECUTIVE_FAILS:
-                raise ClaudeUnavailable(
-                    f"LLM 호출이 연속 {_consec_fails}회 실패 — 사용 한도/장애로 보인다. "
-                    f"여기서 멈춘다(체크포인트 저장됨, 나중에 같은 명령으로 이어서 진행)."
-                ) from None
+            log.exception("ep %s 배치 %d 실패 → 건너뜀", ep_id, bstart)
             continue
+        global _accepted
         for local_i, k in enumerate(idxs):
-            ko = res.get(str(local_i)) if isinstance(res, dict) else None
+            ko = kos[local_i]
             if isinstance(ko, str) and ko.strip():
+                # ⛔ 예전엔 '비어 있지 않으면' 그대로 저장했다. _ko.json 은 멱등 채움이라 한 번 들어간
+                # 키는 다시 번역되지 않으므로, 쓰레기가 들어가면 그 문장은 영구히 쓰레기다. 로컬 LLM
+                # 백엔드는 실패를 에러가 아니라 '자신 있게 틀린 한국어'로 돌려주므로 관문이 필요하다.
+                # 거른 문장은 저장되지 않을 뿐이라 다음 실행에서 다시 시도된다(손실 없음).
+                ok, why = sane_translation(sentences[k], ko)
+                # dup-prev 는 **앵커를 검증하지 못하는 batch=1 모드에서만** 건다. 앵커로 정렬이
+                # 확인된 배치에서 앞 문장과 같은 한국어가 나오는 것은 정상이다("Wait." "Wait." →
+                # 둘 다 '잠깐.'), 거기까지 막으면 멀쩡한 번역을 영구히 잃는다(xcheck 지적 ①③).
+                if bsz == 1 and ok and _prev_ko and ko.strip() == _prev_ko:
+                    # batch=1 에서 남는 단 하나의 오정렬 형태 — 모델이 대상 줄 대신 문맥의 마지막
+                    # 줄을 번역해 내놓는 것(실측: 'in parliament chooses…' 자리에 앞 문장의 번역).
+                    ok, why = False, "dup-prev"
+                if not ok:
+                    _rejected[why] += 1
+                    log.warning("ep %s 문장 %d 거절(%s): %.80s", ep_id, k, why, ko.strip())
+                    continue
                 if dry:
                     print(f"  EN: {sentences[k]}\n  KO: {ko.strip()}\n")
                 else:
                     done[keys[k]] = ko.strip()
                 added += 1
-        if not dry and added:
-            save_existing(ep_id, done)   # 배치 체크포인트
+                _accepted += 1
+                _prev_ko = ko.strip()
+        # 체크포인트는 '누적 N문장마다'다. 배치=1(로컬 모델)에서 매 배치 저장하면 회차당 수백 번
+        # _ko.json 전체를 다시 올리게 된다 — 200문장 회차면 30KB × 200 ≈ 6MB 의 헛된 업로드.
+        # 끊겨도 최대 CHECKPOINT_EVERY 문장만 다시 하면 되므로 멱등성은 그대로다.
+        if not dry and added - saved_at >= CHECKPOINT_EVERY:
+            save_existing(ep_id, done)
+            saved_at = added
         if dry:
             break                        # 표본은 첫 배치만(품질 확인용)
+    if not dry and added > saved_at:
+        save_existing(ep_id, done)       # 마지막 잔여분 — 이게 없으면 끝자락이 통째로 날아간다
     if not dry:
         log.info("ep %s: +%d (누적 %d/%d 문장)", ep_id, added, len(done), len(sentences))
     return (len(sentences), added)
@@ -465,6 +696,20 @@ def main() -> None:
         tot_added += added
         log.info("[%d/%d] ep %s 진행 — 누적 +%d문장", n, len(ids), ep_id, tot_added)
     log.info("완료: 에피소드 %d, 문장 %d, 신규번역 %d", len(ids), tot_sent, tot_added)
+    _log_rejections()
+
+
+def _log_rejections() -> None:
+    """거절 요약 — 사유별로 남긴다. 이 줄이 없으면 로컬 LLM 이 조용히 절반을 흘려도 '완료'로 보인다.
+    거절률이 5%를 넘으면 백엔드/모델이 이 작업에 안 맞는다는 신호이므로 눈에 띄게 경고한다."""
+    total = sum(_rejected.values())
+    if not total:
+        return
+    detail = ", ".join(f"{why}={n}" for why, n in _rejected.most_common())
+    log.warning("저장 거절 %d문장 — %s", total, detail)
+    if total >= 20 and total > 0.05 * max(total + _accepted, 1):
+        log.warning("⚠ 거절률이 5%%를 넘는다 — 모델이 이 작업에 안 맞을 수 있다. "
+                    "scripts/bench_translation.py 로 실측하고 AEP_OLLAMA_MODEL 을 바꿔 볼 것.")
 
 
 if __name__ == "__main__":

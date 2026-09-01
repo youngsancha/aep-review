@@ -41,7 +41,12 @@ def _run(fail_plan, monkeypatch, n_batches=20):
         calls["n"] += 1
         if fail_plan(i):
             raise RuntimeError("claude CLI rc=1: ")
-        return {str(k): f"번역{k}" for k in range(tt.BATCH)}
+        # 응답은 실제 형태(lines 배열 + 정렬 앵커)로 준다. 번역문도 저장 관문
+        # (ingest.translation_guard)을 통과할 만큼은 실물이어야 한다 — 예전 픽스처의 "번역0" 은
+        # 원문 대비 너무 짧아 전부 거절되면서, 이 테스트가 재려는 '차단기' 와 무관한 이유로 깨졌다.
+        return {"lines": [{"src": "This is unique sentence",
+                           "ko": f"이건 이 회차의 {k}번째 고유한 문장이에요."}
+                          for k in range(tt.BATCH)]}
 
     # Supabase 를 타지 않도록 실제 시임(fetch_transcript/load_existing/save_existing)만 갈아끼운다.
     # resegment 는 진짜 코드를 그대로 태운다 — 문장 분해가 바뀌면 배치 경계도 바뀌므로.
