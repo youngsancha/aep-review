@@ -101,6 +101,18 @@ def _num(x):
 
 def resegment(segments) -> list[str]:
     """episode.js resegment 와 동일하게 Whisper segment 를 구두점/쉼/접속사 기준 문장으로 재분할."""
+    # ⓪ 신뢰 모드 — scripts.resegment_llm 이 저장한 transcript(segment 마다 `sent: True`)는 이미
+    # 문장 단위다. 규칙(14어절·9초 상한)을 다시 적용하면 LLM 이 살린 문장을 도로 자른다. episode.js
+    # resegment 의 같은 블록과 1:1 — tests/test_resegment_parity.py 의 픽스처 10554 가 고정한다.
+    segs_in = segments or []
+    if segs_in and all(isinstance(s, dict) and s.get("sent") is True for s in segs_in):
+        out_t = []
+        for seg in segs_in:
+            # 저장된 text 그대로 — 스크립트가 문장 끝에만 마침표를 붙였다(절 조각엔 없음). episode.js 와 동일.
+            ws = [w for w in (seg.get("words") or []) if w.get("word") is not None]
+            text = (seg.get("text") or ("".join(w["word"] for w in ws) if ws else "")).strip()
+            out_t.append(text)
+        return out_t
     words = []
     for seg in segments or []:
         sw = seg.get("words")

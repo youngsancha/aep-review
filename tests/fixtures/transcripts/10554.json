@@ -1,0 +1,2329 @@
+{
+ "language": "en",
+ "duration": 151.57,
+ "aligned": true,
+ "r2_audio": true,
+ "_fixture": {
+  "source_episode": "554",
+  "segments_kept": 60
+ },
+ "segments": [
+  {
+   "idx": 0,
+   "start": 2.99,
+   "end": 6.37,
+   "text": "Good afternoon, everyone. Good to see you here today.",
+   "words": [
+    {
+     "word": " Good",
+     "start": 2.99,
+     "end": 3.43
+    },
+    {
+     "word": " afternoon,",
+     "start": 3.43,
+     "end": 3.75
+    },
+    {
+     "word": " everyone.",
+     "start": 3.87,
+     "end": 4.17
+    },
+    {
+     "word": " Good",
+     "start": 4.95,
+     "end": 5.51
+    },
+    {
+     "word": " to",
+     "start": 5.51,
+     "end": 5.65
+    },
+    {
+     "word": " see",
+     "start": 5.65,
+     "end": 5.79
+    },
+    {
+     "word": " you",
+     "start": 5.79,
+     "end": 5.93
+    },
+    {
+     "word": " here",
+     "start": 5.93,
+     "end": 6.07
+    },
+    {
+     "word": " today.",
+     "start": 6.07,
+     "end": 6.37
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 1,
+   "start": 6.55,
+   "end": 7.25,
+   "text": "Good morning, Gabe.",
+   "words": [
+    {
+     "word": " Good",
+     "start": 6.55,
+     "end": 6.67
+    },
+    {
+     "word": " morning,",
+     "start": 6.67,
+     "end": 6.97
+    },
+    {
+     "word": " Gabe.",
+     "start": 7.17,
+     "end": 7.25
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 2,
+   "start": 7.83,
+   "end": 10.11,
+   "text": "We'll begin today with a few scheduling announcements.",
+   "words": [
+    {
+     "word": " We'll",
+     "start": 7.83,
+     "end": 8.05
+    },
+    {
+     "word": " begin",
+     "start": 8.05,
+     "end": 8.25
+    },
+    {
+     "word": " today",
+     "start": 8.25,
+     "end": 8.57
+    },
+    {
+     "word": " with",
+     "start": 8.57,
+     "end": 8.79
+    },
+    {
+     "word": " a",
+     "start": 8.79,
+     "end": 8.93
+    },
+    {
+     "word": " few",
+     "start": 8.93,
+     "end": 9.11
+    },
+    {
+     "word": " scheduling",
+     "start": 9.11,
+     "end": 9.63
+    },
+    {
+     "word": " announcements.",
+     "start": 9.63,
+     "end": 10.11
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 3,
+   "start": 10.55,
+   "end": 14.83,
+   "text": "Later this afternoon, President Trump will welcome the Los Angeles Dodgers back to the",
+   "words": [
+    {
+     "word": " Later",
+     "start": 10.55,
+     "end": 10.73
+    },
+    {
+     "word": " this",
+     "start": 10.73,
+     "end": 10.99
+    },
+    {
+     "word": " afternoon,",
+     "start": 10.99,
+     "end": 11.43
+    },
+    {
+     "word": " President",
+     "start": 11.67,
+     "end": 11.91
+    },
+    {
+     "word": " Trump",
+     "start": 11.91,
+     "end": 12.17
+    },
+    {
+     "word": " will",
+     "start": 12.17,
+     "end": 12.43
+    },
+    {
+     "word": " welcome",
+     "start": 12.43,
+     "end": 12.77
+    },
+    {
+     "word": " the",
+     "start": 12.77,
+     "end": 13.01
+    },
+    {
+     "word": " Los",
+     "start": 13.01,
+     "end": 13.19
+    },
+    {
+     "word": " Angeles",
+     "start": 13.19,
+     "end": 13.69
+    },
+    {
+     "word": " Dodgers",
+     "start": 13.69,
+     "end": 14.05
+    },
+    {
+     "word": " back",
+     "start": 14.05,
+     "end": 14.49
+    },
+    {
+     "word": " to",
+     "start": 14.49,
+     "end": 14.71
+    },
+    {
+     "word": " the",
+     "start": 14.71,
+     "end": 14.83
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 4,
+   "start": 14.83,
+   "end": 19.39,
+   "text": "White House to celebrate their second consecutive World Series Championship.",
+   "words": [
+    {
+     "word": " White",
+     "start": 14.83,
+     "end": 14.99
+    },
+    {
+     "word": " House",
+     "start": 14.99,
+     "end": 15.23
+    },
+    {
+     "word": " to",
+     "start": 15.23,
+     "end": 15.75
+    },
+    {
+     "word": " celebrate",
+     "start": 15.75,
+     "end": 16.15
+    },
+    {
+     "word": " their",
+     "start": 16.15,
+     "end": 16.41
+    },
+    {
+     "word": " second",
+     "start": 16.41,
+     "end": 16.95
+    },
+    {
+     "word": " consecutive",
+     "start": 16.95,
+     "end": 17.61
+    },
+    {
+     "word": " World",
+     "start": 17.61,
+     "end": 18.17
+    },
+    {
+     "word": " Series",
+     "start": 18.17,
+     "end": 18.75
+    },
+    {
+     "word": " Championship.",
+     "start": 18.75,
+     "end": 19.39
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 5,
+   "start": 20.13,
+   "end": 23.43,
+   "text": "Tomorrow night, the President will attend the White House Correspondents'.",
+   "words": [
+    {
+     "word": " Tomorrow",
+     "start": 20.13,
+     "end": 20.43
+    },
+    {
+     "word": " night,",
+     "start": 20.43,
+     "end": 20.75
+    },
+    {
+     "word": " the",
+     "start": 20.91,
+     "end": 21.05
+    },
+    {
+     "word": " President",
+     "start": 21.05,
+     "end": 21.27
+    },
+    {
+     "word": " will",
+     "start": 21.27,
+     "end": 21.53
+    },
+    {
+     "word": " attend",
+     "start": 21.53,
+     "end": 21.95
+    },
+    {
+     "word": " the",
+     "start": 21.95,
+     "end": 22.23
+    },
+    {
+     "word": " White",
+     "start": 22.23,
+     "end": 22.43
+    },
+    {
+     "word": " House",
+     "start": 22.43,
+     "end": 22.71
+    },
+    {
+     "word": " Correspondents'",
+     "start": 22.71,
+     "end": 23.43
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 6,
+   "start": 23.93,
+   "end": 28.75,
+   "text": "Association dinner, round two, celebrating free speech and the First Amendment alongside all of",
+   "words": [
+    {
+     "word": " Association",
+     "start": 23.93,
+     "end": 23.95
+    },
+    {
+     "word": " dinner,",
+     "start": 23.95,
+     "end": 24.37
+    },
+    {
+     "word": " round",
+     "start": 24.55,
+     "end": 24.69
+    },
+    {
+     "word": " two,",
+     "start": 24.69,
+     "end": 25.11
+    },
+    {
+     "word": " celebrating",
+     "start": 25.61,
+     "end": 26.05
+    },
+    {
+     "word": " free",
+     "start": 26.05,
+     "end": 26.41
+    },
+    {
+     "word": " speech",
+     "start": 26.41,
+     "end": 26.77
+    },
+    {
+     "word": " and",
+     "start": 26.77,
+     "end": 26.95
+    },
+    {
+     "word": " the",
+     "start": 26.95,
+     "end": 27.07
+    },
+    {
+     "word": " First",
+     "start": 27.07,
+     "end": 27.31
+    },
+    {
+     "word": " Amendment",
+     "start": 27.31,
+     "end": 27.67
+    },
+    {
+     "word": " alongside",
+     "start": 27.67,
+     "end": 28.13
+    },
+    {
+     "word": " all",
+     "start": 28.13,
+     "end": 28.61
+    },
+    {
+     "word": " of",
+     "start": 28.61,
+     "end": 28.75
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 7,
+   "start": 28.75,
+   "end": 30.31,
+   "text": "you members of the media.",
+   "words": [
+    {
+     "word": " you",
+     "start": 28.75,
+     "end": 28.99
+    },
+    {
+     "word": " members",
+     "start": 28.99,
+     "end": 29.41
+    },
+    {
+     "word": " of",
+     "start": 29.41,
+     "end": 29.85
+    },
+    {
+     "word": " the",
+     "start": 29.85,
+     "end": 30.05
+    },
+    {
+     "word": " media.",
+     "start": 30.05,
+     "end": 30.31
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 8,
+   "start": 30.79,
+   "end": 35.71,
+   "text": "The President looks forward to finishing what he started before a despicable assassination attempt.",
+   "words": [
+    {
+     "word": " The",
+     "start": 30.79,
+     "end": 30.99
+    },
+    {
+     "word": " President",
+     "start": 30.99,
+     "end": 31.29
+    },
+    {
+     "word": " looks",
+     "start": 31.29,
+     "end": 31.55
+    },
+    {
+     "word": " forward",
+     "start": 31.55,
+     "end": 31.89
+    },
+    {
+     "word": " to",
+     "start": 31.89,
+     "end": 32.13
+    },
+    {
+     "word": " finishing",
+     "start": 32.13,
+     "end": 32.47
+    },
+    {
+     "word": " what",
+     "start": 32.47,
+     "end": 32.77
+    },
+    {
+     "word": " he",
+     "start": 32.77,
+     "end": 32.87
+    },
+    {
+     "word": " started",
+     "start": 32.87,
+     "end": 33.25
+    },
+    {
+     "word": " before",
+     "start": 33.25,
+     "end": 33.69
+    },
+    {
+     "word": " a",
+     "start": 33.69,
+     "end": 33.97
+    },
+    {
+     "word": " despicable",
+     "start": 33.97,
+     "end": 34.49
+    },
+    {
+     "word": " assassination",
+     "start": 34.49,
+     "end": 35.17
+    },
+    {
+     "word": " attempt",
+     "start": 35.17,
+     "end": 35.71
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 9,
+   "start": 35.71,
+   "end": 37.59,
+   "text": "derailed the original event back in April,",
+   "words": [
+    {
+     "word": " derailed",
+     "start": 35.71,
+     "end": 36.09
+    },
+    {
+     "word": " the",
+     "start": 36.09,
+     "end": 36.29
+    },
+    {
+     "word": " original",
+     "start": 36.29,
+     "end": 36.67
+    },
+    {
+     "word": " event",
+     "start": 36.67,
+     "end": 36.91
+    },
+    {
+     "word": " back",
+     "start": 36.91,
+     "end": 37.19
+    },
+    {
+     "word": " in",
+     "start": 37.19,
+     "end": 37.37
+    },
+    {
+     "word": " April,",
+     "start": 37.37,
+     "end": 37.59
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 10,
+   "start": 37.67,
+   "end": 38.35,
+   "text": "as we all know.",
+   "words": [
+    {
+     "word": " as",
+     "start": 37.67,
+     "end": 37.81
+    },
+    {
+     "word": " we",
+     "start": 37.81,
+     "end": 37.95
+    },
+    {
+     "word": " all",
+     "start": 37.95,
+     "end": 38.07
+    },
+    {
+     "word": " know.",
+     "start": 38.07,
+     "end": 38.35
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 11,
+   "start": 38.83,
+   "end": 42.97,
+   "text": "And I encourage everyone watching tomorrow night to tune in for what promises to.",
+   "words": [
+    {
+     "word": " And",
+     "start": 38.83,
+     "end": 38.91
+    },
+    {
+     "word": " I",
+     "start": 38.91,
+     "end": 39.07
+    },
+    {
+     "word": " encourage",
+     "start": 39.07,
+     "end": 39.49
+    },
+    {
+     "word": " everyone",
+     "start": 39.49,
+     "end": 39.97
+    },
+    {
+     "word": " watching",
+     "start": 39.97,
+     "end": 40.39
+    },
+    {
+     "word": " tomorrow",
+     "start": 40.39,
+     "end": 40.75
+    },
+    {
+     "word": " night",
+     "start": 40.75,
+     "end": 40.97
+    },
+    {
+     "word": " to",
+     "start": 40.97,
+     "end": 41.17
+    },
+    {
+     "word": " tune",
+     "start": 41.17,
+     "end": 41.37
+    },
+    {
+     "word": " in",
+     "start": 41.37,
+     "end": 41.77
+    },
+    {
+     "word": " for",
+     "start": 41.77,
+     "end": 42.13
+    },
+    {
+     "word": " what",
+     "start": 42.13,
+     "end": 42.31
+    },
+    {
+     "word": " promises",
+     "start": 42.31,
+     "end": 42.73
+    },
+    {
+     "word": " to",
+     "start": 42.73,
+     "end": 42.97
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 12,
+   "start": 42.97,
+   "end": 45.79,
+   "text": "be a very entertaining and memorable evening.",
+   "words": [
+    {
+     "word": " be",
+     "start": 42.97,
+     "end": 43.15
+    },
+    {
+     "word": " a",
+     "start": 43.15,
+     "end": 43.39
+    },
+    {
+     "word": " very",
+     "start": 43.39,
+     "end": 43.67
+    },
+    {
+     "word": " entertaining",
+     "start": 43.67,
+     "end": 44.43
+    },
+    {
+     "word": " and",
+     "start": 44.43,
+     "end": 44.81
+    },
+    {
+     "word": " memorable",
+     "start": 44.81,
+     "end": 45.25
+    },
+    {
+     "word": " evening.",
+     "start": 45.25,
+     "end": 45.79
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 13,
+   "start": 46.43,
+   "end": 48.37,
+   "text": "Looking ahead to next week, on Monday,",
+   "words": [
+    {
+     "word": " Looking",
+     "start": 46.43,
+     "end": 46.63
+    },
+    {
+     "word": " ahead",
+     "start": 46.63,
+     "end": 46.91
+    },
+    {
+     "word": " to",
+     "start": 46.91,
+     "end": 47.07
+    },
+    {
+     "word": " next",
+     "start": 47.07,
+     "end": 47.27
+    },
+    {
+     "word": " week,",
+     "start": 47.27,
+     "end": 47.55
+    },
+    {
+     "word": " on",
+     "start": 47.77,
+     "end": 48.01
+    },
+    {
+     "word": " Monday,",
+     "start": 48.01,
+     "end": 48.37
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 14,
+   "start": 48.57,
+   "end": 52.73,
+   "text": "President Trump will travel to Michigan to deliver remarks on the economy.",
+   "words": [
+    {
+     "word": " President",
+     "start": 48.57,
+     "end": 48.85
+    },
+    {
+     "word": " Trump",
+     "start": 48.85,
+     "end": 49.07
+    },
+    {
+     "word": " will",
+     "start": 49.07,
+     "end": 49.29
+    },
+    {
+     "word": " travel",
+     "start": 49.29,
+     "end": 49.81
+    },
+    {
+     "word": " to",
+     "start": 49.81,
+     "end": 50.13
+    },
+    {
+     "word": " Michigan",
+     "start": 50.13,
+     "end": 50.77
+    },
+    {
+     "word": " to",
+     "start": 50.77,
+     "end": 51.17
+    },
+    {
+     "word": " deliver",
+     "start": 51.17,
+     "end": 51.45
+    },
+    {
+     "word": " remarks",
+     "start": 51.45,
+     "end": 51.93
+    },
+    {
+     "word": " on",
+     "start": 51.93,
+     "end": 52.19
+    },
+    {
+     "word": " the",
+     "start": 52.19,
+     "end": 52.35
+    },
+    {
+     "word": " economy.",
+     "start": 52.35,
+     "end": 52.73
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 15,
+   "start": 53.23,
+   "end": 57.25,
+   "text": "On Tuesday afternoon, the President will deliver a tribute honoring the life",
+   "words": [
+    {
+     "word": " On",
+     "start": 53.23,
+     "end": 53.57
+    },
+    {
+     "word": " Tuesday",
+     "start": 53.57,
+     "end": 53.99
+    },
+    {
+     "word": " afternoon,",
+     "start": 53.99,
+     "end": 54.61
+    },
+    {
+     "word": " the",
+     "start": 54.85,
+     "end": 55.01
+    },
+    {
+     "word": " President",
+     "start": 55.01,
+     "end": 55.23
+    },
+    {
+     "word": " will",
+     "start": 55.23,
+     "end": 55.45
+    },
+    {
+     "word": " deliver",
+     "start": 55.45,
+     "end": 55.75
+    },
+    {
+     "word": " a",
+     "start": 55.75,
+     "end": 56.03
+    },
+    {
+     "word": " tribute",
+     "start": 56.03,
+     "end": 56.27
+    },
+    {
+     "word": " honoring",
+     "start": 56.27,
+     "end": 56.67
+    },
+    {
+     "word": " the",
+     "start": 56.67,
+     "end": 56.95
+    },
+    {
+     "word": " life",
+     "start": 56.95,
+     "end": 57.25
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 16,
+   "start": 57.25,
+   "end": 60.29,
+   "text": "and legacy of his dear friend, Senator Lindsey Graham,",
+   "words": [
+    {
+     "word": " and",
+     "start": 57.25,
+     "end": 57.55
+    },
+    {
+     "word": " legacy",
+     "start": 57.55,
+     "end": 57.95
+    },
+    {
+     "word": " of",
+     "start": 57.95,
+     "end": 58.21
+    },
+    {
+     "word": " his",
+     "start": 58.21,
+     "end": 58.45
+    },
+    {
+     "word": " dear",
+     "start": 58.45,
+     "end": 58.75
+    },
+    {
+     "word": " friend,",
+     "start": 58.75,
+     "end": 59.11
+    },
+    {
+     "word": " Senator",
+     "start": 59.25,
+     "end": 59.55
+    },
+    {
+     "word": " Lindsey",
+     "start": 59.55,
+     "end": 59.91
+    },
+    {
+     "word": " Graham,",
+     "start": 59.91,
+     "end": 60.29
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 17,
+   "start": 60.29,
+   "end": 61.89,
+   "text": "at the National Cathedral.",
+   "words": [
+    {
+     "word": " at",
+     "start": 60.29,
+     "end": 60.87
+    },
+    {
+     "word": " the",
+     "start": 60.87,
+     "end": 61.01
+    },
+    {
+     "word": " National",
+     "start": 61.01,
+     "end": 61.37
+    },
+    {
+     "word": " Cathedral.",
+     "start": 61.37,
+     "end": 61.89
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 18,
+   "start": 61.89,
+   "end": 66.83,
+   "text": "And next Friday, the President will host the 13th Cabinet meeting of this term",
+   "words": [
+    {
+     "word": " And",
+     "start": 61.89,
+     "end": 62.51
+    },
+    {
+     "word": " next",
+     "start": 62.51,
+     "end": 62.81
+    },
+    {
+     "word": " Friday,",
+     "start": 62.81,
+     "end": 63.21
+    },
+    {
+     "word": " the",
+     "start": 63.43,
+     "end": 63.53
+    },
+    {
+     "word": " President",
+     "start": 63.53,
+     "end": 63.83
+    },
+    {
+     "word": " will",
+     "start": 63.83,
+     "end": 64.09
+    },
+    {
+     "word": " host",
+     "start": 64.09,
+     "end": 64.39
+    },
+    {
+     "word": " the",
+     "start": 64.39,
+     "end": 64.65
+    },
+    {
+     "word": " 13th",
+     "start": 64.65,
+     "end": 65.71
+    },
+    {
+     "word": " Cabinet",
+     "start": 65.71,
+     "end": 65.71
+    },
+    {
+     "word": " meeting",
+     "start": 65.71,
+     "end": 66.01
+    },
+    {
+     "word": " of",
+     "start": 66.01,
+     "end": 66.29
+    },
+    {
+     "word": " this",
+     "start": 66.29,
+     "end": 66.49
+    },
+    {
+     "word": " term",
+     "start": 66.49,
+     "end": 66.83
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 19,
+   "start": 66.83,
+   "end": 71.55,
+   "text": "at Camp David, which will be a lot of fun and something different for.",
+   "words": [
+    {
+     "word": " at",
+     "start": 66.83,
+     "end": 68.29
+    },
+    {
+     "word": " Camp",
+     "start": 68.29,
+     "end": 68.53
+    },
+    {
+     "word": " David,",
+     "start": 68.53,
+     "end": 69.03
+    },
+    {
+     "word": " which",
+     "start": 69.15,
+     "end": 69.39
+    },
+    {
+     "word": " will",
+     "start": 69.39,
+     "end": 69.55
+    },
+    {
+     "word": " be",
+     "start": 69.55,
+     "end": 69.79
+    },
+    {
+     "word": " a",
+     "start": 69.79,
+     "end": 69.99
+    },
+    {
+     "word": " lot",
+     "start": 69.99,
+     "end": 70.13
+    },
+    {
+     "word": " of",
+     "start": 70.13,
+     "end": 70.31
+    },
+    {
+     "word": " fun",
+     "start": 70.31,
+     "end": 70.49
+    },
+    {
+     "word": " and",
+     "start": 70.49,
+     "end": 70.67
+    },
+    {
+     "word": " something",
+     "start": 70.67,
+     "end": 70.93
+    },
+    {
+     "word": " different",
+     "start": 70.93,
+     "end": 71.31
+    },
+    {
+     "word": " for",
+     "start": 71.31,
+     "end": 71.55
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 20,
+   "start": 71.55,
+   "end": 73.15,
+   "text": "the Cabinet to experience together.",
+   "words": [
+    {
+     "word": " the",
+     "start": 71.55,
+     "end": 71.69
+    },
+    {
+     "word": " Cabinet",
+     "start": 71.69,
+     "end": 71.93
+    },
+    {
+     "word": " to",
+     "start": 71.93,
+     "end": 72.23
+    },
+    {
+     "word": " experience",
+     "start": 72.23,
+     "end": 72.67
+    },
+    {
+     "word": " together.",
+     "start": 72.67,
+     "end": 73.15
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 21,
+   "start": 73.85,
+   "end": 75.05,
+   "text": "Turning now to the economy.",
+   "words": [
+    {
+     "word": " Turning",
+     "start": 73.85,
+     "end": 74.07
+    },
+    {
+     "word": " now",
+     "start": 74.07,
+     "end": 74.39
+    },
+    {
+     "word": " to",
+     "start": 74.39,
+     "end": 74.55
+    },
+    {
+     "word": " the",
+     "start": 74.55,
+     "end": 74.69
+    },
+    {
+     "word": " economy.",
+     "start": 74.69,
+     "end": 75.05
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 22,
+   "start": 75.53,
+   "end": 79.31,
+   "text": "A little more than a year after President Trump signed the Working Families Tax.",
+   "words": [
+    {
+     "word": " A",
+     "start": 75.53,
+     "end": 75.71
+    },
+    {
+     "word": " little",
+     "start": 75.71,
+     "end": 75.87
+    },
+    {
+     "word": " more",
+     "start": 75.87,
+     "end": 76.09
+    },
+    {
+     "word": " than",
+     "start": 76.09,
+     "end": 76.23
+    },
+    {
+     "word": " a",
+     "start": 76.23,
+     "end": 76.45
+    },
+    {
+     "word": " year",
+     "start": 76.45,
+     "end": 76.63
+    },
+    {
+     "word": " after",
+     "start": 76.63,
+     "end": 77.03
+    },
+    {
+     "word": " President",
+     "start": 77.03,
+     "end": 77.43
+    },
+    {
+     "word": " Trump",
+     "start": 77.43,
+     "end": 77.71
+    },
+    {
+     "word": " signed",
+     "start": 77.71,
+     "end": 78.07
+    },
+    {
+     "word": " the",
+     "start": 78.07,
+     "end": 78.29
+    },
+    {
+     "word": " Working",
+     "start": 78.29,
+     "end": 78.57
+    },
+    {
+     "word": " Families",
+     "start": 78.57,
+     "end": 78.95
+    },
+    {
+     "word": " Tax",
+     "start": 78.95,
+     "end": 79.31
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 23,
+   "start": 79.31,
+   "end": 84.65,
+   "text": "Cuts into law, this historic legislation continues to deliver on its promise,",
+   "words": [
+    {
+     "word": " Cuts",
+     "start": 79.31,
+     "end": 79.61
+    },
+    {
+     "word": " into",
+     "start": 79.61,
+     "end": 79.95
+    },
+    {
+     "word": " law,",
+     "start": 79.95,
+     "end": 80.21
+    },
+    {
+     "word": " this",
+     "start": 80.43,
+     "end": 80.63
+    },
+    {
+     "word": " historic",
+     "start": 80.63,
+     "end": 81.29
+    },
+    {
+     "word": " legislation",
+     "start": 81.29,
+     "end": 82.01
+    },
+    {
+     "word": " continues",
+     "start": 82.01,
+     "end": 82.61
+    },
+    {
+     "word": " to",
+     "start": 82.61,
+     "end": 83.39
+    },
+    {
+     "word": " deliver",
+     "start": 83.39,
+     "end": 83.71
+    },
+    {
+     "word": " on",
+     "start": 83.71,
+     "end": 84.01
+    },
+    {
+     "word": " its",
+     "start": 84.01,
+     "end": 84.21
+    },
+    {
+     "word": " promise,",
+     "start": 84.21,
+     "end": 84.65
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 24,
+   "start": 84.97,
+   "end": 88.03,
+   "text": "unleashing a genuine boom for American workers,",
+   "words": [
+    {
+     "word": " unleashing",
+     "start": 84.97,
+     "end": 85.59
+    },
+    {
+     "word": " a",
+     "start": 85.59,
+     "end": 85.95
+    },
+    {
+     "word": " genuine",
+     "start": 85.95,
+     "end": 86.39
+    },
+    {
+     "word": " boom",
+     "start": 86.39,
+     "end": 86.87
+    },
+    {
+     "word": " for",
+     "start": 86.87,
+     "end": 87.25
+    },
+    {
+     "word": " American",
+     "start": 87.25,
+     "end": 87.65
+    },
+    {
+     "word": " workers,",
+     "start": 87.65,
+     "end": 88.03
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 25,
+   "start": 88.51,
+   "end": 89.93,
+   "text": "families, and small businesses.",
+   "words": [
+    {
+     "word": " families,",
+     "start": 88.51,
+     "end": 88.85
+    },
+    {
+     "word": " and",
+     "start": 89.07,
+     "end": 89.23
+    },
+    {
+     "word": " small",
+     "start": 89.23,
+     "end": 89.47
+    },
+    {
+     "word": " businesses.",
+     "start": 89.47,
+     "end": 89.93
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 26,
+   "start": 90.25,
+   "end": 92.11,
+   "text": "The numbers speak for themselves.",
+   "words": [
+    {
+     "word": " The",
+     "start": 90.25,
+     "end": 90.63
+    },
+    {
+     "word": " numbers",
+     "start": 90.63,
+     "end": 91.05
+    },
+    {
+     "word": " speak",
+     "start": 91.05,
+     "end": 91.45
+    },
+    {
+     "word": " for",
+     "start": 91.45,
+     "end": 91.67
+    },
+    {
+     "word": " themselves.",
+     "start": 91.67,
+     "end": 92.11
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 27,
+   "start": 92.53,
+   "end": 95.67,
+   "text": "This was the biggest tax refund season in American history,",
+   "words": [
+    {
+     "word": " This",
+     "start": 92.53,
+     "end": 92.67
+    },
+    {
+     "word": " was",
+     "start": 92.67,
+     "end": 92.87
+    },
+    {
+     "word": " the",
+     "start": 92.87,
+     "end": 93.09
+    },
+    {
+     "word": " biggest",
+     "start": 93.09,
+     "end": 93.37
+    },
+    {
+     "word": " tax",
+     "start": 93.37,
+     "end": 93.77
+    },
+    {
+     "word": " refund",
+     "start": 93.77,
+     "end": 94.15
+    },
+    {
+     "word": " season",
+     "start": 94.15,
+     "end": 94.59
+    },
+    {
+     "word": " in",
+     "start": 94.59,
+     "end": 94.85
+    },
+    {
+     "word": " American",
+     "start": 94.85,
+     "end": 95.23
+    },
+    {
+     "word": " history,",
+     "start": 95.23,
+     "end": 95.67
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 28,
+   "start": 95.67,
+   "end": 99.31,
+   "text": "with the average refund exceeding $3,400,",
+   "words": [
+    {
+     "word": " with",
+     "start": 95.67,
+     "end": 96.19
+    },
+    {
+     "word": " the",
+     "start": 96.19,
+     "end": 96.39
+    },
+    {
+     "word": " average",
+     "start": 96.39,
+     "end": 96.69
+    },
+    {
+     "word": " refund",
+     "start": 96.69,
+     "end": 97.17
+    },
+    {
+     "word": " exceeding",
+     "start": 97.17,
+     "end": 97.81
+    },
+    {
+     "word": " $3",
+     "start": 97.81,
+     "end": 98.27
+    },
+    {
+     "word": ",400,",
+     "start": 98.27,
+     "end": 99.31
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 29,
+   "start": 100.05,
+   "end": 103.17,
+   "text": "an 11 percent increase over the last year.",
+   "words": [
+    {
+     "word": " an",
+     "start": 100.05,
+     "end": 100.25
+    },
+    {
+     "word": " 11",
+     "start": 100.25,
+     "end": 100.67
+    },
+    {
+     "word": " percent",
+     "start": 100.67,
+     "end": 101.09
+    },
+    {
+     "word": " increase",
+     "start": 101.09,
+     "end": 101.57
+    },
+    {
+     "word": " over",
+     "start": 101.57,
+     "end": 102.31
+    },
+    {
+     "word": " the",
+     "start": 102.31,
+     "end": 102.57
+    },
+    {
+     "word": " last",
+     "start": 102.57,
+     "end": 102.81
+    },
+    {
+     "word": " year.",
+     "start": 102.81,
+     "end": 103.17
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 30,
+   "start": 103.83,
+   "end": 108.61,
+   "text": "American families and workers claimed $82 billion in direct tax relief,",
+   "words": [
+    {
+     "word": " American",
+     "start": 103.83,
+     "end": 104.27
+    },
+    {
+     "word": " families",
+     "start": 104.27,
+     "end": 104.71
+    },
+    {
+     "word": " and",
+     "start": 104.71,
+     "end": 105.03
+    },
+    {
+     "word": " workers",
+     "start": 105.03,
+     "end": 105.39
+    },
+    {
+     "word": " claimed",
+     "start": 105.39,
+     "end": 105.89
+    },
+    {
+     "word": " $82",
+     "start": 105.89,
+     "end": 106.43
+    },
+    {
+     "word": " billion",
+     "start": 106.43,
+     "end": 106.93
+    },
+    {
+     "word": " in",
+     "start": 107.27,
+     "end": 107.65
+    },
+    {
+     "word": " direct",
+     "start": 107.65,
+     "end": 107.93
+    },
+    {
+     "word": " tax",
+     "start": 107.93,
+     "end": 108.27
+    },
+    {
+     "word": " relief,",
+     "start": 108.27,
+     "end": 108.61
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 31,
+   "start": 108.75,
+   "end": 112.05,
+   "text": "and 97 percent of filers received a tax cut.",
+   "words": [
+    {
+     "word": " and",
+     "start": 108.75,
+     "end": 108.93
+    },
+    {
+     "word": " 97",
+     "start": 108.93,
+     "end": 109.37
+    },
+    {
+     "word": " percent",
+     "start": 109.37,
+     "end": 110.21
+    },
+    {
+     "word": " of",
+     "start": 110.21,
+     "end": 110.45
+    },
+    {
+     "word": " filers",
+     "start": 110.45,
+     "end": 110.81
+    },
+    {
+     "word": " received",
+     "start": 110.81,
+     "end": 111.21
+    },
+    {
+     "word": " a",
+     "start": 111.21,
+     "end": 111.47
+    },
+    {
+     "word": " tax",
+     "start": 111.47,
+     "end": 111.69
+    },
+    {
+     "word": " cut.",
+     "start": 111.69,
+     "end": 112.05
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 32,
+   "start": 112.59,
+   "end": 116.11,
+   "text": "More than 29 million workers claim no tax on overtime.",
+   "words": [
+    {
+     "word": " More",
+     "start": 112.59,
+     "end": 112.81
+    },
+    {
+     "word": " than",
+     "start": 112.81,
+     "end": 113.03
+    },
+    {
+     "word": " 29",
+     "start": 113.03,
+     "end": 113.51
+    },
+    {
+     "word": " million",
+     "start": 113.51,
+     "end": 114.11
+    },
+    {
+     "word": " workers",
+     "start": 114.11,
+     "end": 114.49
+    },
+    {
+     "word": " claim",
+     "start": 114.49,
+     "end": 114.83
+    },
+    {
+     "word": " no",
+     "start": 114.83,
+     "end": 115.05
+    },
+    {
+     "word": " tax",
+     "start": 115.05,
+     "end": 115.41
+    },
+    {
+     "word": " on",
+     "start": 115.41,
+     "end": 115.67
+    },
+    {
+     "word": " overtime.",
+     "start": 115.67,
+     "end": 116.11
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 33,
+   "start": 116.55,
+   "end": 120.67,
+   "text": "More than 35 million seniors claimed no tax on Social Security,",
+   "words": [
+    {
+     "word": " More",
+     "start": 116.55,
+     "end": 116.75
+    },
+    {
+     "word": " than",
+     "start": 116.75,
+     "end": 116.99
+    },
+    {
+     "word": " 35",
+     "start": 116.99,
+     "end": 117.41
+    },
+    {
+     "word": " million",
+     "start": 117.41,
+     "end": 117.97
+    },
+    {
+     "word": " seniors",
+     "start": 117.97,
+     "end": 118.47
+    },
+    {
+     "word": " claimed",
+     "start": 118.47,
+     "end": 118.93
+    },
+    {
+     "word": " no",
+     "start": 118.93,
+     "end": 119.21
+    },
+    {
+     "word": " tax",
+     "start": 119.21,
+     "end": 119.57
+    },
+    {
+     "word": " on",
+     "start": 119.57,
+     "end": 119.83
+    },
+    {
+     "word": " Social",
+     "start": 119.83,
+     "end": 120.13
+    },
+    {
+     "word": " Security,",
+     "start": 120.13,
+     "end": 120.67
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 34,
+   "start": 121.11,
+   "end": 124.53,
+   "text": "and nearly 8 million workers claimed no tax on tips.",
+   "words": [
+    {
+     "word": " and",
+     "start": 121.11,
+     "end": 121.23
+    },
+    {
+     "word": " nearly",
+     "start": 121.23,
+     "end": 121.51
+    },
+    {
+     "word": " 8",
+     "start": 121.51,
+     "end": 121.89
+    },
+    {
+     "word": " million",
+     "start": 121.89,
+     "end": 122.35
+    },
+    {
+     "word": " workers",
+     "start": 122.35,
+     "end": 122.81
+    },
+    {
+     "word": " claimed",
+     "start": 122.81,
+     "end": 123.23
+    },
+    {
+     "word": " no",
+     "start": 123.23,
+     "end": 123.53
+    },
+    {
+     "word": " tax",
+     "start": 123.53,
+     "end": 123.89
+    },
+    {
+     "word": " on",
+     "start": 123.89,
+     "end": 124.17
+    },
+    {
+     "word": " tips.",
+     "start": 124.17,
+     "end": 124.53
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 35,
+   "start": 125.15,
+   "end": 129.51,
+   "text": "Thanks to the other pro-growth provisions in the Working Families Tax Cuts,",
+   "words": [
+    {
+     "word": " Thanks",
+     "start": 125.15,
+     "end": 125.33
+    },
+    {
+     "word": " to",
+     "start": 125.33,
+     "end": 125.51
+    },
+    {
+     "word": " the",
+     "start": 125.51,
+     "end": 125.65
+    },
+    {
+     "word": " other",
+     "start": 125.65,
+     "end": 125.91
+    },
+    {
+     "word": " pro",
+     "start": 125.91,
+     "end": 126.13
+    },
+    {
+     "word": "-growth",
+     "start": 126.13,
+     "end": 127.19
+    },
+    {
+     "word": " provisions",
+     "start": 127.19,
+     "end": 127.81
+    },
+    {
+     "word": " in",
+     "start": 127.81,
+     "end": 128.11
+    },
+    {
+     "word": " the",
+     "start": 128.11,
+     "end": 128.25
+    },
+    {
+     "word": " Working",
+     "start": 128.25,
+     "end": 128.51
+    },
+    {
+     "word": " Families",
+     "start": 128.51,
+     "end": 128.81
+    },
+    {
+     "word": " Tax",
+     "start": 128.81,
+     "end": 129.19
+    },
+    {
+     "word": " Cuts,",
+     "start": 129.19,
+     "end": 129.51
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 36,
+   "start": 129.77,
+   "end": 134.73,
+   "text": "like making the 20 percent small business tax deduction permanent and delivering 100 percent",
+   "words": [
+    {
+     "word": " like",
+     "start": 129.77,
+     "end": 130.01
+    },
+    {
+     "word": " making",
+     "start": 130.01,
+     "end": 130.35
+    },
+    {
+     "word": " the",
+     "start": 130.35,
+     "end": 130.55
+    },
+    {
+     "word": " 20",
+     "start": 130.55,
+     "end": 130.81
+    },
+    {
+     "word": " percent",
+     "start": 130.81,
+     "end": 131.17
+    },
+    {
+     "word": " small",
+     "start": 131.17,
+     "end": 131.43
+    },
+    {
+     "word": " business",
+     "start": 131.43,
+     "end": 131.79
+    },
+    {
+     "word": " tax",
+     "start": 131.79,
+     "end": 132.11
+    },
+    {
+     "word": " deduction",
+     "start": 132.11,
+     "end": 132.63
+    },
+    {
+     "word": " permanent",
+     "start": 132.63,
+     "end": 133.03
+    },
+    {
+     "word": " and",
+     "start": 133.03,
+     "end": 133.31
+    },
+    {
+     "word": " delivering",
+     "start": 133.31,
+     "end": 133.69
+    },
+    {
+     "word": " 100",
+     "start": 133.69,
+     "end": 134.29
+    },
+    {
+     "word": " percent",
+     "start": 134.29,
+     "end": 134.73
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 37,
+   "start": 134.73,
+   "end": 137.15,
+   "text": "expensing for new factories, equipment, and research,",
+   "words": [
+    {
+     "word": " expensing",
+     "start": 134.73,
+     "end": 135.21
+    },
+    {
+     "word": " for",
+     "start": 135.21,
+     "end": 135.43
+    },
+    {
+     "word": " new",
+     "start": 135.43,
+     "end": 135.63
+    },
+    {
+     "word": " factories,",
+     "start": 135.63,
+     "end": 136.05
+    },
+    {
+     "word": " equipment,",
+     "start": 136.27,
+     "end": 136.47
+    },
+    {
+     "word": " and",
+     "start": 136.49,
+     "end": 136.75
+    },
+    {
+     "word": " research,",
+     "start": 136.75,
+     "end": 137.15
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 38,
+   "start": 137.65,
+   "end": 143.63,
+   "text": "the Trump administration is setting up American manufacturers and workers to thrive like never before.",
+   "words": [
+    {
+     "word": " the",
+     "start": 137.65,
+     "end": 137.79
+    },
+    {
+     "word": " Trump",
+     "start": 137.79,
+     "end": 138.03
+    },
+    {
+     "word": " administration",
+     "start": 138.03,
+     "end": 138.43
+    },
+    {
+     "word": " is",
+     "start": 138.43,
+     "end": 138.93
+    },
+    {
+     "word": " setting",
+     "start": 138.93,
+     "end": 139.15
+    },
+    {
+     "word": " up",
+     "start": 139.15,
+     "end": 139.45
+    },
+    {
+     "word": " American",
+     "start": 139.45,
+     "end": 139.91
+    },
+    {
+     "word": " manufacturers",
+     "start": 139.91,
+     "end": 140.57
+    },
+    {
+     "word": " and",
+     "start": 140.57,
+     "end": 140.89
+    },
+    {
+     "word": " workers",
+     "start": 140.89,
+     "end": 141.25
+    },
+    {
+     "word": " to",
+     "start": 141.25,
+     "end": 141.87
+    },
+    {
+     "word": " thrive",
+     "start": 141.87,
+     "end": 142.33
+    },
+    {
+     "word": " like",
+     "start": 142.33,
+     "end": 142.69
+    },
+    {
+     "word": " never",
+     "start": 142.69,
+     "end": 143.03
+    },
+    {
+     "word": " before.",
+     "start": 143.03,
+     "end": 143.63
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 39,
+   "start": 144.23,
+   "end": 147.27,
+   "text": "Just this week, the National Association of Manufacturers,",
+   "words": [
+    {
+     "word": " Just",
+     "start": 144.23,
+     "end": 144.45
+    },
+    {
+     "word": " this",
+     "start": 144.45,
+     "end": 144.71
+    },
+    {
+     "word": " week,",
+     "start": 144.71,
+     "end": 144.93
+    },
+    {
+     "word": " the",
+     "start": 145.05,
+     "end": 145.19
+    },
+    {
+     "word": " National",
+     "start": 145.19,
+     "end": 145.67
+    },
+    {
+     "word": " Association",
+     "start": 145.67,
+     "end": 146.29
+    },
+    {
+     "word": " of",
+     "start": 146.29,
+     "end": 146.53
+    },
+    {
+     "word": " Manufacturers,",
+     "start": 146.53,
+     "end": 147.27
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 40,
+   "start": 147.27,
+   "end": 150.63,
+   "text": "which is the largest manufacturing association in the country,",
+   "words": [
+    {
+     "word": " which",
+     "start": 147.27,
+     "end": 147.49
+    },
+    {
+     "word": " is",
+     "start": 147.49,
+     "end": 147.63
+    },
+    {
+     "word": " the",
+     "start": 147.63,
+     "end": 147.85
+    },
+    {
+     "word": " largest",
+     "start": 147.85,
+     "end": 148.27
+    },
+    {
+     "word": " manufacturing",
+     "start": 148.27,
+     "end": 149.03
+    },
+    {
+     "word": " association",
+     "start": 149.03,
+     "end": 149.69
+    },
+    {
+     "word": " in",
+     "start": 149.69,
+     "end": 150.09
+    },
+    {
+     "word": " the",
+     "start": 150.09,
+     "end": 150.21
+    },
+    {
+     "word": " country,",
+     "start": 150.21,
+     "end": 150.63
+    }
+   ],
+   "sent": true
+  },
+  {
+   "idx": 41,
+   "start": 150.91,
+   "end": 151.57,
+   "text": "released a.",
+   "words": [
+    {
+     "word": " released",
+     "start": 150.91,
+     "end": 151.33
+    },
+    {
+     "word": " a",
+     "start": 151.33,
+     "end": 151.57
+    }
+   ],
+   "sent": true
+  }
+ ],
+ "resegmented": {
+  "by": "fixture",
+  "tag": "llm-v1"
+ }
+}

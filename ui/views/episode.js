@@ -2280,6 +2280,26 @@ function saveTrCache(epId, obj) {
 function resegment(segments) {
   // Whisper segment 는 문장 경계를 무시한 ~5초 덩어리다. 단어 타임스탬프를 모아
   // 구두점 기준으로 진짜 "문장"으로 재분할한다(정확한 start/end 보존) → 싱크·스크롤 정확도↑.
+  //
+  // ⓪ 신뢰 모드 — scripts/resegment_llm.py 가 로컬 LLM 으로 경계를 다시 잡아 저장한 transcript 는
+  // segment 하나가 이미 '문장'이고 `sent: true` 표식이 있다. 그때는 아래 규칙을 다시 적용하지
+  // 않는다: 규칙의 14어절·9초 상한은 구두점 없는 자막에서 문장 한복판을 자르는 바로 그 경로라,
+  // LLM 이 살린 문장을 도로 자르게 된다(사용자 신고 "끊어짐이 어색하다·싱크가 안 맞는다"의 원인).
+  // 전부 표식일 때만 믿는다 — 섞여 있으면 어느 경계가 검증된 건지 모르므로 규칙으로 간다.
+  // scripts/translate_transcripts.py resegment 의 같은 블록과 1:1 (파리티 픽스처 10554 가 고정).
+  const segsIn = segments || [];
+  if (segsIn.length && segsIn.every((s) => s && s.sent === true)) {
+    return segsIn.map((seg) => {
+      const ws = (seg.words || []).filter((w) => w.word != null)
+        .map((w) => ({ word: w.word, start: w.start ?? seg.start, end: w.end ?? seg.end }));
+      // 저장된 text 를 그대로 쓴다 — 스크립트가 '문장 끝'에만 마침표를 붙였고 절 조각에는 안 붙였다.
+      // 여기서 다시 붙이면 "upstairs in the." 같은 가짜 종결이 생긴다.
+      const text = (seg.text || (ws.length ? ws.map((x) => x.word).join('') : '')).trim();
+      const st = ws.map((w) => w.start).filter((v) => typeof v === 'number');
+      const en = ws.map((w) => w.end).filter((v) => typeof v === 'number');
+      return { start: st.length ? Math.min(...st) : seg.start, end: en.length ? Math.max(...en) : seg.end, words: ws, text };
+    });
+  }
   const words = [];
   for (const seg of segments || []) {
     if (seg.words && seg.words.length) {
