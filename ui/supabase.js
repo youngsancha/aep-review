@@ -1,5 +1,7 @@
 // Supabase JS 클라이언트 (빌드 무필요 — ESM CDN import).
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// 셀프호스팅 단일 파일 번들(scripts/vendor_supabase.sh). esm.sh 의 떠다니는 @2 포인터 + 17개 파일
+// import 체인이 오프라인 부팅을 깨뜨렸다(v? + 스켈레톤) — 근거는 그 스크립트 상단 주석.
+import { createClient } from '/vendor/supabase-js.mjs';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '/config.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

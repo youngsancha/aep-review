@@ -8,16 +8,18 @@
 //       살아있는데 자막만 사라짐 — 원인이 이것).
 //     · 하위 규칙 ②b: '핀(자동 프리페치 대상 + 수동 다운로드)' 회차의 회차행(REST)·자막 응답은
 //       DOC_CACHE 에도 함께 저장돼 DATA_CACHE 의 무관한 트래픽에 밀려도 살아남는다(아래 참고).
-//  ③ esm.sh 벤더 모듈(supabase-js) → stale-while-revalidate — 이게 없으면 오프라인 부팅 불가.
+//  ③ (폐지) esm.sh 벤더 모듈 — supabase-js 는 /vendor/ 셀프호스팅 번들로 SHELL 에 들어간다.
+//     esm.sh 의 떠다니는 @2 포인터는 SWR 가 진입 파일만 갈아 두고 새 하위 모듈은 못 받아 다음
+//     오프라인 부팅을 깨뜨렸다(v? + 스켈레톤). 근거: scripts/vendor_supabase.sh 상단 주석.
 //  ④ R2 회차 오디오 → 캐시 우선(offline.js 가 최근 회차를 미리 저장). CORS(읽기가능) 캐시는
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.72.0';
+const VERSION = '1.73.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
-const VENDOR_CACHE = 'aep-review-vendor-v1';
+// (구) 'aep-review-vendor-v1' — KEEP 에서 빠졌으므로 다음 activate 가 지운다.
 const AUDIO_CACHE = 'aep-review-audio-v1';
 const IMG_CACHE = 'aep-review-img-v1';
 // 사전생성 TTS mp3 전용 캐시 — 파일명이 sha1(voice|rate|text) 라 히트는 절대 stale 일 수 없다
@@ -49,25 +51,41 @@ function pinnedEpisodeIdFor(url) {
   return m2 ? Number(m2[1]) : null;
 }
 const Q = '?v=' + VERSION;
-const SHELL = [
+// 부팅에 필수인 파일. 하나라도 못 받으면 install 자체를 실패시킨다(아래) — 반쪽 셸을 설치하고
+// skipWaiting 하면 다음 오프라인 부팅이 모듈 하나 때문에 통째로 죽는데, 실패시키면 이전 SW 가 온전한
+// 옛 셸을 계속 서빙하고 브라우저가 다음 기회에 다시 설치를 시도한다.
+const SHELL_CRITICAL = [
   '/', '/index.html', '/manifest.json',
   '/style.css' + Q,
   '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/scrub.js' + Q,
   '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q, '/clip.js' + Q, '/convo.js' + Q, '/translate.js' + Q, '/marks.js' + Q, '/settings.js' + Q, '/proficiency.js' + Q, '/offline.js' + Q, '/offline-pins.js' + Q,
   '/views/timeline.js' + Q, '/views/episode.js' + Q, '/views/srs.js' + Q, '/views/study.js' + Q, '/views/login.js' + Q,
-  '/views/essentials.js' + Q, '/data/essentials.json',
+  '/views/essentials.js' + Q,
+  '/vendor/supabase-js.mjs' + Q,
+];
+// 없어도 앱은 뜨는 파일(아이콘·정적 데이터) — 실패해도 install 은 계속.
+const SHELL_OPTIONAL = [
+  '/data/essentials.json',
   '/icons/icon-64.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/wh-cover.png?v=1',
 ];
+const SHELL = [...SHELL_CRITICAL, ...SHELL_OPTIONAL];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    await Promise.all(SHELL.map(async (url) => {
+    // 필수 파일은 전부 받은 뒤에만 캐시에 쓴다(all-or-nothing). 도중 실패 → throw → install 실패.
+    const critical = await Promise.all(SHELL_CRITICAL.map(async (url) => {
+      const res = await fetch(url, {cache: 'reload'});
+      if (!res || !res.ok) throw new Error('SW install: ' + url + ' → ' + (res && res.status));
+      return [url, res];
+    }));
+    await Promise.all(critical.map(([url, res]) => cache.put(url, res)));
+    await Promise.all(SHELL_OPTIONAL.map(async (url) => {
       try {
         const res = await fetch(url, {cache: 'reload'});
         if (res && res.ok) await cache.put(url, res.clone());
       } catch (err) {
-        console.warn('SW install fetch fail', url, err);
+        console.warn('SW install fetch fail (optional)', url, err);
       }
     }));
     self.skipWaiting();
@@ -79,7 +97,7 @@ self.addEventListener('activate', (e) => {
     caches.keys()
       // 현재 셸 + 영속 캐시(데이터/벤더/오디오/이미지)만 남기고 옛 셸 캐시 제거.
       .then((keys) => {
-        const KEEP = new Set([CACHE, DATA_CACHE, VENDOR_CACHE, AUDIO_CACHE, IMG_CACHE, TTS_CACHE, DOC_CACHE]);
+        const KEEP = new Set([CACHE, DATA_CACHE, AUDIO_CACHE, IMG_CACHE, TTS_CACHE, DOC_CACHE]);
         return Promise.all(keys.filter((k) => !KEEP.has(k)).map((k) => caches.delete(k)));
       })
       .then(() => self.clients.claim())
@@ -213,18 +231,6 @@ async function ttsCacheFirst(req) {
   return res;
 }
 
-// esm.sh 벤더 모듈(supabase-js 등): stale-while-revalidate.
-// 첫 제어 로드에서 캐시된 뒤로는 오프라인에서도 모듈 import 가 성공해 앱이 부팅된다.
-async function vendorSWR(req) {
-  const cache = await caches.open(VENDOR_CACHE);
-  const cached = await cache.match(req.url, { ignoreVary: true });
-  const network = fetch(req).then((res) => {
-    if (res && res.status === 200) cache.put(req.url, res.clone()).catch(() => {});
-    return res;
-  }).catch(() => null);
-  return cached || (await network) || Response.error();
-}
-
 // 쇼 커버(imgix): cache-first. <img> 는 no-cors 라 opaque 응답도 그대로 표시 가능.
 async function imageCacheFirst(req) {
   const cache = await caches.open(IMG_CACHE);
@@ -328,12 +334,6 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // ③ esm.sh 벤더 모듈(supabase-js) — 캐시해 두면 오프라인에서도 앱이 부팅된다.
-  if (url.hostname === 'esm.sh') {
-    e.respondWith(vendorSWR(req));
-    return;
-  }
-
   // ④ 쇼 커버(imgix) — 오프라인 라이브러리/로그인 화면용 cache-first.
   if (url.hostname === 'megaphone.imgix.net') {
     e.respondWith(imageCacheFirst(req));
@@ -389,6 +389,11 @@ self.addEventListener('fetch', (e) => {
       }
       return res;
     }).catch(() => null);
-    return cached || (await networkPromise) || cache.match('/index.html');
+    // JS/CSS 를 못 찾았을 때 index.html 로 대신하면 브라우저는 MIME 오류만 남기고 진짜 원인(캐시에 없는
+    // 모듈)이 가려진다. 문서 요청만 셸로 폴백하고, 나머지는 네트워크 오류 그대로 낸다.
+    if (cached) return cached;
+    const net = await networkPromise;
+    if (net) return net;
+    return req.destination === 'document' ? ((await cache.match('/index.html')) || Response.error()) : Response.error();
   })());
 });

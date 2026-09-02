@@ -186,20 +186,6 @@ export async function removeEpisodeAudio(id) {
   } catch (e) { return false; }
 }
 
-// 벤더 모듈(esm.sh) 워밍 — 최초 방문은 SW 미제어 로드라 캐시가 비어 있을 수 있다.
-// 페이지가 SW 제어 하일 때 fetch 하면 SW 의 vendorSWR 가 VENDOR_CACHE 에 채운다.
-// esm.sh 출력은 상대경로 import 체인이라 얕은 재귀(깊이 3)로 하위 모듈까지 따라간다.
-async function warmVendor(url, depth = 0, seen = new Set()) {
-  if (seen.has(url) || depth > 3) return;
-  seen.add(url);
-  try {
-    const res = await fetch(url);
-    const txt = await res.text();
-    const subs = [...txt.matchAll(/(?:from|import)\s*"(\/[^"]+)"/g)].map((m) => 'https://esm.sh' + m[1]);
-    for (const u of subs) await warmVendor(u, depth + 1, seen);
-  } catch (e) { /* 오프라인/일시 오류 — 다음 부팅에서 재시도 */ }
-}
-
 let _ran = false;
 export async function ensureOfflineCache() {
   if (_ran) return;              // 세션당 1회
@@ -212,13 +198,6 @@ export async function ensureOfflineCache() {
     return;
   }
   try { navigator.storage?.persist?.(); } catch (e) {}                  // 브라우저 임의 축출 방지
-
-  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    // 벤더 모듈이 이미 캐시돼 있으면 재다운로드하지 않는다(매 부팅 ~100–200KB 재요청 제거).
-    let vkeys = [];
-    try { vkeys = await (await caches.open('aep-review-vendor-v1')).keys(); } catch (e) {}
-    if (!vkeys.length) await warmVendor('https://esm.sh/@supabase/supabase-js@2');
-  }
 
   // R2 호스팅(자막=오디오 일치 보장) 회차만 대상 — megaphone(DAI)은 세션마다 광고가 달라 캐시 무의미.
   let items, hosted;
