@@ -146,3 +146,10 @@
   - 메모: v1.72.0 배포됨. iOS Safari 는 SpeechRecognition 미지원이라 녹음-비교로만 떨어짐. 점수 가중치(표현0.35/길이0.25/지연0.2/유창0.2)와 목표치(8단어·2초·100-170wpm)는 ui/convo.js 상단 상수 하나로 조정 가능
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:6bfef83d-8d92-4e8a-a316-23105ae3cbd2 -->
+
+## 2026-09-02 09:00 넘어옴
+
+- [ ] **P2** cnn10 back catalogue 한국어 번역 마무리 (약 69,000문장) — ollama 백엔드로 이어서
+  - 메모: 오프라인 창 15편은 2026-09-01 자동 백필 중. 나머지는: cd ~/projects/aep-review && AEP_LLM_BACKEND=ollama SUPABASE_URL=... SUPABASE_SERVICE_KEY=... .venv/bin/python -m scripts.translate_transcripts --show cnn10 (멱등, 과금 0, 한도 0, 약 4.6s/문장). 진행 확인은 python -m scripts.audit_ko_coverage --all
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:d2a69108-f4ca-4e7a-9d8a-6eb77ad64454 -->
