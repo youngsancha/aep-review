@@ -21,13 +21,15 @@ def glyph():
     white.putalpha(alpha)
     return white.crop(alpha.getbbox())   # tight to the mark
 
-def make(g, size, frac):
+def make(g, size, frac, dy=0):
     cv = Image.new("RGBA", (size, size), BG + (255,))
     gw, gh = g.size
     th = round(size * frac); tw = round(th * gw / gh)
     if tw > size * frac:                 # keep width in frame too
         tw = round(size * frac); th = round(tw * gh / gw)
-    cv.alpha_composite(g.resize((tw, th), Image.LANCZOS), ((size - tw) // 2, (size - th) // 2))
+    # dy nudges the mark DOWN: the wave rings carry the visual mass high, so a
+    # bbox-centered mark still reads as sitting too high. dy re-centers the mass.
+    cv.alpha_composite(g.resize((tw, th), Image.LANCZOS), ((size - tw) // 2, (size - th) // 2 + round(dy)))
     return cv.convert("RGB")
 
 def main():
@@ -37,8 +39,11 @@ def main():
     # (~80% dia) without touching it -> 0.76 of the frame on the long axis.
     for size in (64, 192, 512):
         make(g, size, 0.90).save(HERE / f"icon-{size}.png", "PNG", optimize=True)
-    make(g, 512, 0.76).save(HERE / "icon-maskable-512.png", "PNG", optimize=True)
-    print("wrote icon-64/192/512 (0.90) + icon-maskable-512 (0.76)")
+    # maskable: home-screen icon. Slightly smaller (0.70) and nudged down (dy=25) so
+    # the wave-heavy mark reads as vertically centered inside the launcher mask while
+    # staying 100% inside the 80%-dia safe circle (grid-verified: 0% clipped).
+    make(g, 512, 0.70, dy=25).save(HERE / "icon-maskable-512.png", "PNG", optimize=True)
+    print("wrote icon-64/192/512 (0.90) + icon-maskable-512 (0.70, dy=25)")
 
 if __name__ == "__main__":
     main()
