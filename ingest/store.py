@@ -59,7 +59,12 @@ def r2():
     ak = os.environ.get("R2_ACCESS_KEY_ID")
     sk = os.environ.get("R2_SECRET_ACCESS_KEY")
     if not (ep and ak and sk):
-        raise SystemExit("R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 가 환경에 없습니다.")
+        # ⚠ SystemExit 이 아니라 RuntimeError 다. 유일한 파이프라인 호출부
+        # (ingest/transcribe.py) 는 이 실패를 "치명적이지 않다"고 보고 except Exception
+        # 으로 감싸 megaphone 폴백을 남긴다. 그런데 SystemExit 은 Exception 이 아니라
+        # BaseException 이라 그 except 를 그냥 통과해 잡을 통째로 죽였다 — 실측 2026-08-29
+        # ~09-06, 매일 첫 에피소드 STT 직후 exit 1 로 끝나 50분 예산이 1편만 처리했다.
+        raise RuntimeError("R2_ENDPOINT / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY 가 환경에 없습니다.")
     return boto3.client("s3", endpoint_url=ep, aws_access_key_id=ak, aws_secret_access_key=sk,
                         region_name="auto", config=Config(signature_version="s3v4", retries={"max_attempts": 3}))
 

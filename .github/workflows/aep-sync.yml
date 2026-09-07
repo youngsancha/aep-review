@@ -54,6 +54,12 @@ jobs:
           AEP_WHISPER_DEVICE: cpu
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # STT 직후 '바로 그 오디오'를 R2 에 올리는 경로(ingest/transcribe.py)가 쓴다.
+          # 없으면 store.r2() 가 죽고, 매 회차 첫 에피소드에서 잡이 통째로 끝난다.
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         # 건수(--limit)가 아니라 *시간* 으로 제한한다. CI job 은 시간으로 잘리므로 건수로 세면
         # 마지막 에피소드가 STT 도중 강제 종료되고 그 연산이 통째로 버려진다(실측: 매일 발생).
         # 예산 50분 + 셋업 ≈ 6분 < timeout 60분.

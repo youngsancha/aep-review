@@ -102,6 +102,11 @@ jobs:
           AEP_WHISPER_DEVICE: cpu
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # aep-sync 와 같은 이유 — cron_fetch 는 STT 한 파일을 그대로 R2 에 올린다.
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
           SHOW: ${{ inputs.show }}
         # --no-rss: 백로그 전용 (RSS 적재는 aep-sync 담당).
         # --no-vocab: vocab 큐는 샤딩되지 않아 병렬 샤드가 중복 추출한다.
