@@ -10,9 +10,21 @@
 # 사용자가 겪은 '직역'의 대부분은 번역 품질이 아니라 번역의 부재였다. A 한 번이 43%의 줄을
 # 그 경로에서 꺼낸다 — 호출당 효용이 B 보다 압도적으로 크다.
 #
-# ⚠ 이 잡은 claude CLI 를 쓴다 = API 비용 0, Claude 구독 쿼터 소모. 호출당 ~1.5분이라 전체가
-#   길다 → LaunchAgent(com.roy.aep-ko-quality)로 돌린다. macOS 엔 setsid 가 없어서 셸에서
-#   띄운 장시간 잡은 그 셸 세션과 함께 죽는다(2026-08-07 백악관 인제스트가 그렇게 죽었다).
+# ⚠ 백엔드는 Gemini(Vertex · roy-ai-credit)다 — 아래에서 AEP_LLM_BACKEND=gemini 를 강제한다.
+#   2026-09-10 까지 이 잡은 claude CLI 를 썼다. 여기 'API 비용 0'이라고 적혀 있었고 청구서
+#   기준으로는 사실이지만, 대신 Claude 주간 구독 쿼터를 쓴다 — 실측: 09-10 하루 2,269 회
+#   호출이 그 주 쿼터의 53.7% 를 먹었다. `claude -p` 는 매 호출이 새 프로세스 = 새 프롬프트
+#   캐시라, 호출당 26.8k 토큰을 캐시에 쓰고 1.8 턴 쓰고 버린다. 그 캐시 쓰기만 주간의 29.5%
+#   였고 실제 번역 결과물은 이 잡 비용의 34% 에 불과했다.
+#   ⛔ auto 로 두지 말 것 — auto 는 'claude 가 PATH 에 있으면 claude'라, 이 Mac 에선 조용히
+#      예전 동작으로 되돌아간다. 반드시 gemini 여야 한다.
+#   ⛔ .env.local 을 읽는 단계가 없으면 Gemini 는 자격증명이 없어 첫 호출부터 죽는다. 예전엔
+#      SUPABASE_* 만 ccsecret 으로 가져왔고 .env.local 은 아예 소스하지 않았다.
+#   비교 실행이 필요하면 AEP_LLM_BACKEND=claude-cli 로 한 번만 덮어쓸 수 있다.
+#
+#   호출당 ~1.5분이라 전체가 길다 → LaunchAgent(com.roy.aep-ko-quality)로 돌린다. macOS 엔
+#   setsid 가 없어서 셸에서 띄운 장시간 잡은 그 셸 세션과 함께 죽는다(2026-08-07 백악관
+#   인제스트가 그렇게 죽었다).
 #
 # 멱등·재개: 두 단계 모두 체크포인트가 있다. 언제 끊겨도 다시 실행하면 이어서 한다.
 #   A = _ko.json 에 이미 있는 키는 건너뜀 · B = 완료 회차 목록 파일(ko_refine_done_*.txt)
@@ -32,7 +44,9 @@ CCSECRET="${CCSECRET:-$HOME/.local/bin/ccsecret}"
 PROJECT="aep-review"
 PER_SHOW="${1:-50}"
 SHARDS="${2:-4}"
+# MODEL 은 claude CLI 경로에서만 쓰인다(--model). Gemini 는 GEMINI_MODEL_QUALITY 를 본다.
 MODEL="${MODEL:-sonnet}"
+BACKEND="${AEP_LLM_BACKEND:-gemini}"; export AEP_LLM_BACKEND="$BACKEND"
 STATE="$HOME/Library/Application Support/aep-review"
 LOG="$HOME/Library/Logs/aep-ko-quality.log"
 LOCK="$STATE/ko-quality.lock"
@@ -55,7 +69,21 @@ cleanup() { rm -rf "$LOCK"; }
 trap cleanup EXIT INT TERM
 
 [ -x "$PY" ] || { say "missing venv at $PY"; exit 1; }
-command -v claude >/dev/null || { say "claude CLI not on PATH"; exit 1; }
+if [ "$BACKEND" = "claude-cli" ]; then
+  command -v claude >/dev/null || { say "claude CLI not on PATH"; exit 1; }
+fi
+
+# Gemini 자격증명은 .env.local 에만 있다. 화이트리스트로만 읽는다 — set -a 로 통째로
+# 소스하면 VERCEL_OIDC_TOKEN 같은 무관한 값까지 환경에 올라온다. 이미 설정된 값은 덮지 않는다.
+if [ -f "$ROOT/.env.local" ]; then
+  for v in GOOGLE_APPLICATION_CREDENTIALS GOOGLE_VERTEX_PROJECT GOOGLE_VERTEX_LOCATION \
+           GEMINI_MODEL_FAST GEMINI_MODEL_QUALITY; do
+    if [ -z "${!v:-}" ]; then
+      val="$(grep -m1 "^$v=" "$ROOT/.env.local" 2>/dev/null | cut -d= -f2-)"
+      [ -n "$val" ] && export "$v=$val"
+    fi
+  done
+fi
 
 for v in SUPABASE_URL SUPABASE_SERVICE_KEY; do
   if [ -z "${!v:-}" ] && [ -x "$CCSECRET" ]; then
@@ -66,6 +94,13 @@ done
 [ -n "${SUPABASE_SERVICE_KEY:-}" ] || { say "SUPABASE_SERVICE_KEY 없음 — 중단"; exit 1; }
 
 cd "$ROOT" || exit 1
+# 백엔드 프리플라이트. 없으면 샤드마다 12연속 실패(MAX_CONSECUTIVE_FAILS)를 쌓고 rc=2 로 끝나
+# LaunchAgent 가 이를 '쿼터로 멈춤'으로 오해해 계속 다시 깨운다 — 설정 오류가 재시도 루프가 된다.
+if [ "$BACKEND" = "gemini" ]; then
+  "$PY" -c 'import sys; from ingest.gemini_client import configured; sys.exit(0 if configured() else 1)' \
+    || { say "Gemini 미설정(GOOGLE_APPLICATION_CREDENTIALS/GOOGLE_VERTEX_PROJECT) — 중단"; exit 1; }
+fi
+say "백엔드: $BACKEND"
 
 # 대상 목록은 매 실행 시 다시 만든다 — 새 회차가 들어오면 자동으로 포함된다.
 say "=== 대상 목록 생성: 쇼별 최근 ${PER_SHOW}편 ==="
