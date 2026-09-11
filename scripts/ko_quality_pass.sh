@@ -44,7 +44,10 @@ CCSECRET="${CCSECRET:-$HOME/.local/bin/ccsecret}"
 PROJECT="aep-review"
 PER_SHOW="${1:-50}"
 SHARDS="${2:-4}"
-# MODEL 은 claude CLI 경로에서만 쓰인다(--model). Gemini 는 GEMINI_MODEL_QUALITY 를 본다.
+# MODEL 은 claude CLI 경로에서만 쓰인다(--model).
+# ⚠ Gemini 쪽 모델은 여기서 못 고른다. gemini_client.model_name() 이 GEMINI_MODEL_FAST 만
+#   읽고 call_gemini() 에는 model 인자가 아예 없다 — .env.local 의 GEMINI_MODEL_QUALITY 는
+#   현재 아무도 읽지 않는 죽은 설정이다. 그래서 이 품질 패스도 2.5-flash 로 돈다.
 MODEL="${MODEL:-sonnet}"
 BACKEND="${AEP_LLM_BACKEND:-gemini}"; export AEP_LLM_BACKEND="$BACKEND"
 STATE="$HOME/Library/Application Support/aep-review"
