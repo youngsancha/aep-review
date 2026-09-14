@@ -209,6 +209,12 @@ def trkey(text: str) -> str:
 
 # ─────────────────────────── claude (문맥 인지 번역) ───────────────────────────
 def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
+    # ⛔ 2026-09-13: refine 패스가 이 함수를 직접 불러 Gemini 스위치를 우회했고, 하룻밤 696회의
+    # `claude -p` 가 주간 구독 한도의 6%p 를 태웠다. Claude CLI 는 명시적 opt-in 일 때만 허용한다.
+    if (os.environ.get("AEP_LLM_BACKEND") or "").strip().lower() != "claude-cli":
+        raise ClaudeUnavailable(
+            "claude -p refused: set AEP_LLM_BACKEND=claude-cli explicitly to spend the Claude "
+            "subscription quota (the default backend is gemini)")
     # 모델을 지정하지 않으면 CLI 기본값(=세션 모델, 보통 opus)을 상속한다. 번역은 추론이 아니라
     # 변환 작업이라 상위 모델이 꼭 필요하지 않다 → --model 로 낮춰 쿼터를 아낀다(_MODEL).
     cmd = ["claude", "-p", "--output-format", "json"]
@@ -231,16 +237,16 @@ def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
 def _call_llm(prompt: str, timeout_sec: int = 300, n_lines: int = 0) -> dict:
     """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약(AEP_LLM_BACKEND).
 
-      (미설정)/"claude-cli" → `claude -p` (기존 동작 그대로, Max 구독이라 과금 0)
-      "gemini"             → HTTP. claude CLI 가 못 뜨는 cron/CI 에서 번역을 살린다.
+      (미설정)/"gemini"    → HTTP (기본값). Claude 구독 한도를 쓰지 않는다.
+      "claude-cli"         → `claude -p`. 명시적 opt-in 전용 — 주간 구독 한도를 쓴다(2026-09-13 누수).
       "ollama"             → 로컬 LLM. 과금 0 · Claude 한도 0 — 8만 문장 백필의 유일한 현실적 경로.
-      "auto"               → CLI 가 PATH 에 있으면 그것, 없으면 Gemini.
+      "auto"               → gemini (claude-cli 로 조용히 되돌아가지 않는다).
 
-    기본값이 claude-cli 라 env 를 안 건드리면 이전과 완전히 동일하게 동작한다.
+    기본값은 gemini — env 를 안 건드리면 Claude 한도를 한 톨도 쓰지 않는다.
     """
-    choice = (os.environ.get("AEP_LLM_BACKEND") or "claude-cli").strip().lower()
+    choice = (os.environ.get("AEP_LLM_BACKEND") or "gemini").strip().lower()
     if choice == "auto":
-        choice = "claude-cli" if shutil.which("claude") else "gemini"
+        choice = "gemini"  # never claude-cli by accident: the subscription quota is not a free backend
     if choice == "ollama":
         from ingest.ollama_client import call_ollama
 

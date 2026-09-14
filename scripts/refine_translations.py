@@ -28,7 +28,7 @@ from pathlib import Path
 from scripts.translate_transcripts import (
     TRANSLATION_RULES,
     ClaudeUnavailable,
-    _call_claude,
+    _call_llm,
     fetch_transcript,
     load_existing,
     parse_ids,
@@ -114,7 +114,7 @@ def refine_episode(ep_id: int, *, dry: bool = False) -> tuple[int, int, int]:
         ctx = " ".join(sentences[max(0, idxs[0] - CTX_BEFORE):idxs[0]])
         items = [{"i": str(n), "en": sentences[k], "ko": done[keys[k]]} for n, k in enumerate(idxs)]
         try:
-            res = _call_claude(build_review_prompt(items, ctx))
+            res = _call_llm(build_review_prompt(items, ctx))
             tt._consec_fails = 0
         except Exception:
             tt._consec_fails += 1

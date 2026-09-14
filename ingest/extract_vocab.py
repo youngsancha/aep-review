@@ -119,6 +119,9 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
       --output-format json: 마지막 응답을 JSON 으로 wrap
       --permission-mode bypassPermissions: 도구 호출 prompt 없이 진행 (여기서는 도구 없음)
     """
+    if (os.environ.get("AEP_LLM_BACKEND") or "").strip().lower() != "claude-cli":
+        raise RuntimeError("claude -p refused: set AEP_LLM_BACKEND=claude-cli explicitly "
+                           "(the default backend is gemini; see 2026-09-13 quota leak)")
     cmd = ["claude", "-p", "--output-format", "json"]
     log.info("calling claude CLI prompt_chars=%d", len(prompt))
     proc = subprocess.run(
@@ -144,17 +147,18 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
 def call_llm(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
     """백엔드 중립 진입점. AEP_LLM_BACKEND 로 고른다.
 
-      (미설정) / "claude-cli"  → `claude -p` (기본값, 기존 동작 그대로. Max 구독이라 과금 0)
+      (미설정) / "gemini"      → HTTP (기본값). Claude 구독 한도를 쓰지 않는다.
+      "claude-cli"             → `claude -p`. 명시적 opt-in 전용 — 주간 구독 한도를 쓴다.
       "gemini"                 → HTTP. claude CLI 없는 서버/CI/cron 에서 vocab 단계를 살린다.
       "ollama"                 → 로컬 LLM. 과금 0 · Claude 한도 0 · 네트워크 0(대량 백필용).
-      "auto"                   → claude CLI 가 PATH 에 있으면 그것, 없으면 Gemini 로 폴백.
+      "auto"                   → gemini (claude-cli 로 조용히 되돌아가지 않는다).
 
-    기본값이 claude-cli 라 env 를 안 건드리면 이 파일 이전과 완전히 동일하게 동작한다.
+    기본값은 gemini — env 를 안 건드리면 Claude 한도를 쓰지 않는다.
     """
-    choice = (os.environ.get("AEP_LLM_BACKEND") or "claude-cli").strip().lower()
+    choice = (os.environ.get("AEP_LLM_BACKEND") or "gemini").strip().lower()
 
     if choice == "auto":
-        choice = "claude-cli" if shutil.which("claude") else "gemini"
+        choice = "gemini"  # never claude-cli by accident
 
     if choice == "ollama":
         from ingest.ollama_client import call_ollama
