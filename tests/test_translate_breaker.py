@@ -57,6 +57,8 @@ def _run(fail_plan, monkeypatch, n_batches=20):
             for k in range(n_sentences * 2)]
     real_batches = -(-len(tt.resegment(segs)) // tt.BATCH)   # ceil
     monkeypatch.setattr(tt, "_call_claude", fake_claude)
+    monkeypatch.setenv("AEP_LLM_BACKEND", "claude-cli")       # 브레이커는 백엔드 무관 — 스텁된 claude 경로로
+    monkeypatch.setenv("AEP_ALLOW_CLAUDE_QUOTA", "1")
     monkeypatch.setattr(tt, "fetch_transcript", lambda ep_id: {"segments": segs})
     monkeypatch.setattr(tt, "load_existing", lambda ep_id: {})
     monkeypatch.setattr(tt, "save_existing", lambda ep_id, d: saved.append(len(d)))

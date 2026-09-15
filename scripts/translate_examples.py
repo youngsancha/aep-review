@@ -15,7 +15,7 @@ import logging
 import sys
 
 from ingest import store
-from ingest.extract_vocab import call_claude
+from ingest.extract_vocab import call_llm  # 정책 관문 경유 — claude 직접 호출 금지(llm_policy)
 
 log = logging.getLogger("translate_examples")
 OUT = "examples_ko.json"   # transcripts 버킷(공개) — db.js 가 fetch
@@ -73,7 +73,7 @@ def main() -> None:
     for i in range(0, len(todo), BATCH):
         batch = todo[i:i + BATCH]
         try:
-            res = call_claude(build_prompt(batch))
+            res = call_llm(build_prompt(batch))
         except Exception:
             log.exception("배치 실패 i=%d → 건너뜀", i)
             continue

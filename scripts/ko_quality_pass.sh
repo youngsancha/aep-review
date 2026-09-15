@@ -73,6 +73,8 @@ trap cleanup EXIT INT TERM
 
 [ -x "$PY" ] || { say "missing venv at $PY"; exit 1; }
 if [ "$BACKEND" = "claude-cli" ]; then
+  # ⛔ 자동 경로는 ollama/Gemini 무료 크레딧만(Roy 2026-09-14). 수동 A/B 만 이중 opt-in 으로.
+  [ "${AEP_ALLOW_CLAUDE_QUOTA:-}" = "1" ] || { say "claude-cli refused — AEP_ALLOW_CLAUDE_QUOTA=1 도 함께 줘야 한다(ingest/llm_policy.py)"; exit 1; }
   command -v claude >/dev/null || { say "claude CLI not on PATH"; exit 1; }
 fi
 
@@ -100,8 +102,9 @@ cd "$ROOT" || exit 1
 # 백엔드 프리플라이트. 없으면 샤드마다 12연속 실패(MAX_CONSECUTIVE_FAILS)를 쌓고 rc=2 로 끝나
 # LaunchAgent 가 이를 '쿼터로 멈춤'으로 오해해 계속 다시 깨운다 — 설정 오류가 재시도 루프가 된다.
 if [ "$BACKEND" = "gemini" ]; then
-  "$PY" -c 'import sys; from ingest.gemini_client import configured; sys.exit(0 if configured() else 1)' \
-    || { say "Gemini 미설정(GOOGLE_APPLICATION_CREDENTIALS/GOOGLE_VERTEX_PROJECT) — 중단"; exit 1; }
+  # Gemini 가 없어도 ollama 가 있으면 진행한다 — llm_policy.call_text 가 크레딧 소진 시 ollama 로 폴백.
+  "$PY" -c 'import sys; from ingest.gemini_client import configured as g; from ingest.ollama_client import configured as o; sys.exit(0 if (g() or o()) else 1)' \
+    || { say "Gemini 미설정(GOOGLE_APPLICATION_CREDENTIALS/GOOGLE_VERTEX_PROJECT)이고 ollama 도 없음 — 중단"; exit 1; }
 fi
 say "백엔드: $BACKEND"
 

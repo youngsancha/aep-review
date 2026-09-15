@@ -51,7 +51,7 @@ def bench(ep_id: int, batches: list[int], limit: int) -> None:
         ref = _public_json(f"{ep_id}_ko.json")
     except Exception:
         ref = {}
-    backend = os.environ.get("AEP_LLM_BACKEND") or "claude-cli"
+    backend = os.environ.get("AEP_LLM_BACKEND") or "gemini"
     model = os.environ.get("AEP_OLLAMA_MODEL", "")
     print(f"\nep {ep_id} · 문장 {len(sents)} · backend={backend} {model} · 정답지 {len(ref)}키")
 

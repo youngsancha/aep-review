@@ -33,21 +33,50 @@ def _stub_gemini(monkeypatch, calls, text=None):
     monkeypatch.setattr(gc, "call_gemini", fake)
 
 
-def test_defaults_to_claude_cli(monkeypatch):
+def _stub_ollama(monkeypatch, calls, text=None):
+    import ingest.ollama_client as oc
+    def fake(prompt, timeout_sec=300, max_output_tokens=8192, schema=None):
+        calls.append(("ollama", prompt, timeout_sec))
+        return text if text is not None else json.dumps(PAYLOAD)
+    monkeypatch.setattr(oc, "call_ollama", fake)
+    monkeypatch.setattr(oc, "configured", lambda: True)
+    monkeypatch.setattr(oc, "model_name", lambda: "fake-model")
+
+
+@pytest.fixture(autouse=True)
+def _reset_policy(monkeypatch):
+    from ingest import llm_policy
+    monkeypatch.setattr(llm_policy, "_gemini_exhausted", False)
+    monkeypatch.delenv("AEP_ALLOW_CLAUDE_QUOTA", raising=False)
+
+
+def test_defaults_to_gemini(monkeypatch):
+    """env 를 안 건드리면 Claude 한도를 한 톨도 쓰지 않는다."""
     calls: list = []
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
-
     assert extract_vocab.call_llm("p") == PAYLOAD
-    assert [c[0] for c in calls] == ["claude"]
+    assert [c[0] for c in calls] == ["gemini"]
 
 
-def test_explicit_claude_cli(monkeypatch):
+def test_claude_cli_refused_without_the_allow_flag(monkeypatch):
+    """AEP_LLM_BACKEND=claude-cli 만으로는 부족하다 — 두 번 누수된 뒤의 규칙(2026-09-14)."""
+    from ingest.llm_policy import ClaudeQuotaRefused
     calls: list = []
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "claude-cli")
+    with pytest.raises(ClaudeQuotaRefused):
+        extract_vocab.call_llm("p")
+    assert calls == []
 
+
+def test_claude_cli_with_double_optin(monkeypatch):
+    calls: list = []
+    _stub_claude(monkeypatch, calls)
+    _stub_gemini(monkeypatch, calls)
+    monkeypatch.setenv("AEP_LLM_BACKEND", "claude-cli")
+    monkeypatch.setenv("AEP_ALLOW_CLAUDE_QUOTA", "1")
     extract_vocab.call_llm("p")
     assert [c[0] for c in calls] == ["claude"]
 
@@ -57,61 +86,72 @@ def test_gemini_backend_selected(monkeypatch):
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "gemini")
-
     assert extract_vocab.call_llm("p") == PAYLOAD
     assert [c[0] for c in calls] == ["gemini"]
 
 
 def test_backend_value_is_case_and_space_tolerant(monkeypatch):
     calls: list = []
-    _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "  GEMINI ")
-
     extract_vocab.call_llm("p")
     assert [c[0] for c in calls] == ["gemini"]
 
 
-def test_unknown_backend_falls_back_to_claude(monkeypatch):
-    """오타난 env 가 조용히 엉뚱한 벤더로 새지 않아야 한다."""
+def test_unknown_backend_raises(monkeypatch):
+    """오타난 env 가 조용히 엉뚱한 벤더(특히 claude)로 새지 않아야 한다."""
     calls: list = []
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "gpt")
+    with pytest.raises(ValueError):
+        extract_vocab.call_llm("p")
+    assert calls == []
 
-    extract_vocab.call_llm("p")
-    assert [c[0] for c in calls] == ["claude"]
 
-
-def test_auto_prefers_claude_when_cli_present(monkeypatch):
+def test_auto_never_picks_claude_even_with_cli_present(monkeypatch):
     calls: list = []
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "auto")
     monkeypatch.setattr(extract_vocab.shutil, "which", lambda _: "/usr/local/bin/claude")
-
-    extract_vocab.call_llm("p")
-    assert [c[0] for c in calls] == ["claude"]
-
-
-def test_auto_falls_back_to_gemini_without_cli(monkeypatch):
-    """cron/CI 처럼 claude CLI 가 없는 환경 — vocab 단계가 통째로 빠지지 않게."""
-    calls: list = []
-    _stub_claude(monkeypatch, calls)
-    _stub_gemini(monkeypatch, calls)
-    monkeypatch.setenv("AEP_LLM_BACKEND", "auto")
-    monkeypatch.setattr(extract_vocab.shutil, "which", lambda _: None)
-
     extract_vocab.call_llm("p")
     assert [c[0] for c in calls] == ["gemini"]
 
 
+def test_gemini_exhausted_falls_back_to_ollama_and_sticks(monkeypatch):
+    """무료 크레딧이 끝나면(429/403) 같은 프로세스는 이후 ollama 로 — 실패를 N 번 반복하지 않는다."""
+    import ingest.gemini_client as gc
+    calls: list = []
+    def broke(prompt, timeout_sec=300, max_output_tokens=8192):
+        calls.append(("gemini", prompt, timeout_sec))
+        raise RuntimeError("gemini failed status=429: Your prepayment credits are depleted")
+    monkeypatch.setattr(gc, "call_gemini", broke)
+    _stub_ollama(monkeypatch, calls)
+    assert extract_vocab.call_llm("p") == PAYLOAD
+    assert [c[0] for c in calls] == ["gemini", "ollama"]
+    assert extract_vocab.call_llm("q") == PAYLOAD
+    assert [c[0] for c in calls][2:] == ["ollama"]
+
+
+def test_gemini_transient_error_does_not_fall_back(monkeypatch):
+    """500/네트워크 오류는 재시도의 영역 — 조용히 다른 모델로 바꾸면 품질이 소리 없이 바뀐다."""
+    import ingest.gemini_client as gc
+    calls: list = []
+    def broke(prompt, timeout_sec=300, max_output_tokens=8192):
+        raise RuntimeError("gemini failed status=500: internal")
+    monkeypatch.setattr(gc, "call_gemini", broke)
+    _stub_ollama(monkeypatch, calls)
+    with pytest.raises(RuntimeError, match="status=500"):
+        extract_vocab.call_llm("p")
+    assert calls == []
+
+
 def test_gemini_response_goes_through_the_same_json_parser(monkeypatch):
-    """```json 펜스/앞뒤 prose 가 붙어도 claude 경로와 똑같이 벗겨져야 한다."""
+    """```json 펜스/앞뒤 prose 가 붙어도 똑같이 벗겨져야 한다."""
     calls: list = []
     _stub_gemini(monkeypatch, calls, text="```json\n" + json.dumps(PAYLOAD) + "\n```")
     monkeypatch.setenv("AEP_LLM_BACKEND", "gemini")
-
     assert extract_vocab.call_llm("p") == PAYLOAD
 
 
@@ -119,7 +159,6 @@ def test_timeout_is_forwarded(monkeypatch):
     calls: list = []
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "gemini")
-
     extract_vocab.call_llm("p", timeout_sec=42)
     assert calls[0][2] == 42
 

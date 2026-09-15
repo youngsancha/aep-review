@@ -25,6 +25,7 @@ STATE="$HOME/Library/Application Support/aep-review"
 LOG="$HOME/Library/Logs/aep-daily-loop.log"
 LOCK="$STATE/daily-loop.lock"
 PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"; export PATH
+unset AEP_ALLOW_CLAUDE_QUOTA   # ⛔ 자동 경로에서 Claude 는 절대 안 쓴다 — ingest/llm_policy.py 의 이중 opt-in 관문
 RESEG_NEWEST="${RESEG_NEWEST:-60}"   # 쇼별 최신 N편을 훑는다 — 신규 + 최근 재STT 회차가 여기 들어온다
 RESEG_LIMIT="${RESEG_LIMIT:-8}"      # 하루에 실제로 경계를 다시 나눌 회차 수(로컬 7.8B 모델, 편당 수 분)
 VOCAB_LIMIT="${VOCAB_LIMIT:-6}"

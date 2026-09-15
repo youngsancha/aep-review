@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 
@@ -211,10 +210,11 @@ def trkey(text: str) -> str:
 def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
     # ⛔ 2026-09-13: refine 패스가 이 함수를 직접 불러 Gemini 스위치를 우회했고, 하룻밤 696회의
     # `claude -p` 가 주간 구독 한도의 6%p 를 태웠다. Claude CLI 는 명시적 opt-in 일 때만 허용한다.
-    if (os.environ.get("AEP_LLM_BACKEND") or "").strip().lower() != "claude-cli":
+    from ingest import llm_policy
+    if not llm_policy.claude_allowed():   # ⛔ 이중 opt-in(AEP_ALLOW_CLAUDE_QUOTA=1) 없이는 절대
         raise ClaudeUnavailable(
-            "claude -p refused: set AEP_LLM_BACKEND=claude-cli explicitly to spend the Claude "
-            "subscription quota (the default backend is gemini)")
+            "claude -p refused: automated paths use ollama or the Gemini free credit only "
+            "(set BOTH AEP_LLM_BACKEND=claude-cli and AEP_ALLOW_CLAUDE_QUOTA=1 by hand for an A/B)")
     # 모델을 지정하지 않으면 CLI 기본값(=세션 모델, 보통 opus)을 상속한다. 번역은 추론이 아니라
     # 변환 작업이라 상위 모델이 꼭 필요하지 않다 → --model 로 낮춰 쿼터를 아낀다(_MODEL).
     cmd = ["claude", "-p", "--output-format", "json"]
@@ -235,29 +235,14 @@ def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
 
 
 def _call_llm(prompt: str, timeout_sec: int = 300, n_lines: int = 0) -> dict:
-    """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약(AEP_LLM_BACKEND).
-
-      (미설정)/"gemini"    → HTTP (기본값). Claude 구독 한도를 쓰지 않는다.
-      "claude-cli"         → `claude -p`. 명시적 opt-in 전용 — 주간 구독 한도를 쓴다(2026-09-13 누수).
-      "ollama"             → 로컬 LLM. 과금 0 · Claude 한도 0 — 8만 문장 백필의 유일한 현실적 경로.
-      "auto"               → gemini (claude-cli 로 조용히 되돌아가지 않는다).
-
-    기본값은 gemini — env 를 안 건드리면 Claude 한도를 한 톨도 쓰지 않는다.
-    """
-    choice = (os.environ.get("AEP_LLM_BACKEND") or "gemini").strip().lower()
-    if choice == "auto":
-        choice = "gemini"  # never claude-cli by accident: the subscription quota is not a free backend
-    if choice == "ollama":
-        from ingest.ollama_client import call_ollama
-
-        return _json_object(call_ollama(prompt, timeout_sec=timeout_sec, max_output_tokens=16384,
-                                        schema=batch_schema(n_lines) if n_lines else None))
-    if choice == "gemini":
-        from ingest.gemini_client import call_gemini
-
-        # 한 배치가 32문장이라 출력이 길다 — 잘리면 그 배치가 통째로 버려진다.
-        return _json_object(call_gemini(prompt, timeout_sec=timeout_sec, max_output_tokens=16384))
-    return _call_claude(prompt, timeout_sec=timeout_sec)
+    """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약, 정책은 ingest/llm_policy.py.
+    gemini(무료 크레딧) → 소진 시 ollama 폴백. claude-cli 는 이중 opt-in 일 때만."""
+    from ingest import llm_policy
+    if llm_policy.resolve() == "claude-cli":
+        return _call_claude(prompt, timeout_sec=timeout_sec)
+    # 한 배치가 32문장이라 출력이 길다 — 잘리면 그 배치가 통째로 버려진다.
+    return _json_object(llm_policy.call_text(prompt, timeout_sec=timeout_sec, max_output_tokens=16384,
+                                             schema=batch_schema(n_lines) if n_lines else None))
 
 
 def _json_object(text: str) -> dict:
