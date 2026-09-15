@@ -237,6 +237,8 @@ def transcribe_pending(limit: int | None = None, show: str | None = None,
                 continue
 
             data["aligned"] = True  # clean URL 기준 정렬됨 → 클라이언트 offset 0
+            # STT 결과를 먼저 저장한다 — 아래 R2 업로드(수십 MB, CI 에서 최대 ~2분) 중에 잡이
+            # 죽어도 연산은 보존된다. 호스팅에 성공하면 r2_audio 플래그를 실어 한 번 더 덮어쓴다.
             store.upload_transcript(ep_id, data)
             store.mark_transcribed(ep_id, data.get("duration"))
 
@@ -251,10 +253,23 @@ def transcribe_pending(limit: int | None = None, show: str | None = None,
             # 길이는 703.87s vs 704.0s 로 0.13초 차이였다 — 즉 **길이 검사로는 절대 못 잡는다**.
             # 광고가 '같은 길이의 다른 광고'로 바뀌기 때문이다. 재다운로드를 없애는 것이 유일한
             # 확실한 해법이다: 자막을 만든 바이트와 앱이 스트리밍할 바이트가 같은 파일이 된다.
+            #
+            # ⛔⛔ 업로드만으로는 끝이 아니다 — transcript JSON 에 `r2_audio: true` 가 실려야 한다.
+            # 앱은 매니페스트(audio_hosted.json)가 아니라 이 플래그를 '완벽 싱크'의 진실원으로 쓴다
+            # (ui/db.js 의 오디오 소스 결정, ui/views/episode.js 의 perfectSync 안내 바). 이 경로는
+            # 2026-08-24 부터 mark_hosted 만 하고 플래그를 안 실었는데, 플래그를 실어 주던 재STT 잡
+            # (aep-r2-upload.yml → scripts.retranscribe --from-r2 --skip-hosted)은 매니페스트에
+            # 있는 회차를 건너뛰므로 아무도 채워 주지 않았다 — 09-07 이후 신규 25편 전부가 R2 를
+            # 정확히 재생하면서도 "아직 완전 자동싱크 전" 배너를 띄웠다(2026-09-14 실측).
+            # 순서가 중요하다: 플래그가 실린 transcript 를 올린 **뒤에** mark_hosted 한다. 그래야
+            # '매니페스트에 있다 ⇒ 플래그도 있다' 가 성립하고, 중간에 죽으면 매니페스트에 없는 채로
+            # 남아 재STT 잡이 다음날 주워 간다(자가 복구).
             try:
                 store.upload_audio_r2(ep_id, apath)
+                data["r2_audio"] = True      # 자막 ≡ 방금 올린 바로 그 바이트
+                store.upload_transcript(ep_id, data)
                 store.mark_hosted(ep_id)
-                log.info("hosted ep=%s (자막을 만든 바로 그 오디오)", ep_id)
+                log.info("hosted ep=%s (자막을 만든 바로 그 오디오, r2_audio=true)", ep_id)
             except Exception:
                 # 호스팅 실패는 치명적이지 않다 — 앱이 megaphone 으로 폴백하고 드리프트 안내를
                 # 띄운다. 자막은 이미 저장됐으므로 다음 호스팅 잡이 다시 시도할 수 있다.

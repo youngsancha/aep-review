@@ -284,17 +284,17 @@ def episodes_by_recency(limit: int | None = None) -> list[dict[str, Any]]:
 
     rows: list[dict[str, Any]] = []
     start = 0
-    # ⛔ limit > _PAGE 도 서버 상한에 걸린다 — 요청했다고 받는 게 아니다. 그래서 limit
-    # 이 있어도 상한 크기로 나눠 돈다.
+    # ⛔⛔ limit 은 **정렬 뒤에** 자른다 — 페이지를 limit 만큼만 받으면 안 된다. 페이지는 id
+    # 오름차순이라 "limit=12 만큼 받고 pub_date 로 정렬" 은 **가장 오래된 12편**을 최신순으로
+    # 돌려준다. 2026-08-30 ~ 09-14 실측: `retranscribe --recent 12` 가 매일 id 1~12 를 골랐고,
+    # 전부 호스팅된 회차라 "처리할 episode 없음" 으로 2분 만에 끝났다 — 신규 회차의 재STT 는
+    # 2주간 한 건도 돌지 않았다. 전체(≈1,000행, 2페이지)를 받는 비용은 무시할 수준이다.
     while True:
-        want = _PAGE if limit is None else min(_PAGE, limit - len(rows))
-        if want <= 0:
-            break
-        page = _page(start, start + want - 1)
+        page = _page(start, start + _PAGE - 1)
         rows.extend(page)
-        if len(page) < want:
+        if len(page) < _PAGE:
             break
-        start += want
+        start += _PAGE
 
     rows.sort(key=lambda r: (r.get("pub_date") is None, r.get("pub_date"), r.get("id")),
               reverse=True)
