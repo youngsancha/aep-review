@@ -29,11 +29,11 @@ on:
         description: "재STT 할 episode id 쉼표구분(지정 시 --recent 무시). 특정 회차 싱크 수리용."
         default: ""
       retranscribe_recent:
-        description: "재STT 후보 범위(최신 N개 안에서 고른다). 과거 회차를 잡으려면 크게."
-        default: "12"
+        description: "재STT 후보 범위(최신 N개 안에서 고른다). 1200 = 전 카탈로그(≈1,060편) — 호스팅 안 된 백카탈로그를 최신순으로 매일 --limit 만큼 소화한다(2026-09-14: allears 63 + cnn10 347 대기)."
+        default: "1200"
       retranscribe_limit:
-        description: "재STT 실제 처리 상한(건수). 시간 예산이 먼저 걸리면 그 전에 멈춘다."
-        default: "12"
+        description: "재STT 실제 처리 상한(건수). 시간 예산이 먼저 걸리면 그 전에 멈춘다. CPU STT ≈0.7x 실시간: cnn10(10분) 40편 ≈ 280분, allears(20분)는 예산이 먼저 건다."
+        default: "40"
       retranscribe_budget_min:
         description: "재STT 시간 예산(분). job timeout(350) 보다 작게."
         default: "300"
@@ -99,8 +99,8 @@ jobs:
           if [ -n "$IDS" ]; then
             sel=(--ids "$IDS")
           else
-            sel=(--recent "${{ inputs.retranscribe_recent || '12' }}")
+            sel=(--recent "${{ inputs.retranscribe_recent || '1200' }}")
           fi
           python -m scripts.retranscribe --from-r2 --skip-hosted "${sel[@]}" \
-            --limit ${{ inputs.retranscribe_limit || '12' }} \
+            --limit ${{ inputs.retranscribe_limit || '40' }} \
             --time-budget-min ${{ inputs.retranscribe_budget_min || '300' }}

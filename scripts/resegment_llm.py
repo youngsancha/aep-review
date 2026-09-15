@@ -393,6 +393,13 @@ def resegment_episode(ep_id: int, *, dry: bool, show_diff: bool, force: bool) ->
     return stats
 
 
+def _log_ep(i: int, n: int, ep: int, st: dict, dry: bool) -> None:
+    log.info("[%d/%d] ep %s: 청크 %d(LLM 채택 %d) 문장 %d→%d, 번역키 유지 %d/신규 %d, 타임스탬프 역행 %d·과장 %d, %.0fs%s",
+             i, n, ep, st["chunks"], st["llm_ok"], st["before"], st["after"], st["keys_kept"],
+             st["keys_new"], st["timing"]["backwards"], st["timing"]["overlong"], st["sec"],
+             " (dry)" if dry else "")
+
+
 def main() -> None:
     sys.stdout.reconfigure(line_buffering=True)   # 파이프로 볼 때 diff 와 로그 순서가 섞이지 않게
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -403,6 +410,9 @@ def main() -> None:
     p.add_argument("--dry", action="store_true", help="저장하지 않고 통계만")
     p.add_argument("--show-diff", action="store_true", help="바뀐 문장 경계를 실물로 출력")
     p.add_argument("--force", action="store_true", help="이미 처리된 회차도 다시")
+    p.add_argument("--limit", type=int, default=None,
+                   help="이번 실행에서 실제로 처리(저장)할 회차 상한 — 건너뛴 회차는 세지 않는다. "
+                        "일일 루프(scripts/daily_local_loop.sh)가 하루치를 자르는 데 쓴다")
     a = p.parse_args()
 
     if (os.environ.get("AEP_LLM_BACKEND") or "") != "ollama":
@@ -432,12 +442,13 @@ def main() -> None:
         tot["eps"] += 1
         for k in ("chunks", "llm_ok", "before", "after", "keys_new"):
             tot[k] += st[k]
+        if a.limit and tot["eps"] >= a.limit:
+            log.info("--limit %d 도달 — 나머지는 다음 실행에", a.limit)
+            _log_ep(i, len(ids), ep, st, a.dry)
+            break
         tot["back"] += st["timing"]["backwards"]
         tot["long"] += st["timing"]["overlong"]
-        log.info("[%d/%d] ep %s: 청크 %d(LLM 채택 %d) 문장 %d→%d, 번역키 유지 %d/신규 %d, 타임스탬프 역행 %d·과장 %d, %.0fs%s",
-                 i, len(ids), ep, st["chunks"], st["llm_ok"], st["before"], st["after"], st["keys_kept"],
-                 st["keys_new"], st["timing"]["backwards"], st["timing"]["overlong"], st["sec"],
-                 " (dry)" if a.dry else "")
+        _log_ep(i, len(ids), ep, st, a.dry)
     if tot["eps"]:
         log.info("완료: %d편, 청크 %d 중 LLM 채택 %d(%.0f%%), 문장 %d→%d, 새 번역키 %d, 타임스탬프 역행 %d·과장 %d",
                  tot["eps"], tot["chunks"], tot["llm_ok"], 100 * tot["llm_ok"] / max(1, tot["chunks"]),
