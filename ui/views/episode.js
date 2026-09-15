@@ -288,7 +288,13 @@ export async function renderEpisode(root, idStr, tStr) {
     try {
       const wrap = document.createElement('div');
       // r2_audio===true 회차만 완벽 자동싱크(자막≡서빙오디오). 아니면 광고 뒤 드리프트 가능 → 안내 바.
-      const perfectSync = ep.transcript?.r2_audio === true;
+      // 매니페스트(audio_hosted.json) 기준으로 R2 를 재생 중이어도 완벽 싱크다 — 2026-09-14 부터
+      // 파이프라인이 '매니페스트에 있다 ⇒ 자막을 만든 바로 그 오디오' 를 보장한다(ingest/transcribe.py).
+      // 플래그만 보면 안 되는 이유: 자막 JSON 은 제자리 패치라 URL(?v=transcribed_at)이 안 바뀌고,
+      // networkFirst 가 셀룰러에서 실패하면 핀 회차의 옛 JSON 이 나온다 — 실기기 2026-09-14 저녁,
+      // 서버는 r2_audio=true 인데 폰은 하루 지나서도 배너를 띄웠다. isHosted 는 위에서 계산한
+      // '지금 실제로 R2 를 재생하는가' 라서 캐시 신선도와 무관하게 맞는다.
+      const perfectSync = ep.transcript?.r2_audio === true || isHosted;
       // 📺 Video 모드 토글: wh(백악관 브리핑) 회차 중 transcript 에 video_id 가 있고(Part A 백필/신규
       // 인제스트가 채움) 온라인일 때만 노출 — 영상 없는 회차에 죽은 버튼을 보이지 않게, 오프라인에선
       // '이용 불가'로 아예 안 보이게(요구사항: 고장이 아니라 이용불가). showPrimaryVideo(위에서 이미

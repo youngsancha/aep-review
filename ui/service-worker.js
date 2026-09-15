@@ -15,7 +15,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.75.0';
+const VERSION = '1.75.1';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -57,7 +57,7 @@ const Q = '?v=' + VERSION;
 const SHELL_CRITICAL = [
   '/', '/index.html', '/manifest.json',
   '/style.css' + Q,
-  '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/scrub.js' + Q,
+  '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q,
   '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q, '/clip.js' + Q, '/convo.js' + Q, '/translate.js' + Q, '/marks.js' + Q, '/settings.js' + Q, '/proficiency.js' + Q, '/offline.js' + Q, '/offline-pins.js' + Q,
   '/views/timeline.js' + Q, '/views/episode.js' + Q, '/views/srs.js' + Q, '/views/study.js' + Q, '/views/login.js' + Q,
   '/views/essentials.js' + Q,
@@ -252,6 +252,19 @@ async function imageCacheFirst(req) {
 //  · opaque(no-cors 폴백) 캐시 → 바디를 읽을 수 없어 합성 불가: 온라인이면 평소처럼 네트워크
 //    스트리밍(동작 무변화), 오프라인일 때만 전체 응답을 폴백으로 준다(Chrome 계열 재생 OK).
 //  · 미캐시 → 그대로 네트워크(기존과 동일한 스트리밍).
+// Range 요청마다 cached.blob() 을 다시 만들면 30~60 MB 본문을 요청 수만큼 복사한다 — 3× 반복 모드는
+// 문장마다 시크해 Range 를 쏟아낸다. 한 SW 수명 동안 URL 당 Blob 하나만 만들어 slice 만 나눠 준다.
+// (blob.slice 는 지연 로드라 slice 자체는 싸다. 비싼 건 blob() 이었다.)
+const _audioBlobs = new Map();   // url → Blob (최대 2개: 현재 회차 + 직전 회차)
+async function audioBlobFor(url, cached) {
+  const hit = _audioBlobs.get(url);
+  if (hit) return hit;
+  const blob = await cached.blob();
+  _audioBlobs.set(url, blob);
+  while (_audioBlobs.size > 2) _audioBlobs.delete(_audioBlobs.keys().next().value);
+  return blob;
+}
+
 async function serveAudio(req) {
   const cache = await caches.open(AUDIO_CACHE);
   const cached = await cache.match(req.url, { ignoreVary: true });
@@ -263,7 +276,7 @@ async function serveAudio(req) {
   if (range && cached.status === 200) {
     const m = /bytes=(\d+)-(\d+)?/i.exec(range);
     if (m) {
-      const blob = await cached.blob();   // blob.slice 는 지연 로드 — 대용량이어도 메모리 안전
+      const blob = await audioBlobFor(req.url, cached);   // URL 당 한 번만 materialize (아래)
       const start = Number(m[1]);
       const end = m[2] ? Math.min(Number(m[2]), blob.size - 1) : blob.size - 1;
       if (start >= blob.size) {

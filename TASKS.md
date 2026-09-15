@@ -153,3 +153,9 @@
   - 메모: 오프라인 창 15편은 2026-09-01 자동 백필 중. 나머지는: cd ~/projects/aep-review && AEP_LLM_BACKEND=ollama SUPABASE_URL=... SUPABASE_SERVICE_KEY=... .venv/bin/python -m scripts.translate_transcripts --show cnn10 (멱등, 과금 0, 한도 0, 약 4.6s/문장). 진행 확인은 python -m scripts.audit_ko_coverage --all
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:d2a69108-f4ca-4e7a-9d8a-6eb77ad64454 -->
+
+## 2026-09-15 09:00 넘어옴
+
+- [ ] **P2** allears 63편 + cnn10 347편: R2 오디오는 있는데 재STT 안 됨(매니페스트 밖) — 배너가 맞는 회차. --recent 12 버그 고쳐 내일부터 재STT 잡이 신규만 처리; 백카탈로그는 --recent 확대 결정 필요(allears 는 _ko.json 키 깨질 위험, cnn10 은 번역 없어 안전)
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:ba87b74a-123d-4c78-9cdf-893ed4c77a93 -->

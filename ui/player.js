@@ -5,6 +5,7 @@ import { showCover, currentShow } from '/config.js';
 import { bindMediaSession } from '/media-session.js';
 import { bindScrub } from '/scrub.js';
 import { toast } from '/app.js';   // hoisted export — 순환 import 에서도 안전(함수 선언)
+import * as guard from '/stall-guard.js';
 
 const SVG_PLAY  = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>';
 const SVG_PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
@@ -22,6 +23,52 @@ class Player {
     this.audio.addEventListener('ended', () => this._emit('ended'));
     this.audio.addEventListener('loadedmetadata', () => this._emit('meta'));
     this.audio.addEventListener('error', () => this._emit('error'));
+
+    // === 정체 감시(stall-guard.js) — 오프라인·화면꺼짐·에어팟에서 재생이 소리 없이 멈추는 문제 ===
+    this._guard = guard.initialState();
+    this.audio.addEventListener('timeupdate', () => guard.noteTime(this._guard, this.audio.currentTime, Date.now()));
+    this.audio.addEventListener('waiting', () => { guard.noteWaiting(this._guard, Date.now()); playLog('waiting', this._snap()); });
+    this.audio.addEventListener('stalled', () => { guard.noteWaiting(this._guard, Date.now()); playLog('stalled', this._snap()); });
+    this.audio.addEventListener('error', () => playLog('error', this._snap()));
+    // 백그라운드에서는 브라우저가 타이머를 1분에 한 번으로 늦출 수 있다 — 그래도 1분 안에는 복구된다.
+    setInterval(() => this._watch(), 5000);
+    document.addEventListener('visibilitychange', () => playLog(document.visibilityState, this._snap()));
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => playLog('sw-controllerchange', this._snap()));
+    }
+  }
+
+  _snap() {
+    const a = this.audio;
+    return { paused: a.paused, ended: a.ended, currentTime: a.currentTime || 0,
+             error: a.error ? { code: a.error.code } : null, ready: a.readyState, net: a.networkState,
+             online: navigator.onLine };
+  }
+
+  _watch() {
+    if (!this.current || !this.current.src) return;
+    const verdict = guard.decide(this._guard, this._snap(), Date.now());
+    if (verdict === 'ok') return;
+    playLog(verdict, this._snap());
+    if (verdict === 'give-up') return;   // 상한 도달 — 진짜 죽은 파일. 토스트는 error 경로가 맡는다.
+    this._reload(true);
+  }
+
+  // 같은 위치로 src 를 다시 로드한다: 새 fetch → (죽어 있던 SW 가 다시 뜨고) 캐시에서 다시 읽는다.
+  _reload(thenPlay) {
+    const a = this.audio;
+    const t = a.currentTime || 0, rate = a.playbackRate || 1;
+    guard.noteRecovery(this._guard, Date.now());
+    playLog('reload', { t, thenPlay });
+    try { a.pause(); } catch (e) {}
+    a.src = this.current.src;
+    const restore = () => {
+      a.removeEventListener('loadedmetadata', restore);
+      try { a.currentTime = t; a.playbackRate = rate; } catch (e) {}
+      if (thenPlay) a.play().catch((err) => playLog('reload-play-failed', { name: err && err.name }));
+    };
+    a.addEventListener('loadedmetadata', restore, { once: true });
+    try { a.load(); } catch (e) {}
   }
 
   load(track) {
@@ -31,6 +78,7 @@ class Player {
     }
     this.current = track;
     this.audio.src = track.src;
+    guard.noteTrackChange(this._guard);
     this._emit('track');
   }
 
@@ -41,6 +89,11 @@ class Player {
     if (this.current && this.current.src && (a.error || !a.currentSrc)) {
       a.src = this.current.src;
       try { a.load(); } catch (e) {}
+    } else if (this.current && this.current.src
+               && guard.shouldReloadBeforePlay(this._guard, this._snap(), Date.now())) {
+      // 에어팟/잠금화면 ▶: 오래 waiting 이던 파이프라인은 play() 가 resolve 만 하고 소리가 안 난다 → 재로드 후 재생.
+      this._reload(true);
+      return;
     }
     const tryPlay = () => { const p = a.play(); if (p && p.catch) p.catch((err) => { if (!(err && err.name === 'NotAllowedError')) { /* 로드 후 재시도가 처리 */ } }); };
     tryPlay();  // 제스처 보존: 클릭 스택에서 즉시 1회
@@ -75,6 +128,19 @@ class Player {
   get time()     { return this.audio.currentTime || 0; }
   get duration() { return this.audio.duration || 0; }
 }
+
+// 재생 사건 링버퍼(localStorage 'aep-play-log', 최근 40건) — 폰에서만 나는 문제의 증거를 남긴다.
+// 읽기: window.__playLog() 또는 USB 디버깅으로 localStorage 를 본다. 절대 네트워크로 보내지 않는다.
+const PLAY_LOG_KEY = 'aep-play-log';
+function playLog(ev, data) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(PLAY_LOG_KEY) || '[]');
+    arr.push({ at: new Date().toISOString(), ev, id: player && player.current ? player.current.id : null, ...(data || {}) });
+    while (arr.length > 40) arr.shift();
+    localStorage.setItem(PLAY_LOG_KEY, JSON.stringify(arr));
+  } catch (e) { /* quota/private mode */ }
+}
+window.__playLog = () => { try { return JSON.parse(localStorage.getItem(PLAY_LOG_KEY) || '[]'); } catch { return []; } };
 
 export const player = new Player();
 
