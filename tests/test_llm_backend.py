@@ -114,7 +114,8 @@ def test_auto_never_picks_claude_even_with_cli_present(monkeypatch):
     _stub_claude(monkeypatch, calls)
     _stub_gemini(monkeypatch, calls)
     monkeypatch.setenv("AEP_LLM_BACKEND", "auto")
-    monkeypatch.setattr(extract_vocab.shutil, "which", lambda _: "/usr/local/bin/claude")
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda _: "/usr/local/bin/claude")   # CLI 가 있어도
     extract_vocab.call_llm("p")
     assert [c[0] for c in calls] == ["gemini"]
 
