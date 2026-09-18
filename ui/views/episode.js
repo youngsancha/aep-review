@@ -228,7 +228,7 @@ export async function renderEpisode(root, idStr, tStr) {
           </button>
           ` : ''}
           ${isHosted ? `
-          <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">오프라인 저장</span></button>
+          <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
           ` : ''}
         </div>
         ${(sentences.length && useVideoLayout) ? `
@@ -395,7 +395,8 @@ export async function renderEpisode(root, idStr, tStr) {
   if ($dl) {
     let dlState = 'idle';   // idle | saving | done | error
     let dlBusy = false;     // 클릭이 직접 몰고 있는 동안엔 백그라운드 poll 이 상태를 덮어쓰지 않게
-    const DL_LABEL = { idle: '오프라인 저장', saving: '받는 중…', error: '저장 실패 · 재시도' };
+    // 라벨은 이웃 칩(Speed·Saved)과 같은 영어 — 하네스(scripts/_pwtest.py OFFLINE-CHIP)도 이 문구를 고정한다.
+    const DL_LABEL = { idle: 'Offline', saving: 'Saving…', error: 'Failed · retry' };
     const paintDl = () => {
       const done = dlState === 'done';
       $dl.classList.toggle('on', done);
@@ -421,7 +422,7 @@ export async function renderEpisode(root, idStr, tStr) {
         // 돌리면 백그라운드에서도 JS 가 깨어나고(화면 꺼진 청취) 얻는 게 없다 — 받는 중이 아니면 멈춘다.
         if (dlState === 'saving') { if (!dlPollTimer) dlPollTimer = setInterval(poll, 2000); }   // 1s 보다 느리게
         else stopPoll();
-      } catch (e) { /* 다음 tick 에 다시 시도 */ }
+      } catch (e) { $dl.dataset.dlErr = String(e && e.message || e); /* 다음 tick 에 다시 시도 — 원인은 data-dl-err 에 남긴다 */ }
     };
     poll();
     $dl.addEventListener('click', async () => {

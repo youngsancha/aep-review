@@ -203,6 +203,11 @@ export function cleanAudioUrl(u) { return u; }
 export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }
+export function transcriptKoUrl(id, transcribedAt) { return `/mock-transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`; }
+// offline.js(실 모듈) 가 db.js 에서 가져가는 이름 — v1.71.1 에 생긴 스냅샷 API. 목에 없으면 import('/offline.js')
+// 자체가 링크 오류로 죽어 OFFLINE-CHIP 검사가 조용히 idle 로 남는다(2026-09-18 실측: data-dl-err 로 드러남).
+export function loadEpisodeSnapshot() { return null; }
+export function saveEpisodeSnapshot() {}
 export async function listEpisodes() {
   return [
     // id 1 = wh(백악관 브리핑) — Continue(진도 있음)·Latest Episode 카드가 둘 다 이 회차를 그려서
@@ -871,7 +876,8 @@ def main() -> int:
             pg.evaluate("window.__renderEp(2)"); time.sleep(0.45)
             dl_saved = pg.eval_on_selector("#np-dl", "el=>el.textContent.trim()") if pg.query_selector("#np-dl") else None
             dl_aria = pg.eval_on_selector("#np-dl", "el=>el.getAttribute('aria-label')") if pg.query_selector("#np-dl") else None
-            print("OFFLINE-CHIP: none_on_megaphone=", dl_none_mega, " idle=", dl_idle, " saved=", dl_saved, " aria=", dl_aria)
+            dl_err = pg.eval_on_selector("#np-dl", "el=>el.dataset.dlErr||''") if pg.query_selector("#np-dl") else None
+            print("OFFLINE-CHIP: none_on_megaphone=", dl_none_mega, " idle=", dl_idle, " saved=", dl_saved, " aria=", dl_aria, " err=", dl_err)
             # 호스팅 회차에선 extras 칩이 4개(1×·반복·Transcript·Offline)가 되고, 실측으로 폰 폭을
             # 넘긴다(360px 화면에서 394px 필요). flex-wrap 이 없으면 body 의 overflow-x:hidden 이
             # 양쪽을 잘라 Offline 칩이 화면 밖으로 사라졌다(사용자 신고 2026-07-30, v1.48.0 수정).
