@@ -15,7 +15,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.75.1';
+const VERSION = '1.75.2';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -29,7 +29,8 @@ const TTS_CACHE = 'aep-review-tts-v1';
 // offline.js 가 명시적으로 채우고 지운다. DATA_CACHE 처럼 무관한 트래픽에 밀려 트림되지 않는다
 // (아래 KEEP 에도 등록 — 없으면 다음 activate 에서 통째로 삭제된다).
 const DOC_CACHE = 'aep-review-doc-v1';
-const DATA_MAX = 400;   // 회차 프리페치(최근 N개 행+자막+번역)가 들어가도록 160→400
+const DATA_MAX = 400;
+const NET_TIMEOUT_MS = 3000;   // 캐시 사본이 있을 때 네트워크에 주는 시간(lie-fi 상한) — networkFirst 참고   // 회차 프리페치(최근 N개 행+자막+번역)가 들어가도록 160→400
 const IMG_MAX = 30;
 const TTS_MAX = 800;    // 9,110개 사전생성 TTS 중 최근 사용분만 — study.js 세션당 prefetch 30개 상당 여유
 
@@ -193,15 +194,8 @@ async function networkFirst(req, pinId, event) {
     if (hit) return hit;
   }
   const cache = await caches.open(DATA_CACHE);
-  try {
-    const res = await fetch(req);
-    // 부분응답(206)·오류는 캐시 불가/부적합 → 그대로 반환. 정상 200 만 저장.
+  const net = fetch(req).then((res) => {
     if (res && res.status === 200 && (res.type === 'cors' || res.type === 'basic')) {
-      // ⚠ clone() 은 반드시 여기서(비동기 틈 없이, 같은 tick 에) 필요한 개수만큼 한 번에 다 떠 둬야
-      // 한다. cache.put() 에 넘긴 clone 이 백그라운드에서 스트림을 읽기 시작한 '뒤' caches.open().then()
-      // 안에서 또 clone() 하면(예전 코드) "Response body is already used" 로 던진다(실측 — DOC_CACHE 가
-      // 항상 비어 있던 진짜 원인은 이거였다: pinnedEpisodeIds 매칭도, waitUntil 도 맞았는데 clone 이
-      // 조용히 실패해 .catch(()=>{}) 에 먹혔다).
       const forData = res.clone();
       const forDoc = (pinId != null && pinnedEpisodeIds.has(pinId)) ? res.clone() : null;
       cache.put(req, forData).then(() => trimCache(DATA_CACHE, DATA_MAX)).catch(() => {});
@@ -211,11 +205,20 @@ async function networkFirst(req, pinId, event) {
       }
     }
     return res;
-  } catch (err) {
-    const cached = await cachedFor(req, pinId);
-    if (cached) return cached;
-    throw err;   // 오프라인 + 미캐시 → 호출부가 빈 데이터로 처리(앱은 graceful degrade)
+  });
+  // ⛔ lie-fi(연결은 됐는데 서버가 답하지 않음 — 헬스장 와이파이·약한 셀룰러)에서는 onLine 이 true 라 위의
+  // 캐시 우선 분기를 타지 않고, fetch 는 OS 타임아웃까지 매달린다(실측 2026-09-17: 사본이 있어도 15초+).
+  // 회차 열기는 이런 요청이 4~5개라 "오프라인이 한참 걸리는" 체감이 된다. 캐시 사본이 있으면 네트워크에
+  // NET_TIMEOUT_MS 만 주고 사본으로 답한다 — 네트워크 결과는 백그라운드에서 캐시에 반영돼 다음 열기가 새롭다.
+  const cached = await cachedFor(req, pinId);
+  if (cached) {
+    const timeout = new Promise((res) => setTimeout(() => res(null), NET_TIMEOUT_MS));
+    const res = await Promise.race([net.catch(() => null), timeout]);
+    if (res) return res;
+    if (event) { try { event.waitUntil(net.catch(() => {})); } catch (_) { /* settled */ } }
+    return cached;
   }
+  return net;   // 사본 없음: 네트워크 결과(또는 실패)를 그대로 — 호출부가 빈 데이터로 처리(graceful degrade)
 }
 
 // 사전생성 TTS mp3(voice|rate|text 의 sha1 이 파일명) → cache-first. 히트는 절대 stale 일 수
