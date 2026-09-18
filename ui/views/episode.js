@@ -1,6 +1,6 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
 import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast, stripTrailingUrl } from '/app.js';
-import { getEpisode, episodeNav, markKnown } from '/db.js';
+import { getEpisode, episodeNav, markKnown, markUnknown } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { player, getProgress } from '/player.js';
 import { video } from '/video.js';
@@ -228,7 +228,7 @@ export async function renderEpisode(root, idStr, tStr) {
           </button>
           ` : ''}
           ${isHosted ? `
-          <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
+          <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">오프라인 저장</span></button>
           ` : ''}
         </div>
         ${(sentences.length && useVideoLayout) ? `
@@ -335,17 +335,27 @@ export async function renderEpisode(root, idStr, tStr) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); speak(btn.dataset.text); });
   });
   document.querySelectorAll('.vocab-card .vocab-known').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      if (btn.disabled) return;
       const id = parseInt(btn.dataset.id, 10);
       const card = btn.closest('.vocab-card');
       const nowKnown = !(card && card.classList.contains('vknown'));
-      if (nowKnown) { vknown.add(id); markKnown(id).catch(() => {}); }   // SRS 마스터로도 반영(카드 없으면 no-op)
-      else vknown.delete(id);
-      saveVKnown(vknown);
-      if (card) card.classList.toggle('vknown', nowKnown);
-      btn.setAttribute('aria-pressed', nowKnown ? 'true' : 'false');
-      btn.textContent = nowKnown ? '✓ Known' : 'Known';
+      // toggle-off 가 예전엔 로컬 Set(vknown/aep-vocab-known)만 지우고 SRS 카드는 그대로 둬서,
+      // Study 홈의 마스터 카운터가 이 화면의 '알아요' 표시와 드리프트했다(신고). Study 의
+      // markKnownLi/markUnknownLi(study.js) 와 동일하게 SRS 반영을 먼저 기다린 뒤에만 로컬 상태를
+      // 바꾼다 — 실패하면 버튼도 로컬 Set 도 그대로 남아(낙관적 갱신 없음) study.js 와 같은 방식으로
+      // 조용히 유지한다(토스트 없음, catch (err) { /* keep */ } 그대로 이식).
+      btn.disabled = true;
+      try {
+        if (nowKnown) await markKnown(id); else await markUnknown(id);   // SRS 마스터로도 반영(카드 없으면 no-op)
+        if (nowKnown) vknown.add(id); else vknown.delete(id);
+        saveVKnown(vknown);
+        if (card) card.classList.toggle('vknown', nowKnown);
+        btn.setAttribute('aria-pressed', nowKnown ? 'true' : 'false');
+        btn.textContent = nowKnown ? '✓ Known' : 'Known';
+      } catch (err) { /* keep — study.js 의 markKnownLi/markUnknownLi 와 동일 */ }
+      btn.disabled = false;
     });
   });
   prefetch(vocabs.map((v) => v.term).filter(Boolean));
@@ -378,29 +388,60 @@ export async function renderEpisode(root, idStr, tStr) {
   // 회차를 지금 직접 받아 두고, 핀으로 고정해 정리 루프가 지우지 못하게 한다(offline-pins.js).
   // offline.js 는 app.js 와 동일하게 동적 import — 부팅/회차 진입 임계경로에 얹지 않는다.
   // ⚠ 진행률: R2 버킷에 CORS 가 없으면 응답이 opaque 라 바이트 수를 읽을 수 없다 → 가짜 진행바를
-  // 그리지 않고 'Saving…' 상태만 정직하게 보여준다.
+  // 그리지 않고 텍스트 상태만 정직하게 보여준다. 자동 프리페치의 done/total 도 '이 회차'가 아니라
+  // 배치 전체 진행이라 여기 숫자로 쓰면 오해를 부른다 → phase(진행중/아님)만 반영, 퍼센트는 없음.
+  let dlPollTimer = null;   // cleanup() 에서 정리 — 아래 poll() 참고
   const $dl = document.getElementById('np-dl');
   if ($dl) {
-    const paintDl = (cached) => {
-      $dl.classList.toggle('on', !!cached);
-      $dl.innerHTML = `${cached ? SVG_DL_DONE : SVG_DL}<span class="np-dl-txt">${cached ? 'Saved' : 'Offline'}</span>`;
-      $dl.setAttribute('aria-label', cached ? 'Remove offline download' : 'Download for offline listening');
+    let dlState = 'idle';   // idle | saving | done | error
+    let dlBusy = false;     // 클릭이 직접 몰고 있는 동안엔 백그라운드 poll 이 상태를 덮어쓰지 않게
+    const DL_LABEL = { idle: '오프라인 저장', saving: '받는 중…', error: '저장 실패 · 재시도' };
+    const paintDl = () => {
+      const done = dlState === 'done';
+      $dl.classList.toggle('on', done);
+      $dl.innerHTML = `${done ? SVG_DL_DONE : SVG_DL}<span class="np-dl-txt">${done ? 'Saved' : DL_LABEL[dlState]}</span>`;
+      $dl.setAttribute('aria-label', done ? 'Remove offline download'
+        : dlState === 'saving' ? 'Downloading for offline listening'
+        : dlState === 'error' ? 'Download failed — tap to retry'
+        : 'Download for offline listening');
     };
-    import('/offline.js').then((m) => m.isEpisodeCached(id)).then(paintDl).catch(() => {});
-    $dl.addEventListener('click', async () => {
-      if ($dl.disabled) return;
-      const cached = $dl.classList.contains('on');
-      $dl.disabled = true;
-      if (!cached) $dl.innerHTML = `${SVG_DL}<span class="np-dl-txt">Saving…</span>`;
+    const stopPoll = () => { if (dlPollTimer) { clearInterval(dlPollTimer); dlPollTimer = null; } };
+    // 사용자가 직접 누르지 않아도(자동 프리페치가 이 회차를 '최근 N개'로 받는 중이면) Library 의
+    // 상태줄(aep-offline-run, timeline.js:97-106)과 같은 신호로 버튼을 맞춰 둔다. 실패 상태(error)는
+    // poll 이 지우지 않는다 — 사용자가 탭해서 재시도하기 전까진 그대로 보여야 '재시도' 문구가 의미 있다.
+    const poll = async () => {
+      if (dlBusy || dlState === 'error') return;
       try {
         const m = await import('/offline.js');
-        if (cached) { await m.removeEpisodeAudio(id); toast('Offline copy removed'); paintDl(false); }
-        else { await m.cacheEpisodeAudio(id); toast('Saved for offline'); paintDl(true); }
+        if (await m.isEpisodeCached(id)) { dlState = 'done'; paintDl(); stopPoll(); return; }
+        const st = m.offlineRunStatus ? m.offlineRunStatus() : null;
+        dlState = (st && st.phase === 'running') ? 'saving' : 'idle';
+        paintDl();
+        // 자동 프리페치가 도는 동안에만 2초 간격으로 지켜본다. idle 인 회차 화면에서 무기한 caches.match 를
+        // 돌리면 백그라운드에서도 JS 가 깨어나고(화면 꺼진 청취) 얻는 게 없다 — 받는 중이 아니면 멈춘다.
+        if (dlState === 'saving') { if (!dlPollTimer) dlPollTimer = setInterval(poll, 2000); }   // 1s 보다 느리게
+        else stopPoll();
+      } catch (e) { /* 다음 tick 에 다시 시도 */ }
+    };
+    poll();
+    $dl.addEventListener('click', async () => {
+      if ($dl.disabled) return;
+      const cached = dlState === 'done';
+      dlBusy = true;
+      $dl.disabled = true;
+      dlState = 'saving'; paintDl();
+      try {
+        const m = await import('/offline.js');
+        if (cached) { await m.removeEpisodeAudio(id); toast('Offline copy removed'); dlState = 'idle'; }
+        else { await m.cacheEpisodeAudio(id); toast('Saved for offline'); dlState = 'done'; stopPoll(); }
       } catch (e) {
         toast(cached ? 'Could not remove the download' : 'Download failed — check your connection');
-        paintDl(cached);
+        dlState = cached ? 'done' : 'error';
       }
+      paintDl();
+      dlBusy = false;
       $dl.disabled = false;
+      // 수동 저장은 위에서 await 로 끝까지 기다렸으므로 여기서 poll 을 다시 켤 이유가 없다.
     });
   }
   // 트랜스크립트 시트 시크 바(스와이프) 요소 — 시트가 닫혀 있어도 DOM 엔 존재한다.
@@ -1912,6 +1953,7 @@ export async function renderEpisode(root, idStr, tStr) {
     document.removeEventListener('visibilitychange', onVis);
     clearTimeout(ctrlHideTimer);
     clearTimeout(followTimer);   // 자동추적 복귀 예약 — 다음 회차 시트를 건드리지 않게 취소
+    if (dlPollTimer) { clearInterval(dlPollTimer); dlPollTimer = null; }   // np-dl 백그라운드 상태 poll 누수 방지
     // 단어 사전 팝오버 정리. ⚠ hideWordPop() 을 거쳐야 한다 — 팝오버는 열릴 때 재생을 '잠시' 멈추는데
     // (_lpWasPlaying), 예전엔 cleanup 이 엘리먼트만 지워서 팝오버를 연 채 화면을 벗어나면 재생이
     // 멈춘 채로 남았다(미니플레이어가 정지 상태로 굳음). hideWordPop 이 이어재생까지 복원한다.

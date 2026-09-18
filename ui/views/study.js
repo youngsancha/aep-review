@@ -42,6 +42,9 @@ const SESS_CAPS = {
 };
 // 모드 라벨은 영어 — Practice 리스트(Dictation/Cloze/Quiz…)와 동일 표기(홈 영문화 2026-07-22).
 const DRILL_LABEL = { dictation: '✍️ Dictation', read: '🎯 Speed quiz', prod: '🗣️ KR→EN', cloze: '🧩 Cloze', convo: '💬 Talk' };
+// 축(axis) → 드릴 모드 매핑 — pickDrills(오늘 세션 약점 드릴 선택)와 Practice 그리드의 추천
+// 배지가 이 하나만 공유한다. 테이블을 두 번 만들면 드리프트가 나므로 절대 복제하지 않는다.
+const AXIS_DRILL = { listening: 'dictation', production: 'convo', automaticity: 'read' };
 function sessSize() { try { const v = localStorage.getItem(SESS_SIZE_KEY); return SESS_CAPS[v] ? v : 'M'; } catch (e) { return 'M'; } }
 function loadSess() { try { return JSON.parse(localStorage.getItem(SESS_KEY) || 'null'); } catch (e) { return null; } }
 function saveSess(st) { try { localStorage.setItem(SESS_KEY, JSON.stringify(st)); } catch (e) { /* quota */ } }
@@ -289,6 +292,14 @@ export async function renderStudy(root) {
   function heroHtml() {
     const pct = ov.total ? Math.round((knownCount / ov.total) * 100) : 0;
     const streak = getStreak();
+    // 추천 배지 — pickDrills 와 동일한 AXIS_DRILL(모듈 상단 공유)로 weakestAxis 를 드릴 모드로
+    // 바꿔 Practice 9모드 중 그 모드 버튼 하나에만 단다. breadth/retention 이 최약축이면 Practice
+    // 그리드에 대응 모드가 없어(스와이프·SRS 로 오르는 축) 배지를 달지 않는다. 미측정이면 null.
+    const recoMode = AXIS_DRILL[weakestAxis(prof.scores)] || null;
+    const recoBtnId = recoMode === 'dictation' ? 'dict' : recoMode;   // 버튼 id 접미사(dictation 만 축약형)
+    const reco = (id) => id === recoBtnId
+      ? ' <span class="qb-reco" style="margin-left:6px;padding:2px 7px;border-radius:999px;background:var(--tint);color:#fff;font-size:10px;font-weight:800;letter-spacing:.02em;vertical-align:middle;">추천</span>'
+      : '';
     return `
       <div class="library-head">
         <h1 class="library-title">Study</h1>
@@ -331,17 +342,17 @@ export async function renderStudy(root) {
       <details class="season-group study-practice">
         <summary class="section-h season-head"><h2>Practice</h2><span class="season-right"><span class="count">9 modes</span><span class="season-caret" aria-hidden="true">⌄</span></span></summary>
         <div class="study-quiz-row">
-          <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz</span><span class="qb-sub">뜻 보고 표현 고르기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-read"><span class="qb-ico">🎯</span><span class="qb-txt">Quiz${reco('read')}</span><span class="qb-sub">뜻 보고 표현 고르기</span></button>
           <button class="study-quiz-btn" id="study-quiz-listen"><span class="qb-ico">🎧</span><span class="qb-txt">Listen</span><span class="qb-sub">듣고 뜻 고르기</span></button>
           <button class="study-quiz-btn" id="study-quiz-weak"><span class="qb-ico">⚡</span><span class="qb-txt">Weak</span><span class="qb-sub">미마스터 집중 퀴즈</span></button>
-          <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation</span><span class="qb-sub">듣고 받아쓰기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-dict"><span class="qb-ico">✍️</span><span class="qb-txt">Dictation${reco('dict')}</span><span class="qb-sub">듣고 받아쓰기</span></button>
           <button class="study-quiz-btn" id="study-quiz-cloze"><span class="qb-ico">🧩</span><span class="qb-txt">Cloze</span><span class="qb-sub">빈칸에 표현 채우기</span></button>
           <button class="study-quiz-btn" id="study-quiz-speak"><span class="qb-ico">🎤</span><span class="qb-txt">Speak</span><span class="qb-sub">듣고 따라 말하기</span></button>
           <button class="study-quiz-btn" id="study-quiz-prod"><span class="qb-ico">🗣️</span><span class="qb-txt">KR→EN</span><span class="qb-sub">한국어 보고 영어로</span></button>
-          <button class="study-quiz-btn" id="study-quiz-convo"><span class="qb-ico">💬</span><span class="qb-txt">Talk</span><span class="qb-sub">질문에 내 말로 답하기</span></button>
+          <button class="study-quiz-btn" id="study-quiz-convo"><span class="qb-ico">💬</span><span class="qb-txt">Talk${reco('convo')}</span><span class="qb-sub">질문에 내 말로 답하기</span></button>
           <button class="study-quiz-btn" id="study-quiz-sent"><span class="qb-ico">💬</span><span class="qb-txt">Sentences</span><span class="qb-sub">문장 카드 반복</span></button>
         </div>
-        <div class="study-scope-note">연습 대상: 아래 Expressions 에서 선택한 종류</div>
+        <div class="study-scope-note tappable" id="study-scope-note" role="button" tabindex="0">연습 대상: <b>${selected ? (KIND_LABEL[selected] || selected) : '전체'}</b> · 바꾸기 ›</div>
       </details>
       <button class="study-ess-row" id="study-essentials">
         <span class="study-ess-ico">✨</span>
@@ -731,6 +742,15 @@ export async function renderStudy(root) {
     }
   }
 
+  // Practice 스코프 노트 탭 / Talk 빈 상태의 "다른 종류 고르기" 공용 — 아래 Expressions 종류
+  // 칩으로 스크롤 + 포커스. 칩은 heroHtml() 출력물(root 최상위)에 항상 있어 #study-list 만
+  // 다시 그린 화면(예: Talk 빈 상태)에서도 그대로 남아 있다.
+  function focusKindChips() {
+    const chip = root.querySelector('.study-kind-chip.on') || root.querySelector('.study-kind-chip');
+    chip?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    chip?.focus();
+  }
+
   function paintShell() {
     root.innerHTML = heroHtml() + '<div id="study-list"></div>' + statsHtml();
     paintDrive().catch(() => {});   // 비동기 — transcript 도착 후 채움(#drive-host 는 Today 카드 바로 아래)
@@ -749,6 +769,10 @@ export async function renderStudy(root) {
     root.querySelector('#study-quiz-convo')?.addEventListener('click', () => startConversation());
     root.querySelector('#study-quiz-sent')?.addEventListener('click', startSentences);
     root.querySelector('#study-essentials')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
+    // 스코프 노트 탭 → 아래 Expressions 종류 칩으로 스크롤+포커스(수동적 안내문을 실행 가능하게).
+    const $scope = root.querySelector('#study-scope-note');
+    $scope?.addEventListener('click', focusKindChips);
+    $scope?.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); focusKindChips(); } });
     // role="button" 을 선언했으면 키보드도 동작해야 한다(.prof-axis·.study-x-ep 와 동일 패턴).
     const $level = root.querySelector('#plan-level');
     $level?.addEventListener('click', startLevelCheck);
@@ -775,8 +799,8 @@ export async function renderStudy(root) {
   // ── 오늘 세션 — 복습(SRS) → 새 표현 소개 → 약점 드릴을 한 버튼으로 체이닝 (v1.32.0) ──
   // 항목 선택: srsQueue(복습 due + 신규) 그대로 → 채점된 카드는 다음 조회에서 자연히 빠지므로
   // 같은 날 재진입(이어서 하기)이 별도 카드 상태 저장 없이 정확하다. 드릴은 prof.scores 의
-  // 최약축을 모드로 매핑(콜드스타트 = 받아쓰기). 완료 시에만 markStudyDay(정직한 스트릭).
-  const AXIS_DRILL = { listening: 'dictation', production: 'convo', automaticity: 'read' };
+  // 최약축을 모드로 매핑(콜드스타트 = 받아쓰기, 매핑은 모듈 상단 AXIS_DRILL 공유). 완료 시에만
+  // markStudyDay(정직한 스트릭).
   function pickDrills(n) {
     const ranked = ['listening', 'production', 'automaticity']
       .filter((k) => prof.scores[k] != null)
@@ -1793,8 +1817,22 @@ export async function renderStudy(root) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const pool = (source || items).filter((v) => v.term && v.term.trim());
     if (!pool.length) {
+      // 빈 풀 — SRS 빈 상태(ui/views/srs.js:63-71)와 같은 구조(이모지·제목·설명·CTA)로,
+      // '왜 없는지(선택한 종류 이름)' + '다음에 뭘 할지(종류 바꾸기/Essentials)'를 바로 준다.
       const el = root.querySelector('#study-list');
-      if (el) el.innerHTML = '<div class="empty">대화 연습에 쓸 표현이 아직 없어요.</div>';
+      const kindName = (selected && (KIND_LABEL[selected] || selected)) || '이 종류';
+      if (el) el.innerHTML = `
+        <div class="empty srs-done">
+          <div class="srs-done-emoji">💬</div>
+          <p class="srs-done-title">${escapeHtml(kindName)}에 쓸 표현이 없어요</p>
+          <p class="srs-done-sub">Talk 연습은 예문이 있는 표현이 필요해요.<br/>다른 종류를 고르거나 Essentials 로 시작해보세요.</p>
+          <div class="quiz-sum-actions">
+            <button class="study-cta-btn" id="cv-empty-kind">다른 종류 고르기</button>
+            <button class="study-cta-btn secondary" id="cv-empty-ess">✨ Essentials 로</button>
+          </div>
+        </div>`;
+      root.querySelector('#cv-empty-kind')?.addEventListener('click', focusKindChips);
+      root.querySelector('#cv-empty-ess')?.addEventListener('click', () => renderEssentials(root, () => renderStudy(root)));
       return;
     }
     const cards = _shuffle(pool).slice(0, Math.min(10, pool.length));
@@ -1837,7 +1875,7 @@ export async function renderStudy(root) {
           <div class="convo-task">${escapeHtml(turn.instruction)}</div>
         </div>
         <button class="speak-mic" id="cv-mic"><span class="speak-mic-ico">🎤</span><span id="cv-mic-label">${SR ? '답하기' : '녹음'}</span></button>
-        <div class="speak-hint" id="cv-hint">${SR ? '탭하고 바로 시작하세요 — 첫 단어까지의 시간도 잽니다' : '⚠️ 음성인식 미지원 — 녹음만 됩니다 (Chrome/Android)'}</div>
+        <div class="speak-hint" id="cv-hint">${SR ? '탭하고 바로 시작하세요 — 첫 단어까지의 시간도 잽니다' : '⚠️ 이 기기에선 음성 인식이 없어 점수는 매기지 않아요 — 녹음·듣기만 해요'}</div>
         <div id="cv-result"></div>
         <div class="dict-actions"><button class="study-cta-btn secondary" id="cv-skip">건너뛰기</button></div>
         <button class="quiz-exit" id="cv-exit">← Study 홈</button>`;

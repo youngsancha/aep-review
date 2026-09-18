@@ -2720,4 +2720,17 @@ body.drive-capture.on-episode #drive-fab { display: flex; }
   font-size: 12.5px; font-weight: 600; color: var(--text-3);
   text-decoration: none;
 }
+
+/* === timeline: error/empty states (2026-09-18) === */
+/* srs-done(.srs-done-emoji/-title/-sub, 1614행 근처)과 같은 illustrated 빈 상태 골격을
+   라이브러리(회차 없음/검색 결과 없음/로드 실패) 전용으로 재사용 — 클래스명만 lib-* 로 분리해
+   "SRS 화면의 클래스를 라이브러리 마크업에서 쓰는" 이름 혼선을 피한다. */
+.lib-empty { padding: 48px 20px 28px; }
+.lib-empty-emoji { font-size: 44px; margin-bottom: 8px; }
+.lib-empty-title {
+  font-family: var(--font); font-weight: 700; font-size: 17px;
+  color: var(--text); margin: 0; letter-spacing: -0.01em;
+}
+.lib-empty-sub { margin-top: 6px; color: var(--text-3); font-size: 13.5px; }
+.lib-empty-cta { margin-top: 16px; display: inline-flex; }
 .np-ext-video-link:hover { color: var(--tint); }

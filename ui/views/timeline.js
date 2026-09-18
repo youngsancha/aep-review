@@ -20,7 +20,22 @@ export async function renderTimeline(root) {
   refreshCovers();
   root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
   const _startHash = location.hash;
-  const items = await listEpisodes();
+  let items;
+  try {
+    items = await listEpisodes();
+  } catch (e) {
+    // 스테일 렌더 방지: 실패를 기다리는 사이 다른 화면으로 이동했으면 아무것도 안 그린다(아래 성공
+    // 경로와 동일 관례).
+    if (location.hash !== _startHash) return;
+    // 예전엔 이 예외를 여기서 안 잡아 app.js 라우트 레벨 catch(66-70행)까지 올라갔다 → 화면 전체가
+    // 범용 "Something went wrong" 카드로 바뀌며 라이브러리 고유 맥락(쇼 스위처 등)이 사라졌다.
+    // srs.js 의 오프라인/서버오류 구분 + 로컬 재시도 패턴(50-61행)을 그대로 따른다.
+    console.error('[timeline] listEpisodes failed:', e);
+    root.innerHTML = `${showSwitchHtml()}${loadErrorHtml()}`;
+    wireShowSwitch(root);
+    root.querySelector('#lib-retry')?.addEventListener('click', () => renderTimeline(root));
+    return;
+  }
   // 스테일 렌더 방지: listEpisodes 를 기다리는 사이 다른 화면(에피소드 등)으로 이동했으면 중단
   // (느린 초기 로드 중 회차 탭 → 열린 에피소드를 라이브러리가 덮어쓰던 경우). 해시 없는 하니스는 무영향.
   if (location.hash !== _startHash) return;
@@ -31,12 +46,12 @@ export async function renderTimeline(root) {
     root.innerHTML = `
       ${showSwitchHtml()}
       ${heroHtml({total: 0, ready: 0})}
-      <div class="empty">
-        No episodes yet.<br />
-        New episodes are added automatically — tap ↻ (top right) to refresh.
-      </div>
+      ${noEpisodesHtml()}
     `;
     wireShowSwitch(root);
+    // '새로고침' 을 안내 문구만으로 끝내지 않고 실제 sync 버튼(app.js refreshData)을 그대로 눌러준다
+    // — 여기서 목록을 직접 다시 받는 로직을 새로 만들면 route() 재라우팅 가드 등과 중복/불일치 위험.
+    root.querySelector('#lib-sync-cta')?.addEventListener('click', () => document.getElementById('sync-btn')?.click());
     return;
   }
 
@@ -60,18 +75,25 @@ export async function renderTimeline(root) {
   const $s = root.querySelector('#ep-search');
   if ($s) {
     let timer = 0;
+    // input 리스너와 '검색 지우기' 버튼이 같은 렌더 로직을 공유하도록 분리(중복 방지).
+    const runSearch = (rawQuery) => {
+      const q = rawQuery.toLowerCase();
+      const filtered = !q ? items : items.filter((e) =>
+        (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
+      const box = root.querySelector('#ep-groups');
+      // openAll 은 검색 중일 때만 — q 를 지우면 최초 렌더의 접힘 기본값(최신 시즌만 펼침)으로 돌아온다.
+      box.innerHTML = filtered.length ? groupsHtml(filtered, !!q) : searchEmptyHtml(rawQuery);
+      wirePlay(box, items);
+      markOfflineReady(box);
+      box.querySelector('#ep-search-clear')?.addEventListener('click', () => {
+        $s.value = '';
+        runSearch('');
+        $s.focus();
+      });
+    };
     $s.addEventListener('input', () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        const q = $s.value.trim().toLowerCase();
-        const filtered = !q ? items : items.filter((e) =>
-          (e.title || '').toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q));
-        const box = root.querySelector('#ep-groups');
-        // openAll 은 검색 중일 때만 — q 를 지우면 최초 렌더의 접힘 기본값(최신 시즌만 펼침)으로 돌아온다.
-        box.innerHTML = filtered.length ? groupsHtml(filtered, !!q) : '<div class="empty">No results.</div>';
-        wirePlay(box, items);
-        markOfflineReady(box);
-      }, 150);
+      timer = setTimeout(() => runSearch($s.value.trim()), 150);
     });
   }
 }
@@ -306,6 +328,50 @@ function continueHtml(items) {
 function skeletonHtml() {
   const row = '<div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div>';
   return `<div class="skel-hero"></div>${Array(6).fill(row).join('')}`;
+}
+
+// SRS 의 illustrated 빈 상태(emoji+title+sub+action, srs.js:50-61/63-71) 패턴을 라이브러리에도
+// 통일 적용하는 공용 카드 — 로드 실패/회차 없음/검색 결과 없음 세 곳이 이 하나를 공유한다.
+function emptyCardHtml({ emoji, title, sub = '', actionHtml = '' }) {
+  return `
+    <div class="empty lib-empty">
+      <div class="lib-empty-emoji">${emoji}</div>
+      <p class="lib-empty-title">${title}</p>
+      ${sub ? `<p class="lib-empty-sub">${sub}</p>` : ''}
+      ${actionHtml}
+    </div>`;
+}
+
+// listEpisodes() 실패 — 오프라인 스냅샷이 없을 때만 여기 온다(db.js 가 스냅샷 있으면 그걸 반환).
+// 오프라인/서버오류를 구분해 원인을 알려주고, 같은 자리에서 재시도할 수 있게 한다.
+function loadErrorHtml() {
+  const offline = !navigator.onLine;
+  return emptyCardHtml({
+    emoji: offline ? '📴' : '⚠️',
+    title: offline ? '오프라인이에요' : '불러오지 못했어요',
+    sub: offline
+      ? '받아 둔 회차만 보여요 — 연결되면 다시 시도해 주세요.'
+      : '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.',
+    actionHtml: `<button class="btn primary lib-empty-cta" id="lib-retry">다시 시도</button>`,
+  });
+}
+
+function noEpisodesHtml() {
+  return emptyCardHtml({
+    emoji: '🎧',
+    title: 'No episodes yet',
+    sub: 'New episodes are added automatically.',
+    actionHtml: `<button class="btn secondary lib-empty-cta" id="lib-sync-cta">↻ Refresh now</button>`,
+  });
+}
+
+// 검색어를 반향(echo)해 '무엇에 대해 결과가 없는지' 바로 알려주고, 지우기 1탭으로 전체 목록 복귀.
+function searchEmptyHtml(query) {
+  return emptyCardHtml({
+    emoji: '🔍',
+    title: `'${escapeHtml(query)}' 에 맞는 회차가 없어요`,
+    actionHtml: `<button class="btn secondary lib-empty-cta" id="ep-search-clear">검색 지우기</button>`,
+  });
 }
 
 function heroHtml({total, ready}) {
