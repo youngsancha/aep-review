@@ -79,6 +79,11 @@ const SVG_CAR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" str
 // 이모지 대신 currentColor 단색 SVG(안드로이드 사각박스 회피, 위 SVG_CAR 와 동일 관례).
 const SVG_EXPAND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M3 15v6h6"/><path d="M21 15v6h-6"/></svg>';
 
+// ⤒ Lift 칩 글리프(맨 위 막대 + 위 화살표). 켜지면 CSS 가 '화살표만' 뒤집어 막대는 위에 둔 채
+// 아래를 가리키게 한다(= 위에서 내려놓기). 아이콘 전체를 180° 돌리면 '화살표 + 밑줄' 이 되어 오프라인
+// 저장 칩(SVG_DL)과 똑같이 읽혔다(스크린샷 검증 2026-09-25). SVG_CAR 와 같은 20px·stroke 2 규격.
+const SVG_LIFT = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4.5h13"/><g class="lift-arrow"><path d="M12 20V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></g></svg>';
+
 // 오프라인 저장 칩 글리프 — 컬러 이모지(⬇/✅) 대신 currentColor 단색 SVG(안드로이드 사각박스 회피).
 const SVG_DL = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M7.5 10l4.5 4.5L16.5 10"/><path d="M4.5 20h15"/></svg>';
 const SVG_DL_DONE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>';
@@ -1670,6 +1675,36 @@ export async function renderEpisode(root, idStr, tStr) {
   // 12px 미만 이동이면 취소(pointercancel)돼도 토글한다. click 은 키보드·보조기술용으로 남긴다.
   bindReliableTap($drive, toggleDrive);
 
+  // === ⤒ Lift — 본문을 화면 맨 위로 (사용자 요청 2026-09-25) ===
+  // 차량 거치 시 화면 아랫부분이 핸들에 가려진다. 기본 시트는 위에 8vh 여백 + 헤더(핸들·제목·날짜·✕)
+  // 가 있어 첫 문장이 상태바에서 ~200px 아래에 온다. 켜면 시트가 화면 전체(100dvh)로 올라가고 헤더가
+  // 접혀서 툴바가 상태바 바로 밑에 붙고, 본문이 그 바로 아래에서 시작한다. 자동추적 앵커는 전부
+  // .tx-scroll 상단 기준 상대값이라 컨테이너가 올라가면 본문도 그대로 따라 올라간다(앵커 로직 불변).
+  // 되돌리기는 같은 칩(툴바는 두 상태 모두에 남는다). 글자크기(A 칩)처럼 '보기 설정'이라
+  // localStorage 에 기억한다 — 차에서 시트를 열 때마다 다시 누를 필요가 없게. drive/video 처럼
+  // 동작을 바꾸는 모드가 아니므로 v1.39.3 '진입마다 OFF' 원칙의 대상이 아니다.
+  const LIFT_KEY = 'aep-tx-lift';
+  const $lift = document.getElementById('tx-lift');
+  const $liftCard = $sheet ? $sheet.querySelector('.tx-sheet-card') : null;
+  let liftOn = false;
+  try { liftOn = localStorage.getItem(LIFT_KEY) === '1'; } catch (e) {}
+  const applyLift = () => {
+    $liftCard?.classList.toggle('lifted', liftOn);
+    if ($lift) {
+      $lift.setAttribute('aria-pressed', liftOn ? 'true' : 'false');
+      const lb = liftOn ? 'Restore sheet layout' : 'Lift text to top';
+      $lift.setAttribute('aria-label', lb);
+      $lift.title = lb;
+    }
+  };
+  applyLift();
+  // 주행 중 조준 없이 누르는 칩 — 🚗 와 같은 이유로 click 대신 bindReliableTap(진동으로 손가락이 밀려도 발화).
+  bindReliableTap($lift, () => {
+    liftOn = !liftOn;
+    try { localStorage.setItem(LIFT_KEY, liftOn ? '1' : '0'); } catch (e) {}
+    applyLift();
+  });
+
   // === 📺 Video 모드 — wh(백악관 브리핑) 회차의 YouTube 원본을 자막 위에 띄우고, 그 재생위치로
   // 위 싱크 엔진 전체(drv 를 통해)를 구동한다. 회차 진입마다 항상 OFF 로 시작하고 persist 하지
   // 않는다 — drive 칩과 같은 원칙(v1.39.3): PWA 는 며칠 백그라운드에 살아남으므로 '진입 시 명시적
@@ -2220,7 +2255,9 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
             <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
             ${showVideoToggle ? `
-            <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>
+            <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>` : ''}
+            <button id="tx-lift" class="tx-toggle tx-lift-btn" aria-pressed="false" aria-label="Lift text to top" title="Lift text to top">${SVG_LIFT}</button>
+            ${showVideoToggle ? `
             <button id="tx-fullscreen" class="tx-toggle tx-fs-toggle" aria-pressed="false" aria-label="Fullscreen study mode">${SVG_EXPAND}</button>
             ` : ''}
           </div>

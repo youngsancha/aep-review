@@ -53,6 +53,7 @@ export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
 export const fmtDuration = (s) => Math.round(s / 60) + ' min';
 export const stripTrailingUrl = (t) => String(t ?? '').replace(/\s*(?:[-—–]\s*)?https?:\/\/\S+\s*$/, '').trim();
 export const toast = (msg) => { (window.__toasts = window.__toasts || []).push(msg); };
+export const withTimeout = (promise, ms, fallback) => Promise.race([Promise.resolve(promise).catch(() => fallback), new Promise((r) => setTimeout(() => r(fallback), ms))]);
 export const speak = () => {};
 export const prefetch = () => {};
 const calls = []; window.__calls = calls; window.__err = window.__err || [];
@@ -521,9 +522,16 @@ export async function forceRun(){ (window.__force = window.__force || []).push(1
 """
 # Settings 시트 전용 하니스 — settings.js 를 직접 로드(실제 app.js 는 topbar 배선이 하니스에서
 # 안 도므로 커버 불가). /app.js→_mocks(toast/escapeHtml), /offline.js→_offmock 로 치환.
+# settings.js 는 계정 행(f8d94eb)을 위해 supabase.auth.getSession() 을 부른다 — 진짜 클라이언트 대신
+# 고정 세션을 돌려주는 최소 목. 이게 없으면 모듈 링크가 실패해 __ready 가 영영 안 와 하니스 전체가 죽었다.
+SETTINGS_SUPA_MOCK = UI / "_setsupamock.js"
+SETTINGS_SUPA_MOCK_JS = r"""
+export const supabase = { auth: { getSession: async () => ({ data: { session: { user: {
+  email: 'tester@example.com', user_metadata: {}, app_metadata: { provider: 'google' } } } } }) } };
+"""
 SETTINGS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
-  "/app.js":"/_mocks.js","/offline.js":"/_offmock.js"
+  "/app.js":"/_mocks.js","/offline.js":"/_offmock.js","/supabase.js":"/_setsupamock.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body>
 <span id="app-version">v0</span>
 <script type="module">
@@ -579,6 +587,7 @@ def main() -> int:
     REALVIDEO_MOCK.write_text(REALVIDEO_MOCK_JS, encoding="utf-8")
     REALVIDEO_HARNESS.write_text(REALVIDEO_HARNESS_HTML, encoding="utf-8")
     SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
+    SETTINGS_SUPA_MOCK.write_text(SETTINGS_SUPA_MOCK_JS, encoding="utf-8")
     OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     DBCACHE_MOCK.write_text(DBCACHE_MOCK_JS, encoding="utf-8")
     DBCACHE_HARNESS.write_text(DBCACHE_HARNESS_HTML, encoding="utf-8")
@@ -982,9 +991,9 @@ def main() -> int:
                 tb_normal[_vw] = _toolbar_row_of_last_open_sheet()
                 _shot(pg, f"tx-toolbar-normal-{_vw}")
             pg.set_viewport_size(_vp_before_tb1); time.sleep(0.2)
-            print("TX-TOOLBAR-NORMAL (6 chips):", tb_normal)
+            print("TX-TOOLBAR-NORMAL (7 chips):", tb_normal)
             tb_normal_ok = all(
-                isinstance(tb_normal[v], dict) and tb_normal[v]["n"] == 6
+                isinstance(tb_normal[v], dict) and tb_normal[v]["n"] == 7
                 and tb_normal[v]["offscreen"] == 0 and tb_normal[v]["topRange"] < 8
                 for v in (360, 390))
             pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)
@@ -1030,7 +1039,7 @@ def main() -> int:
             tx_toolbar_fit = {}
             tx_toolbar_worst = {}
             _steps_seen = []
-            for _vw in (360, 390):
+            for _vw in (360, 390, 412):
                 pg.set_viewport_size({"width": _vw, "height": 780}); time.sleep(0.2)
                 worst = None
                 # 라벨을 직접 써 넣어 최악 폭을 만든다. 칩을 실제로 눌러 순환시키려 했으나 하니스에선
@@ -1077,15 +1086,18 @@ def main() -> int:
             print("TX-TOOLBAR-ORDER:", tx_toolbar_order, " fit=", tx_toolbar_fit)
             tx_toolbar_order_ok = (
                 tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow', 'tx-speed',
-                                      'tx-drive', 'tx-video-toggle', 'tx-fullscreen']
+                                      'tx-drive', 'tx-video-toggle', 'tx-lift', 'tx-fullscreen']
                 # 한 줄은 이제 CSS(nowrap)가 보장하지만, wrap 으로 되돌아가는 회귀를 잡으려면
                 # 계속 확인해야 한다 → topRange 는 두 폭 모두에서 assert.
-                # 가로 넘침(overflow)은 390 에서만 assert 한다: 하니스는 같은 칩을 실기기보다 49px
-                # 넓게 재므로(폰트 스택 차이, 2026-08-07 2회 측정) 360 에서의 넘침은 실기기에 없는
-                # 조건이다. 360 수치는 사람이 여유를 보도록 출력만 한다.
-                and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 8
-                        and tx_toolbar_worst[v]["topRange"] < 8 for v in (360, 390))
-                and tx_toolbar_worst[390]["overflow"] == 0)
+                # 가로 넘침(overflow)은 한 폭에서만 assert 한다. ⚠ 2026-08-07 의 '하니스가 실기기보다
+                # 49px 넓게 잰다'는 더 이상 사실이 아니다 — 칩 대부분이 고정폭이 된 뒤 2026-09-25 에
+                # Roboto(안드로이드 기본)를 주입해 재니 칩 폭 합계가 SF 하니스와 2px 차이였다.
+                and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 9
+                        and tx_toolbar_worst[v]["topRange"] < 8 for v in (360, 390, 412))
+                # v1.77.0: ⤒ Lift 로 영상 회차 칩이 9개가 됐다. 넘침 0 기준 폭을 390 → 412(사용자 실기기,
+                # 스크린샷 칩 폭으로 역산)로 옮긴다. 390 에선 6px(SF)/384 에선 9px(Roboto) 가로 스와이프가
+                # 필요하다 — 영상(wh) 회차에서만, nowrap 이라 줄바꿈은 여전히 없다(칩 폭은 Roboto 로 재도 ±2px).
+                and tx_toolbar_worst[412]["overflow"] == 0)
             print("VIDEO-TOGGLE: hidden_no_id=", video_toggle_hidden, " shown_with_id=", video_toggle_shown,
                   " wh_chip=", wh_chip_shown, " about_no_url=", about_no_url, " about_txt=", repr(about_txt))
             print("PRIMARY-VIDEO-BTN: absent_no_id=", no_video_btn_id1, " tx_in_extras_no_id=", tx_btn_in_extras_id1,
@@ -2257,11 +2269,137 @@ def main() -> int:
                 print("LOOP-PAGE-ERRORS:", loop_errs[:6])
             loop_ok = loop_ok and not loop_errs
 
+            # === ⤒ Lift — 본문을 화면 맨 위로 (v1.77.0, 사용자 요청 2026-09-25) ===
+            # 차량 거치 시 하단이 핸들에 가려져서 첫 문장을 상태바 쪽으로 끌어올리는 칩. 뷰포트는 사용자
+            # 스크린샷(Galaxy 1440×3120 → 412 CSS px 폭: 칩 5개 폭이 하니스와 ±1px 일치, 상태바 37.5px + 8vh 64px =
+            # 시트 윗변 101.8px 일치)에서 역산한 412×804 CSS px, 다크 테마.
+            # 기하로 단언하는 것: ① 켜면 카드가 화면 맨 위(0)·헤더 높이 0·툴바가 맨 위 ② 본문이 정확히
+            # (8vh + 헤더) 만큼 올라온다 — 앵커 로직을 안 건드리므로 스크롤 위치(scrollTop)는 불변 ③ 끄면
+            # 켜기 전 기하로 0.5px 안에 복귀 ④ localStorage 로 기억되어 다시 열어도 올라간 상태 ⑤ 칩은
+            # 🚗 와 같은 높이·툴바 오른쪽 끝 ⑥ 영상 회차(칩 9개)도 한 줄·넘침 없음, 풀스크린과 공존.
+            lift_errs = []
+            LIFT_GEO_JS = """() => {
+              const sheets = [...document.querySelectorAll('.tx-sheet.open')];
+              const sheet = sheets[sheets.length - 1];
+              if (!sheet) return null;
+              const card = sheet.querySelector('.tx-sheet-card');
+              const hd = sheet.querySelector('.tx-sheet-header');
+              const tb = sheet.querySelector('.tx-toolbar');
+              const sc = sheet.querySelector('.tx-scroll');
+              const lift = sheet.querySelector('#tx-lift');
+              const drive = sheet.querySelector('#tx-drive');
+              const p0 = sc.querySelector('.tx-para');
+              const r = (el) => el ? el.getBoundingClientRect() : null;
+              const R = (x) => Math.round(x * 10) / 10;
+              const lr = r(lift), dr = r(drive), tr = r(tb);
+              return {
+                lifted: card.classList.contains('lifted'),
+                pressed: lift ? lift.getAttribute('aria-pressed') : null,
+                cardTop: R(r(card).top), cardH: R(r(card).height),
+                radius: getComputedStyle(card).borderTopLeftRadius,
+                headerH: R(r(hd).height), headerVis: getComputedStyle(hd).visibility,
+                tbTop: R(tr.top), tbBot: R(tr.bottom),
+                scTop: R(r(sc).top), scrollTop: sc.scrollTop,
+                p0Top: p0 ? R(r(p0).top - r(sc).top + sc.scrollTop) : null,
+                liftH: lr ? R(lr.height) : null, driveH: dr ? R(dr.height) : null,
+                liftW: lr ? R(lr.width) : null,
+                liftRightGap: lr ? R(tr.right - lr.right) : null,
+                liftMidY: lr ? R(lr.top + lr.height / 2) : null, driveMidY: dr ? R(dr.top + dr.height / 2) : null,
+                chips: tb.querySelectorAll('.tx-toggle').length,
+                overflow: Math.max(0, tb.scrollWidth - tb.clientWidth),
+                store: localStorage.getItem('aep-tx-lift'),
+                vh: innerHeight,
+              };
+            }"""
+
+            def _lift_page(pre=None):
+                ctx = b.new_context(viewport={"width": 412, "height": 804}, device_scale_factor=3.5,
+                                    color_scheme="dark", has_touch=True)
+                page = ctx.new_page()
+                page.on("pageerror", lambda e: lift_errs.append("LIFT: " + str(e)))
+                page.on("console", lambda m: lift_errs.append(f"LIFT {m.type}: {m.text}")
+                        if m.type == "error" else None)
+                if pre is not None:
+                    page.add_init_script("try{localStorage.setItem('aep-tx-lift','%s')}catch(e){}" % pre)
+                page.route("**/api.mymemory.translated.net/**", _mm)
+                page.goto("http://localhost:8123/_harness.html")
+                page.wait_for_function("window.__ready===true", timeout=10000)
+                return ctx, page
+
+            ctx_l, pl = _lift_page()
+            pl.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
+            lift_a = pl.evaluate(LIFT_GEO_JS)
+            _shot(pl, "lift-0-normal-412")
+            pl.tap("#tx-lift"); time.sleep(0.12)
+            lift_mid = pl.evaluate(LIFT_GEO_JS)
+            _shot(pl, "lift-1-mid-412")
+            time.sleep(0.5)
+            lift_b = pl.evaluate(LIFT_GEO_JS)
+            _shot(pl, "lift-2-lifted-412")
+            pl.tap("#tx-lift"); time.sleep(0.6)
+            lift_c = pl.evaluate(LIFT_GEO_JS)
+            _shot(pl, "lift-3-restored-412")
+            ctx_l.close()
+            print("LIFT-NORMAL:", lift_a)
+            print("LIFT-MID(120ms):", lift_mid)
+            print("LIFT-ON:", lift_b)
+            print("LIFT-RESTORED:", lift_c)
+            _ok = lambda d: isinstance(d, dict)
+            gain = (lift_a["scTop"] - lift_b["scTop"]) if _ok(lift_a) and _ok(lift_b) else 0
+            want_gain = (round(lift_a["vh"] * 0.08, 1) + lift_a["headerH"]) if _ok(lift_a) else -1
+            lift_on_ok = (_ok(lift_a) and _ok(lift_b) and lift_a["lifted"] is False and lift_a["pressed"] == "false"
+                          and lift_b["lifted"] is True and lift_b["pressed"] == "true"
+                          and lift_b["cardTop"] == 0 and lift_b["headerH"] == 0 and lift_b["headerVis"] == "hidden"
+                          and lift_b["tbTop"] == 0 and lift_b["radius"] == "0px"
+                          and abs(gain - want_gain) <= 1 and gain >= 120
+                          and lift_b["scrollTop"] == lift_a["scrollTop"] and lift_b["store"] == "1")
+            # 전환이 실제로 '움직이는지'(스냅이 아닌지) — 120ms 시점엔 카드 top 이 두 끝값 사이여야 한다.
+            lift_anim_ok = _ok(lift_mid) and 0 < lift_mid["cardTop"] < lift_a["cardTop"]
+            lift_off_ok = (_ok(lift_c) and lift_c["lifted"] is False and lift_c["pressed"] == "false"
+                           and lift_c["store"] == "0"
+                           and all(abs(lift_c[k] - lift_a[k]) <= 0.5 for k in ("cardTop", "headerH", "tbTop", "scTop")))
+            lift_chip_ok = (_ok(lift_a) and lift_a["liftH"] == lift_a["driveH"]
+                            and abs(lift_a["liftMidY"] - lift_a["driveMidY"]) <= 0.5
+                            and lift_a["liftRightGap"] <= 5.5 and lift_a["chips"] == 7 and lift_a["overflow"] == 0)
+            # ④ 기억: 저장값 '1' 로 새로 열면 누르지 않아도 올라간 상태로 열린다.
+            ctx_l, pl = _lift_page(pre="1")
+            pl.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
+            lift_persist = pl.evaluate(LIFT_GEO_JS)
+            print("LIFT-PERSISTED:", lift_persist)
+            lift_persist_ok = (_ok(lift_persist) and lift_persist["lifted"] is True and lift_persist["pressed"] == "true"
+                               and lift_persist["cardTop"] == 0 and lift_persist["tbTop"] == 0)
+            # ⑥ 영상 회차(📺 ⤢ 포함 9칩) — 한 줄·넘침 없음, 풀스크린 진입/해제 후에도 lifted 유지.
+            pl.evaluate("window.__renderEp(4)"); time.sleep(0.5)
+            pl.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
+            lift_vid = pl.evaluate(LIFT_GEO_JS)
+            _shot(pl, "lift-4-video-lifted-412")
+            pl.eval_on_selector(".tx-sheet.open #tx-fullscreen", "el=>el.click()"); time.sleep(0.6)
+            lift_fs = pl.evaluate("""() => { const c = [...document.querySelectorAll('.tx-sheet.open .tx-sheet-card')].pop();
+              return { fs: c.classList.contains('fullscreen'), top: Math.round(c.getBoundingClientRect().top),
+                       padTop: getComputedStyle(c).paddingTop }; }""")
+            pl.eval_on_selector(".tx-sheet.open #tx-fs-exit", "el=>el.click()"); time.sleep(0.6)
+            lift_vid2 = pl.evaluate(LIFT_GEO_JS)
+            ctx_l.close()
+            print("LIFT-VIDEO:", lift_vid, " FS:", lift_fs, " AFTER-FS:", lift_vid2)
+            lift_video_ok = (_ok(lift_vid) and lift_vid["chips"] == 9 and lift_vid["overflow"] == 0
+                             and lift_vid["lifted"] is True and lift_vid["tbTop"] == 0
+                             and isinstance(lift_fs, dict) and lift_fs["fs"] is True and lift_fs["top"] == 0
+                             and lift_fs["padTop"] == "0px"
+                             and _ok(lift_vid2) and lift_vid2["lifted"] is True and lift_vid2["tbTop"] == 0)
+            if lift_errs:
+                print("LIFT-PAGE-ERRORS:", lift_errs[:6])
+            lift_ok = (lift_on_ok and lift_anim_ok and lift_off_ok and lift_chip_ok and lift_persist_ok
+                       and lift_video_ok and not lift_errs)
+            print("LIFT-SUB:", {"on": lift_on_ok, "anim": lift_anim_ok, "off": lift_off_ok, "chip": lift_chip_ok,
+                                "persist": lift_persist_ok, "video": lift_video_ok, "errs": not lift_errs},
+                  " gain=", gain, " want=", want_gain)
+
             # 실패 시 어느 묶음인지 바로 보이게 한다 — 예전엔 RESULT: FAIL 만 나와서 큰 논리곱을
             # 사람이 눈으로 되짚어야 했다(2026-08-10: 이것 때문에 한참 헤맸다).
             _groups = {"ep": ep_ok, "study": study_ok, "timeline": timeline_ok, "settings": settings_ok,
                        "srs": srs_ok, "router": router_ok, "realvideo": realvideo_ok,
-                       "ytblocked": ytblocked_ok, "dbcache": dbcache_ok, "loopanchor": loop_ok}
+                       "ytblocked": ytblocked_ok, "dbcache": dbcache_ok, "loopanchor": loop_ok,
+                       "lift": lift_ok}
             print("GROUPS-FAILED:", [k for k, v in _groups.items() if not v] or "none")
             ok = all(_groups.values())
             b.close()
@@ -2277,6 +2415,7 @@ def main() -> int:
         REALVIDEO_MOCK.unlink(missing_ok=True)
         REALVIDEO_HARNESS.unlink(missing_ok=True)
         SETTINGS_HARNESS.unlink(missing_ok=True)
+        SETTINGS_SUPA_MOCK.unlink(missing_ok=True)
         OFFLINE_MOCK.unlink(missing_ok=True)
         DBCACHE_MOCK.unlink(missing_ok=True)
         DBCACHE_HARNESS.unlink(missing_ok=True)
