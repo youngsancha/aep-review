@@ -64,6 +64,8 @@ create table if not exists srs_cards (
 );
 create index if not exists idx_srs_due on srs_cards(due_date);
 create index if not exists idx_srs_show_due on srs_cards(show, due_date);
+-- vocab_id FK 조회(알아요 판정·markKnown/markUnknown)용. 없으면 vocab 행마다 srs 전체를 훑는다(v1.78.0 실측 1.3s).
+create index if not exists idx_srs_vocab on srs_cards(vocab_id);
 
 -- ───────────────────── 뷰: /api/episodes 모양 보존 ─────────────────────
 -- security_invoker → 조회하는 사용자(authenticated)의 RLS 가 그대로 적용됨.
