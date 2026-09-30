@@ -161,6 +161,7 @@ export async function getEpisode(id){
 }
 export async function episodeNav(id){ return { prevId:null, nextId:null }; }
 export async function retentionStats() { return { learned:12, strong:4, mature:8, retentionFrac:0.33 }; }
+export const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];   // study.js 가 첫 목록 선요청에 쓴다(v1.78.0)
 export async function allExpressions() { return expressionsByKind('idiom'); }
 export async function srsQueue() {
   // 실제 flattenCard 형태(front/back = srs_cards 컬럼) — 세션 1단계(복습 reps>0) + 2단계(신규 reps=0) 겸용

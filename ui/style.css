@@ -1787,6 +1787,10 @@ body.logged-out #app-version { display: none; }
   box-shadow: var(--shadow-card); cursor: pointer;
   transition: transform 0.08s;
   touch-action: pan-y;  /* 세로 스크롤은 허용하되 가로 스와이프(→Known)는 JS 로 전달 */
+  /* ⚡ 목록은 kind 당 최대 800장을 한 번에 그린다. 화면 밖 카드의 배치·페인트를 건너뛰게 한다 —
+     스크롤로 다가오면 그때 그린다. auto 크기는 한 번 그려진 실제 높이를 기억하므로 스크롤바가 튀지 않는다. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
 }
 .study-x.known { opacity: 0.62; }
 .study-x.known .study-x-term { text-decoration: line-through; text-decoration-color: var(--separator); }

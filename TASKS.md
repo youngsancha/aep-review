@@ -159,3 +159,10 @@
 - [ ] **P2** allears 63편 + cnn10 347편: R2 오디오는 있는데 재STT 안 됨(매니페스트 밖) — 배너가 맞는 회차. --recent 12 버그 고쳐 내일부터 재STT 잡이 신규만 처리; 백카탈로그는 --recent 확대 결정 필요(allears 는 _ko.json 키 깨질 위험, cnn10 은 번역 없어 안전)
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:ba87b74a-123d-4c78-9cdf-893ed4c77a93 -->
+
+## 2026-09-25 09:00 넘어옴
+
+- [ ] **P2** _pwtest 기존 실패 3그룹 수리: realvideo/ytblocked (db 목에 markUnknown·loadEpisodeSnapshot 없음), study (qb_ico/qb_txt 9개 vs 기대 8, qb_uniform False)
+  - 메모: v1.77.0 전엔 settings 하니스가 중간에 죽어 가려져 있었음
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:57f9e515-f591-4a69-9aa3-0347961f4c26 -->

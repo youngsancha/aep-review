@@ -1,7 +1,7 @@
 // Study 탭 — 에피소드에서 추출된 실생활 표현을 종류별로 탐색하는 허브.
 // 데이터는 기존 vocab_cards (claude 추출, 영+한 정의, 타임스탬프). SRS 복습은 #/srs 가 담당.
 import { escapeHtml, highlightTerm, toast } from '/app.js';
-import { studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview, getEpisode, createCaptureCard } from '/db.js';
+import { STUDY_KINDS, studyOverview, expressionsByKind, allExpressions, markKnown, markUnknown, retentionStats, srsQueue, srsReview, getEpisode, createCaptureCard } from '/db.js';
 import { speak, prefetch } from '/tts.js';
 import { playSentenceClip, stopClip } from '/clip.js';
 import { buildTurn, scoreTurn } from '/convo.js';
@@ -172,6 +172,10 @@ export async function renderStudy(root) {
     ${'<div class="skel-x"></div>'.repeat(5)}`;
   // 보존력(retentionStats)은 studyOverview 와 독립 → 미리 병렬로 띄워 Study 홈 로딩 RTT 를 줄인다.
   const retP = retentionStats().catch(() => ({ retentionFrac: 0 }));
+  // ⚡ 첫 목록(보통 첫 kind)도 개요와 '동시에' 띄운다. 예전엔 개요(카운트 11개) → 셸 → 목록 쿼리가
+  // 직렬이라 4G 에서 왕복 두 번을 더 기다렸다. 개요가 다른 kind 를 고르면(첫 kind 가 0장) 버린다.
+  const preKind = STUDY_KINDS[0];
+  let preList = expressionsByKind(preKind).catch(() => null);
   let ov;
   try {
     ov = await studyOverview();
@@ -1098,8 +1102,10 @@ export async function renderStudy(root) {
       });
     }
     listEl.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+    const pre = (preList && k === preKind) ? preList : null;
+    preList = null;   // 한 번만 쓴다 — 칩을 다시 누르면 항상 새로 받는다
     try {
-      items = await expressionsByKind(k);
+      items = (pre && await pre) || await expressionsByKind(k);
     } catch (e) {
       items = [];
     }

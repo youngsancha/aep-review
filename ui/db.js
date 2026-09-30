@@ -421,7 +421,7 @@ async function _count(table, build) {
   return count || 0;
 }
 
-const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];
+export const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];
 
 // "알아요/마스터" 센티넬: interval_days >= 365 (markKnown 만 설정). 일반 SM-2 로는 잘 도달 안 함.
 const KNOWN_INTERVAL = 365;
@@ -506,8 +506,32 @@ export async function createCaptureCard({ episodeId, term, ko, sentence, startSe
 }
 
 // vocab 행 → 뷰 표준 모양(에피소드 제목·재생 audio_url·known·예문 한글). expressionsByKind/allExpressions 공용.
+// ⚡ srs_cards 는 임베드(srs:srs_cards(...))하지 않는다 — srs_cards.vocab_id 에 인덱스가 없어 PostgREST 가
+// vocab 행마다 srs_cards 전체(1.2만 행)를 훑는다: 1000행 조회에 서버 1.3s, 폰(4G·CPU 4x)에선 Study 진입
+// 3.9s 가 이 한 요청이었다(실측 2026-09-30). 대신 받은 id 로 in.(...) 한 번 — 스캔 1회라 0.2s.
+// known 판정(_mapVocab 의 v.srs)은 예전 임베드와 같은 모양([{interval_days}])으로 붙이므로 불변.
 const VOCAB_SELECT =
-  'id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url), srs:srs_cards(interval_days)';
+  'id, term, kind, definition, example_sentence, episode_id, sentence_start_sec, sentence_end_sec, episodes(title, audio_url)';
+// in.() 한 번에 넣는 id 수 — URL 길이(400개 ≈ 2KB)와 PostgREST 1000행 상한(vocab 당 srs 가 2장이어도
+// 800행)을 둘 다 여유 있게 지킨다. 상한에 걸리면 known 이 조용히 틀리므로 넉넉히 작게 잡는다.
+const SRS_IN_CHUNK = 400;
+async function attachSrs(rows) {
+  const ids = [...new Set(rows.map((r) => r.id))];
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += SRS_IN_CHUNK) chunks.push(ids.slice(i, i + SRS_IN_CHUNK));
+  const parts = await Promise.all(chunks.map(async (c) => {
+    const { data, error } = await supabase.from('srs_cards').select('vocab_id, interval_days').in('vocab_id', c);
+    if (error) throw new Error(error.message);
+    return data || [];
+  }));
+  const byVocab = new Map();
+  for (const srow of parts.flat()) {
+    if (!byVocab.has(srow.vocab_id)) byVocab.set(srow.vocab_id, []);
+    byVocab.get(srow.vocab_id).push({ interval_days: srow.interval_days });
+  }
+  for (const r of rows) r.srs = byVocab.get(r.id) || [];
+  return rows;
+}
 function _mapVocab(v, hosted, exKo) {
   return {
     ...v,
@@ -521,23 +545,25 @@ function _mapVocab(v, hosted, exKo) {
 
 // 종류별 표현 목록 (+ 에피소드 제목). 각 kind 는 1000행 미만이라 단일 쿼리로 충분.
 export async function expressionsByKind(kind, limit = 800) {
+  const sideP = Promise.all([hostedSet(), examplesKo()]);   // vocab 과 무관 — 같이 띄운다
   const { data, error } = await withShow(
     supabase.from('vocab_cards').select(VOCAB_SELECT).eq('kind', kind))
     .order('term', { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
-  return (data || []).map((v) => _mapVocab(v, hosted, exKo));
+  const [[hosted, exKo], rows] = await Promise.all([sideP, attachSrs(data || [])]);
+  return rows.map((v) => _mapVocab(v, hosted, exKo));
 }
 
 // 전 kind 통합 — 약점(미마스터) 집중 퀴즈용(B4). 호출부가 known=false 우선 샘플링.
 export async function allExpressions(limit = 1500) {
+  const sideP = Promise.all([hostedSet(), examplesKo()]);
   const { data, error } = await withShow(
     supabase.from('vocab_cards').select(VOCAB_SELECT))
     .limit(limit);
   if (error) throw new Error(error.message);
-  const [hosted, exKo] = await Promise.all([hostedSet(), examplesKo()]);
-  return (data || []).map((v) => _mapVocab(v, hosted, exKo));
+  const [[hosted, exKo], rows] = await Promise.all([sideP, attachSrs(data || [])]);
+  return rows.map((v) => _mapVocab(v, hosted, exKo));
 }
 
 // ─────────────────────────── SRS ───────────────────────────
