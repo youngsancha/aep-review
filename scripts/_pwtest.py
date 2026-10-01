@@ -2313,7 +2313,7 @@ def main() -> int:
               };
             }"""
 
-            def _lift_page(pre=None):
+            def _lift_page(pre=None, fx=""):
                 ctx = b.new_context(viewport={"width": 412, "height": 804}, device_scale_factor=3.5,
                                     color_scheme="dark", has_touch=True)
                 page = ctx.new_page()
@@ -2323,7 +2323,7 @@ def main() -> int:
                 if pre is not None:
                     page.add_init_script("try{localStorage.setItem('aep-tx-lift','%s')}catch(e){}" % pre)
                 page.route("**/api.mymemory.translated.net/**", _mm)
-                page.goto("http://localhost:8123/_harness.html")
+                page.goto("http://localhost:8123/_harness.html" + fx)
                 page.wait_for_function("window.__ready===true", timeout=10000)
                 return ctx, page
 
@@ -2362,6 +2362,34 @@ def main() -> int:
             lift_chip_ok = (_ok(lift_a) and lift_a["liftH"] == lift_a["driveH"]
                             and abs(lift_a["liftMidY"] - lift_a["driveMidY"]) <= 0.5
                             and lift_a["liftRightGap"] <= 5.5 and lift_a["chips"] == 7 and lift_a["overflow"] == 0)
+            # ⑦ 올린 상태의 문단 앵커는 본문 한 줄만큼 더 위(사용자 요청 2026-10-01). 같은 문단 진입을 기본/올림
+            #    두 상태에서 재고, '스크롤 영역 윗변 → 문단 윗변' 거리를 비교한다.
+            PARA_GAP_JS = """(t) => new Promise((res) => {
+              window.__player.seek(t);
+              setTimeout(() => {
+                const sh = [...document.querySelectorAll('.tx-sheet.open')].pop();
+                const sc = sh.querySelector('.tx-scroll'); const p = sh.querySelector('.tx-para.active');
+                res(p ? { gap: Math.round(p.getBoundingClientRect().top - sc.getBoundingClientRect().top),
+                          lineH: parseFloat(getComputedStyle(p).lineHeight) } : null);
+              }, 1600);
+            })"""
+            # 긴 픽스처(fx=loop)의 가운데 문단 — 짧은 픽스처는 스크롤이 끝에 닿아 문단을 올릴 여유 자체가 없다.
+            ctx_g, pgp = _lift_page(pre="0", fx="?fx=loop")
+            pgp.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
+            _starts = pgp.evaluate("""() => [...[...document.querySelectorAll('.tx-sheet.open')].pop()
+              .querySelectorAll('.tx-para')].map((p) => parseFloat(p.dataset.start))""")
+            _tgt = _starts[len(_starts) // 2] + 0.3
+            pgp.evaluate("t=>window.__player.seek(t)", 0.2); time.sleep(0.8)
+            gap_normal = pgp.evaluate(PARA_GAP_JS, _tgt)
+            pgp.evaluate("t=>window.__player.seek(t)", 0.2); time.sleep(0.8)
+            pgp.tap("#tx-lift"); time.sleep(0.6)
+            gap_lifted = pgp.evaluate(PARA_GAP_JS, _tgt)
+            _shot(pgp, "lift-5-para-anchor-412")
+            ctx_g.close()
+            print("LIFT-PARA-ANCHOR: normal=", gap_normal, " lifted=", gap_lifted)
+            lift_para_ok = (isinstance(gap_normal, dict) and isinstance(gap_lifted, dict)
+                            and gap_lifted["gap"] >= 22
+                            and gap_lifted["gap"] <= gap_normal["gap"] - 0.5 * gap_lifted["lineH"])
             # ④ 기억: 저장값 '1' 로 새로 열면 누르지 않아도 올라간 상태로 열린다.
             ctx_l, pl = _lift_page(pre="1")
             pl.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
@@ -2390,9 +2418,9 @@ def main() -> int:
             if lift_errs:
                 print("LIFT-PAGE-ERRORS:", lift_errs[:6])
             lift_ok = (lift_on_ok and lift_anim_ok and lift_off_ok and lift_chip_ok and lift_persist_ok
-                       and lift_video_ok and not lift_errs)
+                       and lift_video_ok and lift_para_ok and not lift_errs)
             print("LIFT-SUB:", {"on": lift_on_ok, "anim": lift_anim_ok, "off": lift_off_ok, "chip": lift_chip_ok,
-                                "persist": lift_persist_ok, "video": lift_video_ok, "errs": not lift_errs},
+                                "persist": lift_persist_ok, "video": lift_video_ok, "para": lift_para_ok, "errs": not lift_errs},
                   " gain=", gain, " want=", want_gain)
 
             # 실패 시 어느 묶음인지 바로 보이게 한다 — 예전엔 RESULT: FAIL 만 나와서 큰 논리곱을

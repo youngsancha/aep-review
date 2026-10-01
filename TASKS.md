@@ -166,3 +166,10 @@
   - 메모: v1.77.0 전엔 settings 하니스가 중간에 죽어 가려져 있었음
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:57f9e515-f591-4a69-9aa3-0347961f4c26 -->
+
+## 2026-09-30 09:00 넘어옴
+
+- [ ] **P2** Study 목록 잘림: kind 마다 800장(알파벳순) + allExpressions 는 PostgREST 1000행 상한 — 전체 12,730장 중 일부만 보임. 페이지네이션/검색 서버화 설계 필요
+  - 메모: v1.78.0 속도 작업 중 실측 (db.js 주석 '각 kind 는 1000행 미만' 은 틀림)
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:31ff790c-670e-4f00-9e0b-0bb1cae51bce -->

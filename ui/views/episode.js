@@ -1066,7 +1066,16 @@ export async function renderEpisode(root, idStr, tStr) {
         target = loopHeadTarget(scroll, cont);
       } else if (paraChanged) {
         const pTop = sentRanges[idx].paraEl.getBoundingClientRect().top - cont.top + scroll.scrollTop;
-        target = pTop - Math.max(8, usable * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
+        let paraGap = Math.max(8, usable * 0.10);   // 문단 시작을 더 위(≈10%)로 — 재생 중 현재문장 상향(사용자 요청)
+        // ⤒ Lift 상태에선 본문 한 줄만큼 더 올린다(사용자 요청 2026-10-01: 올린 화면에서 위 문단 마지막 줄이
+        // 툴바 밑에 걸쳐 보여, 현재 문단 시작을 한 줄 더 위로). 줄 높이는 실측(A 칩 배율 반영). 바닥 24px 는
+        // .tx-scroll 상단 마스크 페이드(22px) 밖 — 그 안으로 들어가면 첫 줄이 흐려진다. 클래스로 읽는 이유:
+        // liftOn 변수는 이 함수보다 뒤에서 선언돼 첫 호출 시점엔 TDZ 일 수 있다.
+        if (scroll.closest('.tx-sheet-card')?.matches('.lifted:not(.fullscreen)')) {
+          const lineH = parseFloat(getComputedStyle(sentRanges[idx].paraEl).lineHeight) || 0;
+          paraGap = Math.max(24, paraGap - lineH);
+        }
+        target = pTop - paraGap;
         // ⚠ 실측(2026-08-07 회귀검증)으로 드러난 두 번째 자리: 이 문단-시작 앵커는 '문단 맨 위'만
         // 10% 선에 놓을 뿐 활성 문장 자체나 패널을 전혀 모른다 — 문단의 첫 문장이라도 패널이 크거나
         // (긴 KR 번역, 영상 모드처럼 h 자체가 작을 때) 문단이 한 화면보다 길면 그 시점의 활성 문장이
