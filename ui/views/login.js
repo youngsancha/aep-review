@@ -19,7 +19,7 @@ export function renderLogin(root, onSuccess) {
   root.innerHTML = `
     <div class="login-wrap">
       <div class="login-glow" style="background-image:url('${SHOW_COVER}')"></div>
-      <img class="login-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/icon-512.png'" />
+      <img class="login-cover" src="${SHOW_COVER}" alt="" onerror="this.src='/icons/v2/icon-512.png'" />
       <h1 class="login-title">${APP_NAME}</h1>
       <p class="login-sub">Shadowing Practice · Sign In</p>
       <button id="login-google" class="btn login-google" type="button">

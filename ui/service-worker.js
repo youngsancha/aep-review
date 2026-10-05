@@ -15,7 +15,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.78.1';
+const VERSION = '1.79.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -52,6 +52,15 @@ function pinnedEpisodeIdFor(url) {
   return m2 ? Number(m2[1]) : null;
 }
 const Q = '?v=' + VERSION;
+// 홈 화면 아이콘 — manifest.json 의 icons 와 정확히 같은 목록이어야 한다(tests/pwa_icons.test.mjs).
+// Chrome 은 설치된 WebAPK 의 manifest 를 하루 한 번쯤 다시 보고, 그때 아이콘을 이 SW 를 거쳐 받는다.
+// 예전엔 maskable 파일이 precache 에 없어 오프라인/불안정 LTE 에서 그 요청만 실패했고, Chrome 은
+// "any" 아이콘으로 WebAPK 를 다시 만들었다 → 안드로이드가 흰 판 위에 작게 그린다(흰 테두리 버그).
+// 경로가 곧 버전(/icons/v2/)이라 내용이 바뀌지 않으므로 캐시 우선이 안전하다.
+const ICONS = [
+  '/icons/v2/icon-192.png', '/icons/v2/icon-512.png',
+  '/icons/v2/apple-touch-180.png', '/icons/v2/favicon-64.png',
+];
 // 부팅에 필수인 파일. 하나라도 못 받으면 install 자체를 실패시킨다(아래) — 반쪽 셸을 설치하고
 // skipWaiting 하면 다음 오프라인 부팅이 모듈 하나 때문에 통째로 죽는데, 실패시키면 이전 SW 가 온전한
 // 옛 셸을 계속 서빙하고 브라우저가 다음 기회에 다시 설치를 시도한다.
@@ -63,11 +72,12 @@ const SHELL_CRITICAL = [
   '/views/timeline.js' + Q, '/views/episode.js' + Q, '/views/srs.js' + Q, '/views/study.js' + Q, '/views/login.js' + Q,
   '/views/essentials.js' + Q,
   '/vendor/supabase-js.mjs' + Q,
+  ...ICONS,
 ];
-// 없어도 앱은 뜨는 파일(아이콘·정적 데이터) — 실패해도 install 은 계속.
+// 없어도 앱은 뜨는 파일(정적 데이터·쇼 커버) — 실패해도 install 은 계속.
 const SHELL_OPTIONAL = [
   '/data/essentials.json',
-  '/icons/icon-64.png', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/wh-cover.png?v=1',
+  '/icons/wh-cover.png?v=1',
 ];
 const SHELL = [...SHELL_CRITICAL, ...SHELL_OPTIONAL];
 
@@ -391,6 +401,23 @@ self.addEventListener('fetch', (e) => {
       const winner = await Promise.race([netFetch, timeout]);
       if (winner && winner !== '__timeout__') return winner;
       return (await cachedShell()) || (await netFetch) || Response.error();
+    })());
+    return;
+  }
+
+  // ⑥b manifest: network-first. 캐시가 먼저 나가면 Chrome 의 WebAPK 갱신 점검이 옛 아이콘 목록을
+  //     보고 '바뀌었다'고 판단해 아이콘을 되돌릴 수 있다. 오프라인일 때만 캐시 사본.
+  if (url.pathname === '/manifest.json') {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const res = await fetch(req, {cache: 'no-store'});
+        if (res && res.status === 200) {
+          cache.put('/manifest.json', res.clone()).catch(() => {});
+          return res;
+        }
+      } catch (err) { /* 오프라인 → 아래 캐시 */ }
+      return (await cache.match('/manifest.json')) || Response.error();
     })());
     return;
   }

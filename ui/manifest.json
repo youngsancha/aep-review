@@ -2,6 +2,7 @@
   "name": "E-Podcast",
   "short_name": "E-Podcast",
   "description": "영어 팟캐스트 모바일 복습 — American English Podcast · All Ears English · White House Briefing",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,11 +10,14 @@
   "background_color": "#0B0B10",
   "theme_color": "#cc6cff",
   "lang": "en-US",
-  "categories": ["education"],
+  "categories": [
+    "education"
+  ],
   "icons": [
-    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {"src": "/icons/v2/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/v2/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/icons/v2/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/v2/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
   ],
   "shortcuts": [
     {
@@ -21,14 +25,18 @@
       "short_name": "Resume",
       "description": "Resume the most recent episode",
       "url": "/?sc=resume",
-      "icons": [{"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"}]
+      "icons": [
+        {"src": "/icons/v2/icon-192.png", "sizes": "192x192", "type": "image/png"}
+      ]
     },
     {
       "name": "Transcript",
       "short_name": "Transcript",
       "description": "Resume the most recent episode with the transcript open",
       "url": "/?sc=transcript",
-      "icons": [{"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png"}]
+      "icons": [
+        {"src": "/icons/v2/icon-192.png", "sizes": "192x192", "type": "image/png"}
+      ]
     }
   ]
 }

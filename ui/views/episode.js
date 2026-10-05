@@ -201,7 +201,7 @@ export async function renderEpisode(root, idStr, tStr) {
     <div class="np-wrap">
       <div class="np-cover-wrap">
         <div class="np-glow" style="background-image:url('${COVER()}')"></div>
-        <img class="np-cover" src="${COVER()}" alt="" onerror="this.src='/icons/icon-512.png'" />
+        <img class="np-cover" src="${COVER()}" alt="" onerror="this.src='/icons/v2/icon-512.png'" />
       </div>
       <div class="np-meta">
         <div class="np-show">${escapeHtml(showLabel)}</div>

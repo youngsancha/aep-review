@@ -310,7 +310,7 @@ function continueHtml(items) {
     <div class="section-h"><h2>Continue</h2></div>
     <div class="cont-card">
       <a class="cont-cover-link" href="#/episode/${ep.id}" aria-label="${escapeHtml(title)}">
-        <img class="cont-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img class="cont-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/v2/icon-192.png'" />
       </a>
       <div class="cont-body">
         <a class="cont-title" href="#/episode/${ep.id}">${escapeHtml(title)}</a>
@@ -399,7 +399,7 @@ function featuredHtml(e) {
     <div class="feat-card">
       <div class="feat-bg" style="background-image:url('${_coverLg}')"></div>
       <div class="feat-inner">
-        <img class="feat-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img class="feat-cover" src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/v2/icon-192.png'" />
         <div class="feat-body">
           <a class="feat-title" href="#/episode/${e.id}">${escapeHtml(title)}</a>
           <div class="feat-meta">${escapeHtml(meta)}</div>
@@ -435,7 +435,7 @@ function rowHtml(e) {
   return `
     <a class="ep-row${pct ? ' resumable' : ''}${done ? ' played' : ''}" data-id="${e.id}" href="#/episode/${e.id}">
       <div class="ep-thumb">
-        <img src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/icon-192.png'" />
+        <img src="${_coverSm}" alt="" loading="lazy" onerror="this.src='/icons/v2/icon-192.png'" />
         ${num ? `<span class="ep-num">${escapeHtml(num)}</span>` : ''}
       </div>
       <div class="ep-body">
