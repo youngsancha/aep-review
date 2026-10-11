@@ -1,12 +1,12 @@
 # Daily ingest of new episodes -> write to Supabase.
-# Results (transcript/vocab/tts) go straight into Supabase Postgres + Storage (no data repo).
+# Results (transcript/vocab) go straight into Supabase Postgres + Storage (no data repo).
 #
 # Required repo secrets:
 #   SUPABASE_URL          - project URL
 #   SUPABASE_SERVICE_KEY  - service_role key (bypasses RLS)
 #
 # vocab extraction (claude CLI) is hard to auth in CI, so here we pass --no-vocab.
-# vocab + TTS are produced locally (Claude Max) via `python -m ingest.cron_fetch`.
+# vocab are produced locally (Claude Max) via `python -m ingest.cron_fetch`.
 
 name: aep-sync
 

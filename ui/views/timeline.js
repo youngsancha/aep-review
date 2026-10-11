@@ -29,7 +29,6 @@ export async function renderTimeline(root) {
     if (location.hash !== _startHash) return;
     // 예전엔 이 예외를 여기서 안 잡아 app.js 라우트 레벨 catch(66-70행)까지 올라갔다 → 화면 전체가
     // 범용 "Something went wrong" 카드로 바뀌며 라이브러리 고유 맥락(쇼 스위처 등)이 사라졌다.
-    // srs.js 의 오프라인/서버오류 구분 + 로컬 재시도 패턴(50-61행)을 그대로 따른다.
     console.error('[timeline] listEpisodes failed:', e);
     root.innerHTML = `${showSwitchHtml()}${loadErrorHtml()}`;
     wireShowSwitch(root);
@@ -329,8 +328,6 @@ function skeletonHtml() {
   const row = '<div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div>';
   return `<div class="skel-hero"></div>${Array(6).fill(row).join('')}`;
 }
-
-// SRS 의 illustrated 빈 상태(emoji+title+sub+action, srs.js:50-61/63-71) 패턴을 라이브러리에도
 // 통일 적용하는 공용 카드 — 로드 실패/회차 없음/검색 결과 없음 세 곳이 이 하나를 공유한다.
 function emptyCardHtml({ emoji, title, sub = '', actionHtml = '' }) {
   return `

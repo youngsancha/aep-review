@@ -1,14 +1,12 @@
 // Now Playing — large cover, scrubber, transport, transcript + vocab below.
 import { escapeHtml, fmtTime, fmtDate, fmtDuration, toast, stripTrailingUrl } from '/app.js';
-import { getEpisode, episodeNav, markKnown, markUnknown } from '/db.js';
-import { speak, prefetch } from '/tts.js';
+import { getEpisode, episodeNav } from '/db.js';
+import { speak } from '/speech.js';
 import { player, getProgress } from '/player.js';
 import { video } from '/video.js';
 import { showCover, currentShow, showMeta, hostedAudioUrl } from '/config.js';
 import { lastTrIssue, translateEnKo } from '/translate.js';
 import { bindScrub } from '/scrub.js';
-import { addShadowReps } from '/proficiency.js';
-import { initDriveCapture, setDrive, driveOn } from '/marks.js';
 
 // 직전 renderEpisode 의 정리 함수. 정리는 원래 hashchange 에만 묶여 있는데, 같은 해시로 다시 렌더되는
 // 경로(app.js 'online' 재라우팅·route-retry 등)에선 hashchange 가 없어 옛 시트가 body 에 남는다 →
@@ -74,7 +72,6 @@ const SVG_FWD30 = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" s
 const SVG_PREV_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2.2v12H7zM19 6v12l-8.5-6z"/></svg>';
 const SVG_NEXT_TRACK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M14.8 6H17v12h-2.2zM5 6l8.5 6L5 18z"/></svg>';
 // 운전 캡처 칩 글리프 — END_MODES 와 동일하게 currentColor 단색(컬러 이모지 사각박스 회피).
-const SVG_CAR = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l1.4-4.2A2 2 0 0 1 8.3 5.5h7.4a2 2 0 0 1 1.9 1.3L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v4h-2.2M3 16V12a1 1 0 0 1 1-1"/><circle cx="7.5" cy="16.5" r="1.7"/><circle cx="16.5" cy="16.5" r="1.7"/><path d="M9.2 16.5h5.6"/></svg>';
 // 🖥 풀스크린 스터디 모드 칩 글리프(확대 화살표 4모서리) — 툴바 진입 버튼(#tx-fullscreen). 컬러
 // 이모지 대신 currentColor 단색 SVG(안드로이드 사각박스 회피, 위 SVG_CAR 와 동일 관례).
 const SVG_EXPAND = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M3 15v6h6"/><path d="M21 15v6h-6"/></svg>';
@@ -100,7 +97,6 @@ const SPEEDS = [1, 1.25, 1.5, 0.5, 0.75];
 // 예외 2곳은 의도적으로 drv 를 안 쓴다: ① np-speed 초기화(1020행)는 회차를 넘어 유지되는 공유
 // <audio>.playbackRate 를 그대로 읽어야 하고(비디오는 매번 새로 마운트돼 그런 영속 상태가 없다),
 // ② drv.current(트랙 메타)는 항상 player.current 를 그대로 돌려준다 — 영상이 트는 동안에도 '지금
-// 이 회차'라는 사실은 항상 오디오 싱글톤이 들고 있는 메타데이터이기 때문(marks.js 운전 캡처용).
 class DriverRouter {
   constructor() {
     this.mode = 'audio';   // 'audio' | 'video' — 항상 audio 로 시작(📺 는 회차 진입마다 OFF)
@@ -346,24 +342,18 @@ export async function renderEpisode(root, idStr, tStr) {
       const id = parseInt(btn.dataset.id, 10);
       const card = btn.closest('.vocab-card');
       const nowKnown = !(card && card.classList.contains('vknown'));
-      // toggle-off 가 예전엔 로컬 Set(vknown/aep-vocab-known)만 지우고 SRS 카드는 그대로 둬서,
-      // Study 홈의 마스터 카운터가 이 화면의 '알아요' 표시와 드리프트했다(신고). Study 의
-      // markKnownLi/markUnknownLi(study.js) 와 동일하게 SRS 반영을 먼저 기다린 뒤에만 로컬 상태를
-      // 바꾼다 — 실패하면 버튼도 로컬 Set 도 그대로 남아(낙관적 갱신 없음) study.js 와 같은 방식으로
-      // 조용히 유지한다(토스트 없음, catch (err) { /* keep */ } 그대로 이식).
+      // Known is an episode-local annotation; Study has been retired.
       btn.disabled = true;
       try {
-        if (nowKnown) await markKnown(id); else await markUnknown(id);   // SRS 마스터로도 반영(카드 없으면 no-op)
         if (nowKnown) vknown.add(id); else vknown.delete(id);
         saveVKnown(vknown);
         if (card) card.classList.toggle('vknown', nowKnown);
         btn.setAttribute('aria-pressed', nowKnown ? 'true' : 'false');
         btn.textContent = nowKnown ? '✓ Known' : 'Known';
-      } catch (err) { /* keep — study.js 의 markKnownLi/markUnknownLi 와 동일 */ }
+      } catch (err) { /* Preserve the current annotation if local storage is unavailable. */ }
       btn.disabled = false;
     });
   });
-  prefetch(vocabs.map((v) => v.term).filter(Boolean));
 
   if (!ep.audio_url) {
     return; // no playback wiring needed
@@ -557,7 +547,6 @@ export async function renderEpisode(root, idStr, tStr) {
         // (자연스러운 문단 끝 도달은 loopEnd 를 한 틱(≤~0.4s@1.5×)만 넘으므로 임계값 1.5s 로 구분.
         //  뒤로 시크는 되감기 자체가 뒤로 시크라 여기서 relocate 하면 안 됨 → '앞으로'만 처리.)
         if (txTime() > loopEnd + 1.5) { loopCount = 0; confirmLoopBoundary(); return; }
-        addShadowReps(1);   // 한 문단 따라말하기 1회 완료 — 자동화 축 보조 신호(Study Proficiency)
         loopCount++;
         if (loopCount < (loopTarget || 5)) {
           drv.seek(toAudio(loopStart) + 0.01);     // 같은 문단 반복
@@ -1652,38 +1641,6 @@ export async function renderEpisode(root, idStr, tStr) {
     else if (mode === 'next' && navNextId != null) gotoEpisode(navNextId, sheetOpen());
   });
 
-  // === 운전 캡처(Drive capture) — 주행 중 '지금 문장' 북마크 (marks.js) ===
-  // ON: 플로팅 🔖 FAB(시트 위에도 뜸) + 차 핸들 ⏭(Media Session nexttrack)이 현재 시각을 저장.
-  // OFF: ⏭ 은 원래 +30s 스킵으로 복귀. 저장만 하고 단어 고르기/카드 만들기는 Study 홈 트리아지에서 —
-  // 운전 중 '읽고 고르는' 상호작용을 아예 없애는 게 목적(캡처와 학습의 시간 분리).
-  // 칩은 transcript 시트 툴바(#tx-drive)에 — 차에선 시트를 연 쉐도잉 상태라 NP 화면 칩은 손이
-  // 안 닿았다(사용자 요청 2026-07-22, v1.39.1에서 이동). 안내 문구는 플레이어 쪽 표기와 맞춰 영어.
-  // getLoop: 쉐도잉 반복 중이면 반복 문단 범위를 marks.js 에 제공 — 마크가 '그 문단'에 묶이고,
-  // 문단 재시크 직후 눌러도 직전 문단으로 오기록되지 않는다(저장 문단 불일치 수리 2026-07-22).
-  initDriveCapture({
-    player: drv, toast,
-    getLoop: () => (inRepeatMode() && loopPara >= 0 && Number.isFinite(loopStart) && Number.isFinite(loopEnd))
-      ? { start: loopStart, end: loopEnd } : null,
-  });
-  const $drive = document.getElementById('tx-drive');
-  const syncDriveChip = () => {
-    if (!$drive) return;
-    $drive.setAttribute('aria-pressed', driveOn() ? 'true' : 'false');
-  };
-  syncDriveChip();
-  const toggleDrive = () => {
-    const on = !driveOn();
-    setDrive(on);
-    syncDriveChip();
-    toast(on ? '🚗 Drive capture ON — 🔖 or car ⏭ saves this sentence' : 'Drive capture OFF — ⏭ skips +30s again');
-  };
-  // ⚠ click 만으로는 주행 중에 안 눌린다. 차량 진동으로 손가락이 몇 px 만 밀려도 브라우저가
-  // 스크롤 제스처로 판정해 click 을 아예 발화시키지 않는다 — FAB 에서 이미 겪고 고친 문제인데
-  // (2026-07-22) '켜는 칩'은 그대로였다. 켜는 버튼이 안 눌리면 FAB 도 안 뜨므로 기능 전체가
-  // 죽는다(사용자 신고 2026-07-30). FAB 과 같은 처방: 포인터를 캡처해 끝까지 우리가 소유하고,
-  // 12px 미만 이동이면 취소(pointercancel)돼도 토글한다. click 은 키보드·보조기술용으로 남긴다.
-  bindReliableTap($drive, toggleDrive);
-
   // === ⤒ Lift — 본문을 화면 맨 위로 (사용자 요청 2026-09-25) ===
   // 차량 거치 시 화면 아랫부분이 핸들에 가려진다. 기본 시트는 위에 8vh 여백 + 헤더(핸들·제목·날짜·✕)
   // 가 있어 첫 문장이 상태바에서 ~200px 아래에 온다. 켜면 시트가 화면 전체(100dvh)로 올라가고 헤더가
@@ -2262,12 +2219,11 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
             <button id="tx-fs" class="tx-toggle tx-fs-btn" aria-label="Text size" title="Text size">A</button>
             <button id="tx-shadow" class="tx-toggle tx-loop-toggle" aria-pressed="false" aria-label="Shadowing mode">Shadow</button>
             <button id="tx-speed" class="tx-toggle tx-speed-toggle" aria-label="Playback speed">1×</button>
-            <button id="tx-drive" class="tx-toggle tx-drive-btn" aria-pressed="false" aria-label="Drive capture">${SVG_CAR}</button>
             ${showVideoToggle ? `
             <button id="tx-video-toggle" class="tx-toggle tx-video-btn" aria-pressed="false" aria-label="Watch video">📺</button>` : ''}
             <button id="tx-lift" class="tx-toggle tx-lift-btn" aria-pressed="false" aria-label="Lift text to top" title="Lift text to top">${SVG_LIFT}</button>
             ${showVideoToggle ? `
-            <button id="tx-fullscreen" class="tx-toggle tx-fs-toggle" aria-pressed="false" aria-label="Fullscreen study mode">${SVG_EXPAND}</button>
+            <button id="tx-fullscreen" class="tx-toggle tx-fs-toggle" aria-pressed="false" aria-label="Fullscreen transcript">${SVG_EXPAND}</button>
             ` : ''}
           </div>
           ${(!perfectSync && adRanges.length) ? `

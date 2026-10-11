@@ -7,11 +7,10 @@ Anthropic API 직접 호출 금지 (Max 이중과금).
   1. transcribe_pending 가 만든 data/transcripts/{ep_id}.json 읽기
   2. segments 의 text 들을 합쳐 transcript 한 덩어리로 (max ~8000 토큰)
   3. PROMPT 와 함께 `claude -p --output-format json` stdin 으로 주입
-  4. stdout JSON 파싱 → vocab_cards 테이블 + srs_cards 시드
+  4. stdout JSON 파싱 → episode vocabulary records
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import subprocess
@@ -201,8 +200,8 @@ def _parse_vocab_json(text: str) -> dict[str, Any]:
 
 
 def extract_for_episode(episode_id: int, title: str | None = None, show: str | None = None) -> int:
-    """episode 1건 처리: transcript(Storage) → claude → vocab+srs+TTS write. 반환: vocab 수.
-    show=None(레거시): show 컬럼 미기록. 지정 시 vocab/srs 비정규화 라벨."""
+    """episode 1건 처리: transcript(Storage) → claude → vocabulary write. 반환: vocab 수.
+    show=None(레거시): show 컬럼 미기록. 지정 시 episode vocabulary labels."""
     transcript = store.download_transcript(episode_id)
     if not transcript:
         raise ValueError(f"episode {episode_id} transcript 없음")
@@ -217,9 +216,7 @@ def extract_for_episode(episode_id: int, title: str | None = None, show: str | N
     if not isinstance(vocab_list, list):
         raise ValueError(f"unexpected vocab shape: {type(vocab_list)}")
 
-    added, tts_texts = store.insert_vocab_and_srs(episode_id, vocab_list, show)
-    if tts_texts:
-        asyncio.run(store.pregen_tts(tts_texts))  # 새 term/example 발음 미리 생성
+    added = store.insert_vocab(episode_id, vocab_list, show)
     store.mark_vocab_extracted(episode_id)
     return added
 

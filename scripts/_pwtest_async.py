@@ -18,11 +18,9 @@ from _pwtest import (  # 동일 디렉터리(scripts) — 픽스처 단일 출�
     HARNESS_HTML,
     MOCKS,
     MOCKS_JS,
-    STUDY_HARNESS,
-    STUDY_HARNESS_HTML,
     TIMELINE_HARNESS,
     TIMELINE_HARNESS_HTML,
-    UI,
+    UI, SETTINGS_HARNESS, SETTINGS_HARNESS_HTML, SETTINGS_SUPA_MOCK, SETTINGS_SUPA_MOCK_JS, OFFLINE_MOCK, OFFLINE_MOCK_JS,
 )
 
 
@@ -57,6 +55,7 @@ async def run() -> bool:
                      and ad_ranges[0].get("s") == 2 and ad_ranges[0].get("e") == 5)
         # 시간→문장 매핑(findActiveSentIdx, 클로저라 통합으로 검증): FIX_SENTS starts=[0,10,22,35,48,60,...]
         # seek(50) → txTime=49.8(HL_LAG 0.2) → start<=49.8 인 마지막 문장 = start 48.
+        await pg.click("#np-tx-btn")
         await pg.evaluate("window.__player.seek(50)")
         await asyncio.sleep(0.2)
         act = await pg.query_selector(".tx-sent.active")
@@ -65,16 +64,6 @@ async def run() -> bool:
         ep_ok = (n_sent > 0 and not ep_err and ad_detect == 2 and ad_mid_ok and time_map_ok)
         print(f"EPISODE: sentences={n_sent} ad_detect={ad_detect} ad_mid_ok={ad_mid_ok} "
               f"time_map(active@50s={active_start})={time_map_ok} err={ep_err}")
-
-        # ── study ──
-        await pg.goto("http://localhost:8123/_harness_study.html")
-        await pg.wait_for_function("window.__ready===true", timeout=15000)
-        await asyncio.sleep(0.3)
-        study_x = await pg.eval_on_selector_all(".study-x", "els=>els.length")
-        study_chips = await pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
-        study_err = await pg.evaluate("window.__err||[]")
-        study_ok = (study_x >= 4 and study_chips == 4 and not study_err)
-        print(f"STUDY: expressions={study_x} kind_chips={study_chips} err={study_err}")
 
         # ── timeline ──
         await pg.set_viewport_size({"width": 390, "height": 844})
@@ -90,8 +79,15 @@ async def run() -> bool:
         tl_ok = (tl_rows >= 3 and tl_feat == 1 and (tl_overflow is not None and tl_overflow <= 1) and not tl_err)
         print(f"TIMELINE: rows={tl_rows} feat={tl_feat} overflow_px={tl_overflow} err={tl_err}")
 
+        await pg.goto("http://localhost:8123/_harness_settings.html")
+        await pg.wait_for_function("window.__ready===true", timeout=15000)
+        settings_ok = (await pg.locator('.set-sheet').count() == 1
+                       and await pg.locator('#set-row-sesssize').count() == 0
+                       and await pg.locator('.set-seg-btn').count() == 7
+                       and not await pg.evaluate("window.__err||[]"))
+        print(f"SETTINGS: opens={settings_ok}, no Study controls")
+        ok = ep_ok and tl_ok and settings_ok
         await b.close()
-        ok = ep_ok and study_ok and tl_ok
     if errs:
         print("CONSOLE error/warning:", errs)
         ok = False
@@ -101,8 +97,10 @@ async def run() -> bool:
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
-    STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
+    SETTINGS_HARNESS.write_text(SETTINGS_HARNESS_HTML, encoding="utf-8")
+    SETTINGS_SUPA_MOCK.write_text(SETTINGS_SUPA_MOCK_JS, encoding="utf-8")
+    OFFLINE_MOCK.write_text(OFFLINE_MOCK_JS, encoding="utf-8")
     srv = subprocess.Popen([sys.executable, "-m", "http.server", "8123", "--directory", str(UI)],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.5)
@@ -112,8 +110,10 @@ def main() -> int:
         srv.terminate()
         MOCKS.unlink(missing_ok=True)
         HARNESS.unlink(missing_ok=True)
-        STUDY_HARNESS.unlink(missing_ok=True)
         TIMELINE_HARNESS.unlink(missing_ok=True)
+        SETTINGS_HARNESS.unlink(missing_ok=True)
+        SETTINGS_SUPA_MOCK.unlink(missing_ok=True)
+        OFFLINE_MOCK.unlink(missing_ok=True)
     print("RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

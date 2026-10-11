@@ -17,7 +17,6 @@ from urllib.parse import urlparse, parse_qs
 UI = Path(__file__).resolve().parent.parent / "ui"
 MOCKS = UI / "_mocks.js"
 HARNESS = UI / "_harness.html"
-STUDY_HARNESS = UI / "_harness_study.html"
 TIMELINE_HARNESS = UI / "_harness_timeline.html"
 DBCACHE_MOCK = UI / "_dbcachemock.js"
 DBCACHE_HARNESS = UI / "_harness_dbcache.html"
@@ -55,7 +54,6 @@ export const stripTrailingUrl = (t) => String(t ?? '').replace(/\s*(?:[-—–]\
 export const toast = (msg) => { (window.__toasts = window.__toasts || []).push(msg); };
 export const withTimeout = (promise, ms, fallback) => Promise.race([Promise.resolve(promise).catch(() => fallback), new Promise((r) => setTimeout(() => r(fallback), ms))]);
 export const speak = () => {};
-export const prefetch = () => {};
 const calls = []; window.__calls = calls; window.__err = window.__err || [];
 class MockPlayer {
   constructor(){this.audio={};this._t=0;this._paused=true;this.listeners=new Set();}
@@ -160,45 +158,6 @@ export async function getEpisode(id){
            vocab, transcript };
 }
 export async function episodeNav(id){ return { prevId:null, nextId:null }; }
-export async function retentionStats() { return { learned:12, strong:4, mature:8, retentionFrac:0.33 }; }
-export const STUDY_KINDS = ['idiom', 'phrasal_verb', 'collocation', 'word'];   // study.js 가 첫 목록 선요청에 쓴다(v1.78.0)
-export async function allExpressions() { return expressionsByKind('idiom'); }
-export async function srsQueue() {
-  // 실제 flattenCard 형태(front/back = srs_cards 컬럼) — 세션 1단계(복습 reps>0) + 2단계(신규 reps=0) 겸용
-  return [
-    { id:2, vocab_id:2, front:'put up with', back:'to tolerate (참고 견디다)\n\n— I had to put up with all day long.',
-      episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
-      example_sentence:'I had to put up with all day long.', sentence_start_sec:100, sentence_end_sec:105,
-      ease:2.5, interval_days:6, reps:2, due_date:'2026-01-01', vkind:'idiom' },
-    { id:1, vocab_id:1, front:'fill in the gap', back:'to provide a missing piece of information (빈칸을 채우다)',
-      term:'fill in the gap', kind:'idiom',
-      definition:'to provide a missing piece of information (빈칸을 채우다)',
-      episode_id:1, episode_title:'211 - Test', audio_url:'http://localhost:8123/_clip_test.mp3',
-      example_sentence:'fill in the gap', example_ko:'빈칸을 채우다', sentence_start_sec:100, sentence_end_sec:105,
-      ease:2.5, interval_days:0, reps:0, due_date:'2026-01-01', vkind:'idiom' },
-  ];
-}
-export async function srsReview(cardId, grade) { (window.__reviews=window.__reviews||[]).push([cardId,grade]); return {}; }
-export async function studyOverview() {
-  return { total:1905, learned:12, due:50, dueReview:40, dueNew:10, known:240, byKind:[
-    {kind:'idiom',total:600},{kind:'phrasal_verb',total:700},{kind:'collocation',total:500},{kind:'word',total:105}] };
-}
-export async function expressionsByKind(kind) {
-  const base = [
-    ['put up with','to tolerate (참고 견디다)'],
-    ['fill in the gap','to provide missing info (빈칸을 채우다)'],
-    ['jump right into','to start immediately (바로 시작하다)'],
-    ['cover it up','to hide wrongdoing (은폐하다)'],
-    ['suffer from','to be affected by (~을 앓다)'],
-  ];
-  return base.map((b,i) => ({ id:i+1, term:b[0], kind, definition:b[1],
-    example_sentence:'I had to '+b[0]+' all day long.', example_ko:'하루 종일 '+b[0]+' 해야 했어요.',
-    episode_id:1, sentence_start_sec:100+i,
-    sentence_end_sec:105+i, audio_url:'http://localhost:8123/_clip_test.mp3',
-    episode_title:'211 - Test', known:false }));
-}
-export async function markKnown(id) { (window.__known = window.__known || []).push(id); }
-export async function markUnknown(id) { window.__unknown = (window.__unknown || []).concat(id); }
 export function cleanAudioUrl(u) { return u; }
 // offline.js 가 doc 캐시(회차행+자막 핀) 준비여부 확인에 쓰는 URL 빌더 — 실제 db.js 와 동일한
 // 계약(순수 문자열 템플릿, id+transcribedAt 만으로 결정)만 지키면 되고 실제 STORAGE_URL 은 무관.
@@ -227,18 +186,16 @@ export async function listEpisodes() {
       audio_url:'https://traffic.megaphone.fm/GHI789.mp3' },
   ];
 }
-export async function srsStats() { return { total:1905, today_batch:50, today_review:40, today_new:10, backlog_new:0, learned:12 }; }
 export function getProgress() { return null; }
 export function getLatestProgress() { return { id:1, t:300, dur:1700, title:'211 - The Latest One', at:Date.now() }; }
 export function getProgressMap() { return { 1: { t:300, dur:1700, title:'211 - The Latest One', at:Date.now() } }; }
 export function getCompleted() { return new Set([2]); }
 export function getCompletedAt() { return { 2: { at: Date.now() - 3600e3, title: '210 - Another' } }; }
-export async function createCaptureCard(c) { (window.__captures = window.__captures || []).push(c); return { reused: false, vocabId: 99 }; }
 """
 
 HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
-  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/speech.js":"/_mocks.js","/player.js":"/_mocks.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
   import { renderEpisode, detectContentStart, detectAdRanges } from '/views/episode.js';
@@ -309,22 +266,11 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 """
 
 
-STUDY_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
-<script type="importmap">{"imports":{
-  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
-}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
-<script type="module">
-  import { renderStudy } from '/views/study.js';
-  window.__ready=false;
-  renderStudy(document.getElementById('app')).then(()=>{window.__ready=true;})
-    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
-</script></body></html>
-"""
 
 
 TIMELINE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
-  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
+  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/speech.js":"/_mocks.js","/player.js":"/_mocks.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
   import { renderTimeline } from '/views/timeline.js';
@@ -354,8 +300,6 @@ const rec = (name) => async (root, ...args) => {
 };
 export const renderTimeline = rec('timeline');
 export const renderEpisode  = rec('episode');
-export const renderStudy    = rec('study');
-export const renderSrs      = rec('srs');
 export const renderLogin    = () => {};
 export const ensureOfflineCache = async () => {};
 export const openSettings = () => {};
@@ -364,7 +308,6 @@ ROUTER_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
   "/supabase.js":"/_routermock.js",
   "/views/timeline.js":"/_routermock.js","/views/episode.js":"/_routermock.js",
-  "/views/study.js":"/_routermock.js","/views/srs.js":"/_routermock.js",
   "/views/login.js":"/_routermock.js","/offline.js":"/_routermock.js",
   "/settings.js":"/_routermock.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body>
@@ -377,7 +320,6 @@ ROUTER_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <main id="app"></main>
 <nav id="tabbar">
   <a href="#/"      data-tab="timeline"><span class="label">Library</span></a>
-  <a href="#/study" data-tab="study"><span class="label">Study</span></a>
 </nav>
 <script>window.APP_VERSION='test';</script>
 <script type="module" src="/app.js"></script>
@@ -421,7 +363,6 @@ export function getProgressMap(){ return {}; }
 export function getCompleted(){ return new Set(); }
 export function getCompletedAt(){ return {}; }
 export const speak = () => {};
-export const prefetch = () => {};
 // 실기기 신고를 그대로: wh(백악관 브리핑) 회차 1개, video_id 있음, Continue/Latest/목록 행 모두
 // 같은 id 를 그려 세 진입점(cont-video/feat-video/ep-video) 을 전부 같은 클릭으로 검증할 수 있게 한다.
 const EP_ID = 4;
@@ -438,7 +379,6 @@ export async function hostedSet() { return new Set(); }
 export function cleanAudioUrl(u) { return u; }
 export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function episodeNav() { return { prevId:null, nextId:null }; }
-export async function markKnown() {}
 export async function getEpisode(id) {
   const FIX = [[0,'Hello everyone welcome back.'],[4,'Today we have a briefing.'],[8,'Thanks for watching along.']];
   const segments = FIX.map((s,i)=>{
@@ -457,7 +397,7 @@ export async function getEpisode(id) {
 REALVIDEO_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <script type="importmap">{"imports":{
   "/supabase.js":"/_realvideomock.js","/db.js":"/_realvideomock.js",
-  "/tts.js":"/_realvideomock.js","/player.js":"/_realvideomock.js"
+  "/speech.js":"/_realvideomock.js","/player.js":"/_realvideomock.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body>
 <header id="topbar">
   <button id="back-btn" hidden aria-label="Back">&lsaquo;</button>
@@ -468,7 +408,6 @@ REALVIDEO_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 <main id="app"></main>
 <nav id="tabbar">
   <a href="#/"      data-tab="timeline"><span class="label">Library</span></a>
-  <a href="#/study" data-tab="study"><span class="label">Study</span></a>
 </nav>
 <script>
   window.APP_VERSION='test';
@@ -500,18 +439,6 @@ REALVIDEO_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 </body></html>
 """
 
-SRS_HARNESS = UI / "_harness_srs.html"
-SRS_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
-<script type="importmap">{"imports":{
-  "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/tts.js":"/_mocks.js","/player.js":"/_mocks.js"
-}}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
-<script type="module">
-  import { renderSrs } from '/views/srs.js';
-  window.__ready=false;
-  renderSrs(document.getElementById('app')).then(()=>{window.__ready=true;})
-    .catch((e)=>{(window.__err=window.__err||[]).push('render:'+e);window.__ready=true;});
-</script></body></html>
-"""
 
 SETTINGS_HARNESS = UI / "_harness_settings.html"
 OFFLINE_MOCK = UI / "_offmock.js"
@@ -580,9 +507,7 @@ DBCACHE_HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
 def main() -> int:
     MOCKS.write_text(MOCKS_JS, encoding="utf-8")
     HARNESS.write_text(HARNESS_HTML, encoding="utf-8")
-    STUDY_HARNESS.write_text(STUDY_HARNESS_HTML, encoding="utf-8")
     TIMELINE_HARNESS.write_text(TIMELINE_HARNESS_HTML, encoding="utf-8")
-    SRS_HARNESS.write_text(SRS_HARNESS_HTML, encoding="utf-8")
     ROUTER_MOCK.write_text(ROUTER_MOCK_JS, encoding="utf-8")
     ROUTER_HARNESS.write_text(ROUTER_HARNESS_HTML, encoding="utf-8")
     REALVIDEO_MOCK.write_text(REALVIDEO_MOCK_JS, encoding="utf-8")
@@ -687,48 +612,6 @@ def main() -> int:
                         break
                     pg.click("#tx-shadow"); time.sleep(0.2)
 
-            drive_ok = None
-            if sheet_open and pg.query_selector("#tx-drive"):
-                # v1.39.3: 회차 진입 시 항상 OFF 로 시작(상태 비영속) — 칩 off + FAB 숨김이 초기값
-                chip_off0 = pg.eval_on_selector("#tx-drive", "el=>el.getAttribute('aria-pressed')==='false'")
-                fab_hidden0 = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                pg.evaluate("window.__player.seek(23)")   # 마크 t≈21.5 → 픽스처 문장 3(22s~) 주변
-                pg.click("#tx-drive"); time.sleep(0.1)
-                fab_vis = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display!=='none'") if pg.query_selector("#drive-fab") else False
-                if fab_vis:
-                    pg.click("#drive-fab"); time.sleep(0.1)
-                nmarks = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
-                # v1.40.0 드래그: 12px+ 이동 = 위치 이동(마크 생성 없음) + aep-fab-pos 저장 + 실제 이동
-                bb = pg.eval_on_selector("#drive-fab", "el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top,w:r.width,h:r.height};}")
-                pg.mouse.move(bb["x"] + bb["w"] / 2, bb["y"] + bb["h"] / 2)
-                pg.mouse.down()
-                pg.mouse.move(bb["x"] + bb["w"] / 2 - 120, bb["y"] + bb["h"] / 2 - 80, steps=8)
-                pg.mouse.up(); time.sleep(0.1)
-                bb2 = pg.eval_on_selector("#drive-fab", "el=>{const r=el.getBoundingClientRect();return {x:r.left,y:r.top};}")
-                pos_saved = pg.evaluate("!!localStorage.getItem('aep-fab-pos')")
-                nmarks2 = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
-                drag_ok = bool(pos_saved and abs(bb2["x"] - bb["x"]) > 60 and nmarks2 == nmarks)
-                # 주행 중 신뢰성(v1.50.0): 칩이 click 에만 의존하면 차량 진동으로 손가락이 몇 px
-                # 밀릴 때 브라우저가 제스처로 판정해 click 을 아예 안 보낸다 → 드라이브 모드를 켤 수
-                # 없고 FAB 도 안 뜬다(사용자 신고 2026-07-30). FAB 은 2026-07-22 에 같은 이유로
-                # 포인터 캡처로 바꿨는데 '켜는 칩'만 남아 있었다.
-                # click 을 캡처 단계에서 죽여 그 상황을 모사한다 — 포인터 경로만으로 토글돼야 한다.
-                # 리로드로 되돌리면 이후 검사들의 누적 상태가 날아간다 → 플래그로 껐다 켠다.
-                pg.evaluate("""() => { const el = document.getElementById('tx-drive');
-                  window.__blockClick = true;
-                  el.addEventListener('click', (e) => {
-                    if (window.__blockClick) { e.stopImmediatePropagation(); e.preventDefault(); }
-                  }, true); }""")
-                pg.click("#tx-drive"); time.sleep(0.2)
-                drive_noclick = pg.evaluate("!document.body.classList.contains('drive-capture')")
-                pg.click("#tx-drive"); time.sleep(0.2)    # 다시 ON — 이중토글이 있으면 여기서 어긋난다
-                drive_noclick2 = pg.evaluate("document.body.classList.contains('drive-capture')")
-                pg.evaluate("() => { window.__blockClick = false; }")
-                pg.click("#tx-drive"); time.sleep(0.15)   # OFF 복귀(이후 단계·FAB 간섭 방지)
-                fab_hidden = pg.eval_on_selector("#drive-fab", "el=>getComputedStyle(el).display==='none'") if pg.query_selector("#drive-fab") else False
-                drive_ok = bool(chip_off0 and fab_hidden0 and fab_vis and nmarks == 1 and drag_ok and fab_hidden
-                                and drive_noclick and drive_noclick2)
-                print("DRIVE-TAP: click 차단 상태에서 토글 off=", drive_noclick, " 재토글 on=", drive_noclick2)
             # 재생바 시크 = 자동추적 즉시 재개(v1.40.1): 컨트롤을 깨우는 탭(.tx-scroll touchstart,
             # 4s 보류)이 걸린 직후 시크해도 화면이 곧장 새 문단으로 이동해야 한다. 목 플레이어는
             # 자동 timeupdate 가 없어 '즉시 재앵커'가 아니면 scrollTop 이 영영 안 변한다(결정적).
@@ -871,11 +754,11 @@ def main() -> int:
             if vk_btn:
                 pg.eval_on_selector(".vocab-card .vocab-known", "el=>el.click()")
                 time.sleep(0.15)
-                vk_marked = pg.evaluate("(window.__known||[]).length>0")
+                vk_marked = pg.evaluate("JSON.parse(localStorage.getItem('aep-vocab-known')||'[]').length>0")
                 vk_dim = pg.eval_on_selector(".vocab-card", "el=>el.classList.contains('vknown')")
                 vk_aria = pg.eval_on_selector(".vocab-card .vocab-known", "el=>el.getAttribute('aria-pressed')")
                 vk_ok = bool(vk_marked and vk_dim and vk_aria == "true")
-            print("wordpop_ok=", wordpop_ok, " drive_ok=", drive_ok, " seek_follow=", seek_follow, " vk_ok=", vk_ok)
+            print("wordpop_ok=", wordpop_ok, " seek_follow=", seek_follow, " vk_ok=", vk_ok)
             # 오프라인 저장 칩(v1.45.0): ① megaphone 회차(id 1)엔 칩이 없어야 하고(캐시해도 광고가
             # 매번 달라 무의미), ② R2 호스팅 회차(id 2)엔 'Offline' 로 뜨고, ③ 오디오가 이미 캐시에
             # 있으면 재진입 시 'Saved' 로 그려져야 한다(다운로드 네트워크 없이 캐시만 심어 검증).
@@ -1087,7 +970,7 @@ def main() -> int:
             print("TX-TOOLBAR-ORDER:", tx_toolbar_order, " fit=", tx_toolbar_fit)
             tx_toolbar_order_ok = (
                 tx_toolbar_order == ['tx-trans', 'tx-ko-size', 'tx-fs', 'tx-shadow', 'tx-speed',
-                                      'tx-drive', 'tx-video-toggle', 'tx-lift', 'tx-fullscreen']
+                                      'tx-video-toggle', 'tx-lift', 'tx-fullscreen']
                 # 한 줄은 이제 CSS(nowrap)가 보장하지만, wrap 으로 되돌아가는 회귀를 잡으려면
                 # 계속 확인해야 한다 → topRange 는 두 폭 모두에서 assert.
                 # 가로 넘침(overflow)은 한 폭에서만 assert 한다. ⚠ 2026-08-07 의 '하니스가 실기기보다
@@ -1498,7 +1381,7 @@ def main() -> int:
                      and ad_mid_ok is True and sync_btn_gone is True
                      and isinstance(cv_ok, dict) and cv_ok["cv"] == "hidden"
                      and shadow_ok is True
-                     and wordpop_ok is True and drive_ok is True and seek_follow is True
+                     and wordpop_ok is True and seek_follow is True
                      and vk_ok is True
                      and video_toggle_hidden is True and video_toggle_shown is True
                      and wh_chip_shown is True and about_no_url is True
@@ -1513,7 +1396,7 @@ def main() -> int:
                 "trans": isinstance(trans_ok, str) and trans_ok.startswith("[KO]") and "fill in the gap" in trans_ok,
                 "trans_fs": trans_fs is not None and trans_fs >= 20 and trans_fixed is True,
                 "sync": sync_ok is True, "fs": fs_ok is True, "ads": ad_detect == 2 and ad_none is True and ad_mid_ok is True,
-                "shadow": shadow_ok is True, "wordpop": wordpop_ok is True, "drive": drive_ok is True,
+                "shadow": shadow_ok is True, "wordpop": wordpop_ok is True,
                 "seek_follow": seek_follow is True, "vk": vk_ok is True,
                 "video_toggle": video_toggle_hidden is True and video_toggle_shown is True,
                 "primary_video": primary_video_btn_ok is True, "toolbar_order": tx_toolbar_order_ok is True,
@@ -1521,258 +1404,6 @@ def main() -> int:
                 "kr_panel": kr_panel_ok is True, "fullscreen": fullscreen_ok is True,
                 "errs": (not werr) and (not errs),
             }.items() if not v] or "none")
-
-            # === Study 뷰 회귀 ===
-            pg.goto("http://localhost:8123/_harness_study.html")
-            pg.wait_for_function("window.__ready===true", timeout=10000)
-            time.sleep(0.3)
-            # v1.31.0 IA: Practice/My stats 가 <details> 접힘 → 모드 클릭 전 열어준다(재렌더마다 다시 접힘)
-            def open_disclosures():
-                pg.evaluate("document.querySelectorAll('details.study-practice,details.study-stats').forEach(d=>d.open=true)")
-            open_disclosures()
-            study_x = pg.eval_on_selector_all(".study-x", "els=>els.length")
-            # 각 표현에 Shana 예문(+term 강조)이 함께 표시되는지 (학습 맥락)
-            study_ex = pg.eval_on_selector_all(".study-x-ex", "els=>els.length")
-            study_hl = bool(pg.query_selector(".study-x-ex .term-hl"))
-            # 맥락에서 듣기: 별도 버튼 없이 예문(.study-x-ex.tappable) 자체가 재생 트리거
-            study_ctx = pg.eval_on_selector_all(".study-x-ex.tappable", "els=>els.length")
-            # Essentials 별도 모드: CTA → 카테고리/리스트/카드게임(인식) + Known 진행 + 생산(KR→EN) 토글 + #ess-back 복귀
-            ess_ok = None
-            ess_prod = None
-            if pg.query_selector("#study-essentials"):
-                pg.click("#study-essentials")
-                pg.wait_for_selector(".ess-cats", timeout=5000)
-                ess_cats = pg.eval_on_selector_all(".ess-cat", "els=>els.length")
-                ess_list = pg.eval_on_selector_all(".ess-x", "els=>els.length")
-                has_play = bool(pg.query_selector("#ess-play"))
-                pg.click("#ess-play"); time.sleep(0.3)  # 기본 인식(EN→뜻)
-                has_card = bool(pg.query_selector("#ess-card") and pg.query_selector("#ess-g-known") and pg.query_selector(".ess-card-term"))
-                before = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
-                pg.click("#ess-g-known"); time.sleep(0.25)
-                after = pg.eval_on_selector(".quiz-count", "el=>el.textContent") if pg.query_selector(".quiz-count") else ""
-                pg.click("#ess-g-exit"); time.sleep(0.2)  # 게임 → essentials 개요
-                # 생산(KR→EN): 한국어 front + 영어 정답은 reveal 후
-                if pg.query_selector('.ess-dir-btn[data-dir="ko"]'):
-                    pg.click('.ess-dir-btn[data-dir="ko"]'); time.sleep(0.2)
-                    pg.click("#ess-play"); time.sleep(0.3)
-                    front_ko = bool(pg.query_selector(".ess-card-ko"))
-                    hidden_before = pg.eval_on_selector("#ess-reveal", "el=>el.hidden") if pg.query_selector("#ess-reveal") else None
-                    if pg.query_selector("#ess-g-show"):
-                        pg.click("#ess-g-show"); time.sleep(0.2)
-                    term_shown = bool(pg.query_selector("#ess-reveal .ess-card-term")) and (pg.eval_on_selector("#ess-reveal", "el=>!el.hidden") if pg.query_selector("#ess-reveal") else False)
-                    ess_prod = bool(front_ko and hidden_before is True and term_shown)
-                    pg.click("#ess-g-exit") if pg.query_selector("#ess-g-exit") else None
-                    time.sleep(0.2)
-                pg.click("#ess-back") if pg.query_selector("#ess-back") else None
-                time.sleep(0.4)
-                ess_ok = bool(ess_cats >= 9 and ess_list > 0 and has_play and has_card and before != after and ess_prod is True)
-            # 카드 본문 클릭 버그(#19): 더 이상 에피소드로 네비게이트 안 함
-            pg.evaluate("location.hash=''")
-            if pg.query_selector(".study-x"):
-                pg.eval_on_selector(".study-x", "el=>el.click()")
-                time.sleep(0.1)
-            study_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
-            # 예문 탭 → 화면전환 없이 인라인 재생(에러 없이, 네비 X)
-            ctx_no_nav = None
-            if pg.query_selector(".study-x-ex.tappable"):
-                pg.evaluate("location.hash=''")
-                pg.eval_on_selector(".study-x-ex.tappable", "el=>el.click()")
-                time.sleep(0.1)
-                ctx_no_nav = pg.evaluate("location.hash.indexOf('/episode/')<0")
-            study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
-            # v1.31.0: 링 카드 → 헤더 서브라인 + Today 카드(.cont-bar + ▶ Start)가 유일한 진행 신호
-            today_ok = bool(pg.query_selector(".study-today .cont-play") and pg.query_selector("#study-known-bar")
-                            and pg.query_selector("#study-pct"))
-            # KR 번역 버튼 존재(#36) + 오른쪽 스와이프 → Known(#39): 버튼 대신 제스처로 마킹
-            study_tr = pg.eval_on_selector_all(".study-x-tr", "els=>els.length")
-            known_before = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
-            know_marked = known_after = None
-            if pg.query_selector(".study-x"):
-                pg.eval_on_selector(".study-x", """el=>{
-                  const o={bubbles:true,cancelable:true};
-                  el.dispatchEvent(new PointerEvent('pointerdown',Object.assign({},o,{clientX:12,clientY:20})));
-                  el.dispatchEvent(new PointerEvent('pointermove',Object.assign({},o,{clientX:120,clientY:22})));
-                  el.dispatchEvent(new PointerEvent('pointerup',Object.assign({},o,{clientX:120,clientY:22})));
-                }""")
-                time.sleep(0.3)
-                know_marked = pg.evaluate("(window.__known||[]).length>0")
-                known_after = pg.eval_on_selector("#study-known-n", "el=>el.textContent") if pg.query_selector("#study-known-n") else None
-            # 받아쓰기(#13): 모드 진입 시 입력칸/채점 버튼이 뜨는지
-            dict_ok = None
-            if pg.query_selector("#study-quiz-dict"):
-                open_disclosures()
-                pg.click("#study-quiz-dict")
-                time.sleep(0.3)
-                dict_ok = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check") and pg.query_selector("#d-spk"))
-                pg.click("#d-exit") if pg.query_selector("#d-exit") else None
-                time.sleep(0.2)
-            # 빈칸 채우기(#16): 모드 진입 시 빈칸/입력/확인이 뜨는지
-            cloze_ok = None
-            if pg.query_selector("#study-quiz-cloze"):
-                open_disclosures()
-                pg.click("#study-quiz-cloze")
-                time.sleep(0.3)
-                cloze_ok = bool(pg.query_selector(".cloze-blank") and pg.query_selector("#cz-in") and pg.query_selector("#cz-check"))
-                pg.click("#cz-exit") if pg.query_selector("#cz-exit") else None
-                time.sleep(0.2)
-            # 스피킹(#13): 모드 진입 시 타깃문장/마이크 버튼이 뜨는지 (마이크는 누르지 않음)
-            speak_ok = None
-            if pg.query_selector("#study-quiz-speak"):
-                open_disclosures()
-                pg.click("#study-quiz-speak")
-                time.sleep(0.3)
-                speak_ok = bool(pg.query_selector(".speak-card") and pg.query_selector("#sp-mic")
-                                and pg.query_selector("#sp-target") and pg.query_selector("#sp-hint"))
-                pg.click("#sp-exit") if pg.query_selector("#sp-exit") else None
-                time.sleep(0.2)
-            # 문장(Sentences) = 카드게임: (a) Show meaning 후 한국어앵커(.sent-ko),
-            # (b) Known 버튼→markKnown 호출+다음 카드, (c) Again→재투입(반복, markKnown 호출 안 함)
-            sent_ko_ok = None
-            sent_game_ok = None
-            if pg.query_selector("#study-quiz-sent"):
-                open_disclosures()
-                pg.click("#study-quiz-sent")
-                time.sleep(0.3)
-                has_card = bool(pg.query_selector("#sent-card.sent-swipe")
-                                and pg.query_selector("#sent-known") and pg.query_selector("#sent-again"))
-                if pg.query_selector("#sent-action"):
-                    pg.click("#sent-action")  # Show meaning
-                    time.sleep(0.2)
-                sent_ko_ok = bool(pg.query_selector(".sent-ko"))
-                kb = pg.evaluate("(window.__known||[]).length")
-                if pg.query_selector("#sent-known"):
-                    pg.click("#sent-known"); time.sleep(0.2)  # 오른쪽=Known
-                ka = pg.evaluate("(window.__known||[]).length")
-                if pg.query_selector("#sent-again"):
-                    pg.click("#sent-again"); time.sleep(0.2)  # 왼쪽=Again(반복, known 증가 X)
-                ka2 = pg.evaluate("(window.__known||[]).length")
-                sent_game_ok = bool(has_card and ka > kb and ka2 == ka and pg.query_selector("#sent-card"))
-                pg.click("#sent-exit") if pg.query_selector("#sent-exit") else None
-                time.sleep(0.2)
-            # 드릴 버튼 줄 균일성: 8개 모두 qb-ico+qb-txt, 높이 동일(들쭉날쭉 2줄/1줄 혼재 없음)
-            open_disclosures()
-            qb_ico = pg.eval_on_selector_all(".study-quiz-row .qb-ico", "els=>els.length")
-            qb_txt = pg.eval_on_selector_all(".study-quiz-row .qb-txt", "els=>els.length")
-            qb_uniform = pg.eval_on_selector_all(
-                ".study-quiz-row .study-quiz-btn",
-                "els=>{const h=els.map(e=>e.offsetHeight);return h.length===8 && Math.max(...h)-Math.min(...h)<=1;}")
-            study_chips = pg.eval_on_selector_all(".study-kind-chip", "els=>els.length")
-            quiz_opts = 0
-            if pg.query_selector("#study-quiz-read"):
-                open_disclosures()
-                pg.click("#study-quiz-read")
-                time.sleep(0.3)
-                quiz_opts = pg.eval_on_selector_all(".quiz-opt", "els=>els.length")
-            # 오늘 세션(v1.32.0): 시작 → 복습 채점 → 새 표현 학습시작 → 드릴(콜드스타트=받아쓰기) 진입
-            #                     → 드릴 중도이탈 시 상태 저장(stage=drill, 홈 카드가 '이어서 하기')
-            sess_ok = None
-            if pg.query_selector("#q-exit"):   # 직전 quiz_opts 블록이 read 퀴즈에 진입한 상태 → 홈 복귀
-                pg.click("#q-exit"); time.sleep(0.5)
-            if pg.query_selector("#sess-go"):
-                pg.evaluate("localStorage.removeItem('aep-session'); localStorage.removeItem('aep-study-days'); localStorage.removeItem('aep-measure-log')")
-                sizes = pg.eval_on_selector_all(".sess-size button", "els=>els.length")
-                pg.click("#sess-go"); time.sleep(0.5)
-                _shot(pg, "sess-prompt")
-                has_rev = bool(pg.query_selector("#sess-reveal"))
-                if has_rev:
-                    pg.click("#sess-reveal"); time.sleep(0.1)
-                    _shot(pg, "sess-revealed")
-                    pg.click("#sess-good"); time.sleep(0.3)
-                    _shot(pg, "sess-new")
-                graded = pg.evaluate("(window.__reviews||[]).length") >= 1
-                has_new = bool(pg.query_selector("#sess-learn"))
-                if has_new:
-                    pg.click("#sess-learn"); time.sleep(0.5)
-                in_drill = bool(pg.query_selector("#d-in"))   # 미측정 콜드스타트 → 받아쓰기 결정적
-                streak_before_done = pg.evaluate("JSON.parse(localStorage.getItem('aep-study-days')||'[]').length") == 0
-                if pg.query_selector("#d-exit"):
-                    pg.click("#d-exit"); time.sleep(0.5)
-                st = pg.evaluate("JSON.parse(localStorage.getItem('aep-session')||'null')")
-                resume_saved = bool(st and st.get('stage') == 'drill' and not st.get('completedAt'))
-                resume_label = pg.eval_on_selector("#sess-go", "el=>el.textContent") if pg.query_selector("#sess-go") else ''
-                sess_ok = bool(sizes == 3 and has_rev and graded and has_new and in_drill
-                               and streak_before_done and resume_saved and ('Resume' in (resume_label or '')))
-            # 🚗 운전 캡처 트리아지(v1.39.0): episode 하니스가 남긴 마크(aep-marks)가 Drive 섹션에 뜨고,
-            # 단어 탭 → '카드 만들기' → createCaptureCard 호출 + 마크 소거. 최근 들은 회차 행도 확인.
-            time.sleep(0.3)
-            dm_card = pg.query_selector(".dm-card") is not None
-            dm_recent = pg.query_selector(".dm-recent") is not None
-            drive_tri_ok = None
-            if dm_card:
-                dm_words = pg.eval_on_selector_all(".dm-card .dm-w", "els=>els.length")
-                pg.eval_on_selector(".dm-card .dm-w", "el=>el.click()")
-                time.sleep(0.05)
-                make_enabled = pg.eval_on_selector(".dm-card .dm-make", "el=>!el.disabled")
-                pg.eval_on_selector(".dm-card .dm-make", "el=>el.click()")
-                # 카드 생성은 translate fetch → createCaptureCard → removeMark 비동기 체인 — 고정 sleep
-                # 대신 완료를 폴링(0.5s 로는 route RTT 에 따라 ncap 읽기가 먼저 실행되는 타이밍 플레이크).
-                try:
-                    pg.wait_for_function("(window.__captures||[]).length>=1", timeout=8000)
-                except Exception:
-                    pass
-                time.sleep(0.2)
-                ncap = pg.evaluate("(window.__captures||[]).length")
-                nmarks_after = pg.evaluate("JSON.parse(localStorage.getItem('aep-marks')||'[]').length")
-                cap_ko = pg.evaluate("((window.__captures||[])[0]||{}).ko||''")
-                print("DRIVE-TRI: words=", dm_words, " make_enabled=", make_enabled, " ncap=", ncap,
-                      " nmarks_after=", nmarks_after, " cap_ko=", repr(cap_ko),
-                      " captures=", pg.evaluate("window.__captures||[]"))
-                drive_tri_ok = bool(dm_words > 0 and make_enabled and ncap == 1 and nmarks_after == 0
-                                    and isinstance(cap_ko, str) and cap_ko.startswith('[KO]'))
-            # v1.45.0: 종류 칩 전환은 셸을 재생성하지 않는다(칩 .on + #study-list 만 교체).
-            # 검증법: 셸 노드(.study-kinds)에 표식을 심고 다른 칩을 누른 뒤 표식이 살아있는지 본다
-            # — 살아있으면 innerHTML 전면 재생성이 없었다는 뜻(예전엔 paintShell 로 통째로 날아갔다).
-            # 다른 study 검사가 모두 끝난 뒤 실행해 상태 변경이 앞 단계에 영향을 주지 않게 한다.
-            chip_keep = chip_on_idx = chip_aria = None
-            _chips = pg.query_selector_all(".study-kind-chip")
-            if len(_chips) >= 2:
-                pg.evaluate("document.querySelector('.study-kinds').dataset.pwmark='1'")
-                _chips[1].click(); time.sleep(0.5)
-                chip_keep = pg.eval_on_selector(".study-kinds", "el=>el.dataset.pwmark||''")
-                chip_on_idx = pg.eval_on_selector_all(".study-kind-chip", "els=>els.findIndex(e=>e.classList.contains('on'))")
-                chip_aria = pg.eval_on_selector_all(
-                    ".study-kind-chip", "els=>els.map(e=>e.getAttribute('aria-pressed')).join(',')")
-            chip_swap_ok = (chip_keep == '1' and chip_on_idx == 1
-                            and isinstance(chip_aria, str) and chip_aria.split(',')[1] == 'true'
-                            and chip_aria.split(',')[0] == 'false')
-            # v1.45.7: Today 카드의 'Level check ›'(#plan-level) — 커버리지가 없던 컨트롤인데
-            # v1.45.6 에서 히트 영역(.cont-script::after 44px)과 키보드 핸들러를 동시에 건드렸다.
-            # ① 클릭이 여전히 받아쓰기(레벨 체크)로 진입하는지 ② role="button" 답게 Enter 로도 되는지.
-            lvl_click = lvl_key = None
-            if pg.query_selector("#plan-level"):
-                pg.eval_on_selector("#plan-level", "el=>el.click()"); time.sleep(0.45)
-                lvl_click = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check"))
-                exitToStudyHome = "history.back()"
-                pg.evaluate(exitToStudyHome); time.sleep(0.5)
-                if pg.query_selector("#plan-level"):
-                    pg.eval_on_selector("#plan-level", """el=>el.dispatchEvent(
-                        new KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true}))""")
-                    time.sleep(0.45)
-                    lvl_key = bool(pg.query_selector("#d-in") and pg.query_selector("#d-check"))
-            print("LEVEL-CHECK: click=", lvl_click, " enter_key=", lvl_key)
-            study_err = pg.evaluate("window.__err||[]")
-            print("KIND-CHIP: shell_kept=", chip_keep, " on_idx=", chip_on_idx, " aria=", chip_aria, " ok=", chip_swap_ok)
-            print("STUDY: expressions=", study_x, " examples=", study_ex, " term_hl=", study_hl,
-                  " ctx_btns=", study_ctx, " no_nav=", study_no_nav, " ctx_no_nav=", ctx_no_nav,
-                  " kind_chips=", study_chips, " quiz_opts=", quiz_opts,
-                  " today=", today_ok, " known", known_before, "->", known_after, " marked=", know_marked, " tr_btns=", study_tr,
-                  " dict_ok=", dict_ok, " cloze_ok=", cloze_ok, " speak_ok=", speak_ok,
-                  " sent_ko=", sent_ko_ok, " sent_game=", sent_game_ok,
-                  " qb_ico=", qb_ico, " qb_txt=", qb_txt, " qb_uniform=", qb_uniform,
-                  " ess=", ess_ok, " ess_prod=", ess_prod, " sess=", sess_ok,
-                  " dm_card=", dm_card, " dm_recent=", dm_recent, " drive_tri=", drive_tri_ok, " err=", study_err)
-            study_ok = (chip_swap_ok is True and lvl_click is True and lvl_key is True
-                        and study_x >= 4 and study_ex >= 4 and study_hl and study_chips == 4
-                        and quiz_opts == 4 and not study_err
-                        and today_ok is True and know_marked is True
-                        and known_before != known_after and dict_ok is True
-                        and cloze_ok is True and speak_ok is True
-                        and sent_ko_ok is True and sent_game_ok is True and ess_ok is True
-                        and qb_ico == 8 and qb_txt == 8 and qb_uniform is True
-                        and study_ctx >= 4 and study_no_nav is True and ctx_no_nav is True
-                        and study_tr >= 4
-                        and sess_ok is True
-                        and dm_card and dm_recent and drive_tri_ok is True)
 
             # === Timeline(Library) 회귀 ===
             pg.set_viewport_size({"width": 390, "height": 844})  # 모바일 폭 — 가로 오버플로(#1) 재현 조건
@@ -1893,40 +1524,6 @@ def main() -> int:
             print("SETTINGS: sheet=", set_sheet, " theme_btns=", theme_btns, " off_btns=", off_btns,
                   " off_on0=", off_on0, " theme_called=", theme_called, " off_set=", off_set,
                   " forced=", forced, " signout=", signout_called, " closed=", sheet_closed, " err=", set_err)
-
-            # === SRS 복습 (v1.45.4 — 지금까지 자동검증이 전혀 없던 화면) ===
-            # 목 큐는 카드 2장. A=again → B=good → 재큐된 A=good 으로 채점하면
-            # 진짜 first-pass 는 1/2=50%, 옛 계산(mastered/done)은 2/3=67% 라 숫자로 구분된다.
-            pg.goto("http://localhost:8123/_harness_srs.html")
-            pg.wait_for_function("window.__ready===true", timeout=10000)
-            cls0 = pg.eval_on_selector("#card", "el=>el.className")
-            pg.click("#card"); time.sleep(0.35)
-            srs_mask1 = pg.query_selector(".srs-hint-mono") is not None    # 단계1: 마스킹 힌트 노출
-            srs_term1 = pg.query_selector(".srs-term") is not None         # 단계1: 정답은 아직 숨김
-            pg.click("#card"); time.sleep(0.35)
-            srs_mask2 = pg.query_selector(".srs-hint-mono") is not None    # 단계2: 힌트가 사라져야 함
-            srs_term2 = pg.query_selector(".srs-term") is not None         # 단계2: 정답 노출
-            def _grade(kind):
-                pg.click(f'[data-grade="{kind}"]'); time.sleep(0.6)
-            _grade("again")
-            pg.click("#card"); time.sleep(0.3); pg.click("#card"); time.sleep(0.3)
-            _grade("good")
-            pg.click("#card"); time.sleep(0.3); pg.click("#card"); time.sleep(0.3)
-            _grade("good")
-            time.sleep(0.4)
-            srs_meta = pg.eval_on_selector(".srs-summary-meta", "el=>el.textContent.replace(/\\s+/g,' ').trim()") \
-                if pg.query_selector(".srs-summary-meta") else None
-            srs_reviews = pg.evaluate("window.__reviews||[]")
-            srs_err = pg.evaluate("window.__err||[]")
-            srs_ok = (cls0.find("srs-stage-0") >= 0
-                      and srs_mask1 is True and srs_term1 is False
-                      and srs_mask2 is False and srs_term2 is True
-                      and isinstance(srs_meta, str) and "50% first-pass" in srs_meta
-                      and "3 reviews" in srs_meta and "1 retried" in srs_meta
-                      and len(srs_reviews) == 3 and not srs_err)
-            print("SRS: stage1_mask=", srs_mask1, " stage1_term=", srs_term1,
-                  " stage2_mask=", srs_mask2, " stage2_term=", srs_term2,
-                  " meta=", repr(srs_meta), " reviews=", srs_reviews, " ok=", srs_ok, " err=", srs_err)
 
             # === 라우터 (v1.45.7 — app.js 를 실제로 태우는 첫 하니스) ===
             # 검증 대상: 콜드 딥링크 뒤로가기 폴백(#20) · 404 크롬 초기화(#25) ·
@@ -2425,8 +2022,8 @@ def main() -> int:
 
             # 실패 시 어느 묶음인지 바로 보이게 한다 — 예전엔 RESULT: FAIL 만 나와서 큰 논리곱을
             # 사람이 눈으로 되짚어야 했다(2026-08-10: 이것 때문에 한참 헤맸다).
-            _groups = {"ep": ep_ok, "study": study_ok, "timeline": timeline_ok, "settings": settings_ok,
-                       "srs": srs_ok, "router": router_ok, "realvideo": realvideo_ok,
+            _groups = {"ep": ep_ok, "timeline": timeline_ok, "settings": settings_ok,
+                       "router": router_ok, "realvideo": realvideo_ok,
                        "ytblocked": ytblocked_ok, "dbcache": dbcache_ok, "loopanchor": loop_ok,
                        "lift": lift_ok}
             print("GROUPS-FAILED:", [k for k, v in _groups.items() if not v] or "none")
@@ -2436,9 +2033,7 @@ def main() -> int:
         srv.terminate()
         MOCKS.unlink(missing_ok=True)
         HARNESS.unlink(missing_ok=True)
-        STUDY_HARNESS.unlink(missing_ok=True)
         TIMELINE_HARNESS.unlink(missing_ok=True)
-        SRS_HARNESS.unlink(missing_ok=True)
         ROUTER_MOCK.unlink(missing_ok=True)
         ROUTER_HARNESS.unlink(missing_ok=True)
         REALVIDEO_MOCK.unlink(missing_ok=True)

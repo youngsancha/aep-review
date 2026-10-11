@@ -1,6 +1,6 @@
 """멀티-쇼 인제스트 show 스레딩 회귀 테스트 (iter3).
 
-upsert_episodes / existing_guids / insert_vocab_and_srs 가 show 를 올바로 쓰고 필터하는지
+upsert_episodes / existing_guids / insert_vocab 가 show 를 올바로 쓰고 필터하는지
 가짜 Supabase client 로 검증(외부호출·실제 write 0). 기본 show='aep' 하위호환도 확인.
 """
 from __future__ import annotations
@@ -167,21 +167,21 @@ def test_upsert_legacy_omits_show(fake):
     assert "show" not in fake.inserts["episodes"][0]
 
 
-def test_insert_vocab_and_srs_labels_show_when_given(fake):
+def test_insert_vocab_labels_show_when_given(fake):
     vocab = [{"term": "ballpark figure", "kind": "idiom", "definition": "대략", "example_sentence": "Give me a ballpark figure."}]
-    added, tts = store.insert_vocab_and_srs(42, vocab, "allears")
+    added = store.insert_vocab(42, vocab, "allears")
     assert added == 1
     assert fake.inserts["vocab_cards"][0]["show"] == "allears"
-    assert fake.inserts["srs_cards"][0]["show"] == "allears"
+    assert not fake.inserts.get("srs_cards")
     assert fake.inserts["vocab_cards"][0]["episode_id"] == 42
-    assert "ballpark figure" in tts
+    assert not hasattr(store, "pregen_tts")
 
 
-def test_insert_vocab_and_srs_legacy_omits_show(fake):
+def test_insert_vocab_legacy_omits_show(fake):
     vocab = [{"term": "x", "kind": "word", "definition": "d", "example_sentence": "e"}]
-    store.insert_vocab_and_srs(42, vocab)   # show 미지정 → 레거시(컬럼 미기록)
+    store.insert_vocab(42, vocab)   # show 미지정 → 레거시(컬럼 미기록)
     assert "show" not in fake.inserts["vocab_cards"][0]
-    assert "show" not in fake.inserts["srs_cards"][0]
+    assert not fake.inserts.get("srs_cards")
 
 
 # ───────────────── PostgREST 1,000 행 상한 회귀 (2026-08-30) ─────────────────

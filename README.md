@@ -12,17 +12,17 @@ American English Podcast (Shana Thompson) 복습 PWA.
 
 ```
 [인제스트] GitHub Actions / 로컬 GPU   ← Python 은 여기에만
-  RSS → 임시 mp3 → faster-whisper STT → claude vocab → edge-tts 미리 합성
+  RSS → episode audio → faster-whisper STT → vocabulary extraction
        → Supabase write (Postgres 행 + Storage 파일)
 
 [저장] Supabase (무료)
-  Postgres: episodes / vocab_cards / srs_cards (+ view episodes_list) + RLS
-  Storage : transcripts/{id}.json · tts/{sha1}.mp3  (public read)
+  Postgres: episodes / vocab_cards (+ view episodes_list) + RLS
+  Storage : transcripts/{id}.json and translations (public read)
 
 [앱] Vercel(정적) + PWA
   데이터 : @supabase/supabase-js 직접 쿼리 (런타임 서버 0)
   오디오 : <audio src=episode.audio_url>  ← 원본 CDN 직접 스트리밍
-  TTS    : Storage 의 미리 생성된 mp3, 없으면 브라우저 TTS 폴백
+  Speech : device speech synthesis for episode word pronunciation
   인증   : Supabase Auth (email+password) 단일 사용자
 ```
 
@@ -74,3 +74,15 @@ GitHub Actions + Edge TTS. 오디오는 원본 CDN 스트리밍이라 Storage/�
 
 ## 데이터 소스
 RSS: `https://feeds.megaphone.fm/americanenglishpodcast` (Shana Thompson, Megaphone)
+
+## Study retirement (v1.80.0)
+
+Study, Review, Essentials, drills, proficiency scoring, and Drive capture were removed.
+Old Study links return to Library. Episode playback, transcripts, translations, vocabulary,
+shadowing, and offline episode downloads remain. Word pronunciation uses device speech
+synthesis without stored MP3s. Ingestion no longer creates SRS cards or speech files.
+
+The `tts` Storage bucket is retired and may be emptied after this release is deployed.
+Do not remove the `transcripts` bucket, episode audio in R2, or database records. Existing
+SRS history is retained in the database but is no longer read or written by the app.
+The PWA removes its retired local TTS cache on service-worker activation.

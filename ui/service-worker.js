@@ -1,9 +1,7 @@
 // aep-review service worker — 오프라인 지원.
 //  ① 동일 출처 앱 셸 → stale-while-revalidate (버전 캐시).
-//  ② Supabase 데이터/Storage(자막·번역·vocab·essentials) → network-first + 캐시 폴백
+//  ② Supabase 데이터/Storage(자막·번역·vocab) → network-first + 캐시 폴백
 //     (온라인=항상 최신, 오프라인=마지막으로 본 자료 열람). 데이터 캐시는 버전과 분리·상한 트림.
-//     · 하위 규칙 ②a: 사전생성 TTS mp3(/storage/.../tts/) 는 여기서 갈라져 별도 캐시로 간다
-//       (아래 TTS_CACHE) — study.js 의 prefetch() 가 세션당 수십~수백 개를 받아 DATA_CACHE 를
 //       쓰면 그 트래픽이 자막·회차 메타를 FIFO 로 밀어냈다(사용자 신고: 오디오는 오프라인에
 //       살아있는데 자막만 사라짐 — 원인이 이것).
 //     · 하위 규칙 ②b: '핀(자동 프리페치 대상 + 수동 다운로드)' 회차의 회차행(REST)·자막 응답은
@@ -15,16 +13,13 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.79.0';
+const VERSION = '1.80.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
-// 데이터/벤더/오디오/이미지/TTS/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
+// 데이터/벤더/오디오/이미지/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
 // (구) 'aep-review-vendor-v1' — KEEP 에서 빠졌으므로 다음 activate 가 지운다.
 const AUDIO_CACHE = 'aep-review-audio-v1';
 const IMG_CACHE = 'aep-review-img-v1';
-// 사전생성 TTS mp3 전용 캐시 — 파일명이 sha1(voice|rate|text) 라 히트는 절대 stale 일 수 없다
-// (tts.js::ttsUrl). DATA_CACHE 오염(위 ②a) 방지 + Study 오프라인 발화를 실제로 안정화한다.
-const TTS_CACHE = 'aep-review-tts-v1';
 // 오프라인으로 받은(핀된) 회차의 '읽기 자료'(회차행+자막) 전용 캐시 — 오디오와 같은 생명주기로
 // offline.js 가 명시적으로 채우고 지운다. DATA_CACHE 처럼 무관한 트래픽에 밀려 트림되지 않는다
 // (아래 KEEP 에도 등록 — 없으면 다음 activate 에서 통째로 삭제된다).
@@ -32,7 +27,6 @@ const DOC_CACHE = 'aep-review-doc-v1';
 const DATA_MAX = 400;
 const NET_TIMEOUT_MS = 3000;   // 캐시 사본이 있을 때 네트워크에 주는 시간(lie-fi 상한) — networkFirst 참고   // 회차 프리페치(최근 N개 행+자막+번역)가 들어가도록 160→400
 const IMG_MAX = 30;
-const TTS_MAX = 800;    // 9,110개 사전생성 TTS 중 최근 사용분만 — study.js 세션당 prefetch 30개 상당 여유
 
 // 오프라인 '핀' 회차 id 집합(회차 상세 REST + 자막 응답을 DOC_CACHE 에도 미러링할 대상) — SW 는
 // 상태를 갖지 않으므로 offline.js 가 postMessage 로 채운다(ADD_PINNED_EPISODES, 아래 message
@@ -67,16 +61,16 @@ const ICONS = [
 const SHELL_CRITICAL = [
   '/', '/index.html', '/manifest.json',
   '/style.css' + Q,
-  '/app.js' + Q, '/tts.js' + Q, '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q,
-  '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q, '/clip.js' + Q, '/convo.js' + Q, '/translate.js' + Q, '/marks.js' + Q, '/settings.js' + Q, '/proficiency.js' + Q, '/offline.js' + Q, '/offline-pins.js' + Q,
-  '/views/timeline.js' + Q, '/views/episode.js' + Q, '/views/srs.js' + Q, '/views/study.js' + Q, '/views/login.js' + Q,
-  '/views/essentials.js' + Q,
+  '/app.js' + Q, '/speech.js' + Q,  '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q,
+  '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q,   '/translate.js' + Q,  '/settings.js' + Q,  '/offline.js' + Q, '/offline-pins.js' + Q,
+  '/views/timeline.js' + Q, '/views/episode.js' + Q,   '/views/login.js' + Q,
+
   '/vendor/supabase-js.mjs' + Q,
   ...ICONS,
 ];
 // 없어도 앱은 뜨는 파일(정적 데이터·쇼 커버) — 실패해도 install 은 계속.
 const SHELL_OPTIONAL = [
-  '/data/essentials.json',
+
   '/icons/wh-cover.png?v=1',
 ];
 const SHELL = [...SHELL_CRITICAL, ...SHELL_OPTIONAL];
@@ -108,7 +102,7 @@ self.addEventListener('activate', (e) => {
     caches.keys()
       // 현재 셸 + 영속 캐시(데이터/벤더/오디오/이미지)만 남기고 옛 셸 캐시 제거.
       .then((keys) => {
-        const KEEP = new Set([CACHE, DATA_CACHE, AUDIO_CACHE, IMG_CACHE, TTS_CACHE, DOC_CACHE]);
+        const KEEP = new Set([CACHE, DATA_CACHE, AUDIO_CACHE, IMG_CACHE, DOC_CACHE]);
         return Promise.all(keys.filter((k) => !KEEP.has(k)).map((k) => caches.delete(k)));
       })
       .then(() => self.clients.claim())
@@ -154,43 +148,6 @@ async function cachedFor(req, pinId) {
 }
 
 // ─────────── HEAD(count) 캐싱 ───────────
-// studyOverview() 는 카운트 8개를 전부 HEAD + `Prefer: count=exact` 로 가져온다(본문 없음, 개수는
-// Content-Range 헤더). 예전엔 SW 가 GET 아닌 요청을 통째로 무시했으므로 오프라인이면 첫 await 가
-// throw 하고 Study 홈이 아예 못 떴다 — 데이터가 없어서가 아니라 '메서드' 때문에 막힌 것이다.
-//
-// ⚠ Cache API 는 HEAD 요청을 키로 저장할 수 없다(스펙상 cache.put 이 TypeError). 그래서 GET 키로
-// 바꿔 저장하는데, 같은 조건의 실제 GET 과 URL 이 똑같아서 그대로 쓰면 칸을 공유한다 — 본문이 빈
-// HEAD 응답이 GET 요청에 반환되어 호출부가 행을 하나도 못 받는 사고가 난다. 마커로 분리한다.
-function headCacheKey(url) {
-  const u = new URL(url);
-  u.searchParams.set('__sw_head', '1');
-  return new Request(u.toString(), { method: 'GET' });
-}
-
-async function headFirst(req) {
-  const key = headCacheKey(req.url);
-  const cache = await caches.open(DATA_CACHE);
-  const readCache = () => cache.match(key, { ignoreVary: true }).catch(() => null);
-
-  // networkFirst 와 같은 규칙: onLine 은 false 일 때만 믿는다.
-  if (self.navigator && self.navigator.onLine === false) {
-    const hit = await readCache();
-    if (hit) return hit;
-  }
-  try {
-    const res = await fetch(req);
-    if (res && res.status === 200 && (res.type === 'cors' || res.type === 'basic')) {
-      // 본문이 없는 응답이라 clone 이 사실상 헤더 복사다(Content-Range 가 개수를 들고 있다).
-      cache.put(key, res.clone()).then(() => trimCache(DATA_CACHE, DATA_MAX)).catch(() => {});
-    }
-    return res;
-  } catch (err) {
-    const hit = await readCache();
-    if (hit) return hit;
-    throw err;
-  }
-}
-
 async function networkFirst(req, pinId, event) {
   // ⛔ 오프라인이면 네트워크를 먼저 두드리지 않는다. 오프라인의 fetch 실패는 즉시가 아니다 —
   // DNS/연결 시도가 수 초씩 걸리고, 캡티브 포털이나 약한 셀룰러에서는 훨씬 길다. 회차 상세·자막·
@@ -229,19 +186,6 @@ async function networkFirst(req, pinId, event) {
     return cached;
   }
   return net;   // 사본 없음: 네트워크 결과(또는 실패)를 그대로 — 호출부가 빈 데이터로 처리(graceful degrade)
-}
-
-// 사전생성 TTS mp3(voice|rate|text 의 sha1 이 파일명) → cache-first. 히트는 절대 stale 일 수
-// 없으므로 network-first 로 매번 왕복할 이유가 없고, DATA_CACHE 에도 넣지 않는다(설명은 상단 ②a).
-async function ttsCacheFirst(req) {
-  const cache = await caches.open(TTS_CACHE);
-  const cached = await cache.match(req.url, { ignoreVary: true });
-  if (cached) return cached;
-  const res = await fetch(req);   // 실패(오프라인+미캐시)는 그대로 던진다 — tts.js 가 다음 보이스로 강등
-  if (res && res.status === 200) {
-    cache.put(req.url, res.clone()).then(() => trimCache(TTS_CACHE, TTS_MAX)).catch(() => {});
-  }
-  return res;
 }
 
 // 쇼 커버(imgix): cache-first. <img> 는 no-cors 라 opaque 응답도 그대로 표시 가능.
@@ -328,23 +272,16 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
-  // HEAD 는 count 쿼리(studyOverview)뿐이고 Supabase REST 로만 나간다. 그 조합만 받고
   // 나머지 비-GET(POST/PATCH — 복습 채점 등 쓰기)은 예전처럼 손대지 않는다.
-  if (req.method === 'HEAD') {
-    if (url.hostname.endsWith('.supabase.co') && url.pathname.includes('/rest/v1/')) {
-      e.respondWith(headFirst(req));
-    }
-    return;
-  }
   if (req.method !== 'GET') return;
 
-  // ① Supabase 데이터/Storage(자막·번역·vocab·essentials 등) → network-first(오프라인 열람 가능).
+  // ① Supabase 데이터/Storage(자막·번역·vocab 등) → network-first(오프라인 열람 가능).
   //    REST(/rest/v1/) + Storage 객체(/storage/v1/object/). 대용량 오디오는 별도 CDN(R2)이라 제외.
   if (url.hostname.endsWith('.supabase.co') &&
       (url.pathname.includes('/rest/v1/') || url.pathname.includes('/storage/v1/object/'))) {
     // ②a 사전생성 TTS mp3 은 완전히 별도 캐시(cache-first) — DATA_CACHE 오염 방지(상단 설명).
     if (url.pathname.includes('/storage/v1/object/public/tts/')) {
-      e.respondWith(ttsCacheFirst(req));
+      e.respondWith(Promise.resolve(new Response('', { status: 410 }))); // Retired speech files.
       return;
     }
     // ②b 회차 상세/자막이 '핀' 회차에 속하면 networkFirst 가 DOC_CACHE 도 함께 채우고,

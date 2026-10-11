@@ -4,23 +4,19 @@
 "무엇이 처리됐나" 추적 + 결과 write 만 Supabase 로.
 
 service_role 키 사용 (RLS 우회) — .env 의 SUPABASE_URL / SUPABASE_SERVICE_KEY.
-TTS 키 공식·합성 헬퍼의 단일 출처 (마이그레이션 스크립트·프론트와 동일해야 함).
+Episode vocabulary is retained; Study cards and generated speech are retired.
 """
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import json
 import logging
 import os
-import time
-from datetime import date, datetime
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
-import edge_tts
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
@@ -28,9 +24,6 @@ log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# 프론트(ui/tts.js)·마이그레이션과 반드시 동일.
-TTS_VOICE = "en-US-JennyNeural"
-TTS_RATE = "-5%"
 
 
 def _now() -> str:
@@ -337,15 +330,12 @@ def download_transcript(ep_id: int) -> dict[str, Any] | None:
         return None
 
 
-# ─────────────────────────── vocab + srs ───────────────────────────
-def insert_vocab_and_srs(ep_id: int, vocab_list: list[dict[str, Any]],
-                         show: str | None = None) -> tuple[int, list[str]]:
-    """vocab_cards + srs_cards 시드. 반환: (added, tts_texts).
-    show=None(레거시): show 컬럼 미기록(마이그레이션 전 안전). 지정 시 episode.show 로 비정규화."""
+# ─────────────────────────── Episode vocabulary ───────────────────────────
+def insert_vocab(ep_id: int, vocab_list: list[dict[str, Any]],
+                         show: str | None = None) -> int:
+    """Insert episode vocabulary only; do not create Study cards or speech assets."""
     now = _now()
-    today = date.today().isoformat()
     added = 0
-    tts_texts: list[str] = []
     c = client()
     for v in vocab_list:
         term = (v.get("term") or "").strip()
@@ -359,99 +349,6 @@ def insert_vocab_and_srs(ep_id: int, vocab_list: list[dict[str, Any]],
         }
         if show:
             vrow["show"] = show
-        vres = c.table("vocab_cards").insert(vrow).execute()
-        vocab_id = vres.data[0]["id"]
-
-        back = v.get("definition") or ""
-        ex = v.get("example_sentence")
-        if ex:
-            back = f"{back}\n\n— {ex}" if back else f"— {ex}"
-        srow = {
-            "episode_id": ep_id, "vocab_id": vocab_id, "front": term, "back": back,
-            "category": v.get("kind"), "due_date": today, "created_at": now,
-        }
-        if show:
-            srow["show"] = show
-        c.table("srs_cards").insert(srow).execute()
+        c.table("vocab_cards").insert(vrow).execute()
         added += 1
-        tts_texts.append(term)
-        if ex and ex.strip():
-            tts_texts.append(ex.strip())
-    return added, tts_texts
-
-
-# ─────────────────────────── TTS (Storage) ───────────────────────────
-def tts_key(text: str, voice: str = TTS_VOICE, rate: str = TTS_RATE) -> str:
-    """ui/tts.js 와 동일한 sha1 키 — 미리 생성 TTS 파일명의 단일 출처."""
-    return hashlib.sha1(f"{voice}|{rate}|{text}".encode("utf-8")).hexdigest()
-
-
-async def synth(text: str) -> bytes:
-    """edge-tts → mp3 bytes."""
-    chunks: list[bytes] = []
-    communicate = edge_tts.Communicate(text, TTS_VOICE, rate=TTS_RATE)
-    async for ev in communicate.stream():
-        if ev["type"] == "audio":
-            chunks.append(ev["data"])
-    return b"".join(chunks)
-
-
-def existing_tts_names() -> set[str]:
-    names: set[str] = set()
-    bucket = client().storage.from_("tts")
-    offset = 0
-    while True:
-        page = bucket.list("", {"limit": 1000, "offset": offset})
-        if not page:
-            break
-        names.update(o["name"] for o in page)
-        if len(page) < 1000:
-            break
-        offset += 1000
-    return names
-
-
-async def pregen_tts(texts: list[str], concurrency: int = 5) -> int:
-    """주어진 텍스트들을 기본 보이스로 합성해 tts/{sha1}.mp3 업로드. 이미 있으면 스킵."""
-    uniq = sorted({t.strip() for t in texts if t and t.strip()})
-    existing = existing_tts_names()
-    todo = [(t, tts_key(t)) for t in uniq if f"{tts_key(t)}.mp3" not in existing]
-    if not todo:
-        return 0
-    bucket = client().storage.from_("tts")
-    sem = asyncio.Semaphore(concurrency)
-    # storage3 의 httpx 클라이언트는 스레드 간 동시 호출이 안전하지 않다(HTTP/2 multiplex
-    # 를 여러 OS 스레드가 만지면 WinError 10035 / RemoteProtocolError). 합성(edge-tts)은
-    # 동시에 두되, 업로드는 이 lock 으로 직렬화해 공유 클라이언트를 한 번에 한 스레드만 쓴다.
-    upload_lock = asyncio.Lock()
-    done = 0
-
-    def _upload(key: str, data: bytes) -> None:
-        for attempt in range(3):  # 일시적 소켓/연결 오류 재시도
-            try:
-                bucket.upload(
-                    path=f"{key}.mp3", file=data,
-                    file_options={"content-type": "audio/mpeg", "upsert": "true"},
-                )
-                return
-            except Exception:
-                if attempt == 2:
-                    raise
-                time.sleep(0.5 * (attempt + 1))
-
-    async def worker(text: str, key: str) -> None:
-        nonlocal done
-        async with sem:
-            try:
-                data = await synth(text)
-                if not data:
-                    return
-                async with upload_lock:
-                    await asyncio.to_thread(_upload, key, data)
-                done += 1
-            except Exception:
-                log.exception("TTS 실패: %r", text[:40])
-
-    await asyncio.gather(*(worker(t, k) for t, k in todo))
-    log.info("TTS 업로드: 성공 %d / 대상 %d", done, len(todo))
-    return done
+    return added

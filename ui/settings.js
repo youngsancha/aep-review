@@ -19,24 +19,6 @@ const THEME_STEPS = [
   { v: 'dark', label: 'Dark' },
 ];
 
-// Study 탭(aep-session-size)과 동일한 키/값(S/M/L, 기본 M) — 한쪽만 바꾸면 드리프트하므로
-// 여기서도 이 세 값만 유효하게 취급한다(study.js::sessSize 와 동일 판정).
-const SESS_SIZE_KEY = 'aep-session-size';
-const SESSION_SIZE_STEPS = [
-  { v: 'S', label: 'S · 5 min' },
-  { v: 'M', label: 'M · 10 min' },
-  { v: 'L', label: 'L · 20 min' },
-];
-function getSessionSize() {
-  try {
-    const v = localStorage.getItem(SESS_SIZE_KEY);
-    return (v === 'S' || v === 'M' || v === 'L') ? v : 'M';
-  } catch (e) { return 'M'; }
-}
-function setSessionSize(v) {
-  try { localStorage.setItem(SESS_SIZE_KEY, v); } catch (e) { /* quota */ }
-}
-
 // 로그인된 계정 표시용 — app.js::boot() 의 getSession() 패턴을 그대로 재사용(3.5s 예산, 오프라인
 // 이면 800ms). 저장된 세션은 있는데(hasStoredSession) getSession 이 오프라인 토큰갱신 재시도에
 // 락이 잡혀 응답을 못 주는 경우가 있어 — 그때는 user 가 null 로 와도 정상(오프라인 문구로 처리).
@@ -80,7 +62,6 @@ export async function openSettings(deps) {
     return (s === 'light' || s === 'dark') ? s : 'auto';
   })();
   const curOffline = off ? off.offlineCount() : null;
-  const curSessSize = getSessionSize();
 
   const back = document.createElement('div');
   back.className = 'set-backdrop';
@@ -98,10 +79,6 @@ export async function openSettings(deps) {
           <div class="set-row-l"><b>Offline downloads</b><span>Keep the latest N episodes for no-signal listening</span></div>
           ${seg('Offline downloads', OFFLINE_STEPS, String(curOffline), (s) => String(s.n))}
         </div>` : ''}
-        <div class="set-row" id="set-row-sesssize">
-          <div class="set-row-l"><b>오늘 세션 크기</b><span>Study 홈 · 오늘의 세션 카드와 같은 설정이에요</span></div>
-          ${seg('오늘 세션 크기', SESSION_SIZE_STEPS, curSessSize, (s) => s.v)}
-        </div>
         <div class="set-note">Transcript &amp; translation text size live on the <b>A</b> / <b>가</b> chips inside an episode’s transcript.</div>
         ${account ? `
         <div class="set-row">
@@ -154,16 +131,6 @@ export async function openSettings(deps) {
       });
     });
   }
-
-  // 오늘 세션 크기 세그먼트 — S/M/L, Study 탭과 동일 키(aep-session-size). Offline 행이 조건부라
-  // 인덱스가 흔들리므로(위 [0]/[1] 방식) id 로 직접 선택해 안전하게 바인딩한다.
-  const sizeRow = back.querySelector('#set-row-sesssize');
-  sizeRow?.querySelectorAll('.set-seg-btn').forEach((b) => {
-    b.addEventListener('click', () => {
-      setSessionSize(b.dataset.v);
-      sizeRow.querySelectorAll('.set-seg-btn').forEach((x) => x.classList.toggle('on', x === b));
-    });
-  });
 
   back.querySelector('#set-signout')?.addEventListener('click', () => {
     close();

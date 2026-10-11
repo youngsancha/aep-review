@@ -1,6 +1,6 @@
 // aep-review router (hash-based) + shared utils.
 // 뷰 모듈은 라우트별 '동적 import'(지연 로드)로 불러온다 — 부팅 때 첫 화면(라이브러리)에 필요한
-// 것만 파싱하고 episode/study/srs/login(대형 모듈들)은 진입 시 로드해 초기 JS 파싱/평가를 줄인다.
+// 것만 파싱하고 episode/login(대형 모듈들)은 진입 시 로드해 초기 JS 파싱/평가를 줄인다.
 // SW SHELL 이 전부 캐시하므로 지연 로드여도 오프라인·재방문은 즉시(네트워크 아닌 파싱만 지연).
 import { supabase } from '/supabase.js';
 import { APP_NAME } from '/config.js';
@@ -36,12 +36,12 @@ window.addEventListener('unhandledrejection', (e) => { console.error('[unhandled
 const ROUTES = [
   { re: /^#?\/$/,                    load: () => import('/views/timeline.js').then((m) => m.renderTimeline), title: 'E-Podcast', tab: 'timeline', back: false, key: 'timeline' },
   { re: /^#?\/episode\/(\d+)(?:\/(\d+))?$/, load: () => import('/views/episode.js').then((m) => m.renderEpisode), title: 'Episode', tab: 'timeline', back: true, key: 'episode' },
-  { re: /^#?\/study$/,               load: () => import('/views/study.js').then((m) => m.renderStudy), title: 'Study',    tab: 'study',    back: false, key: 'study' },
-  { re: /^#?\/srs$/,                 load: () => import('/views/srs.js').then((m) => m.renderSrs),   title: 'Review',   tab: 'study',    back: true,  key: 'srs' },
 ];
 
 let _prevKey = null;  // 직전 라우트 키 — 같은 뷰(에피소드↔에피소드) 전환 감지용
 async function route() {
+  // Retired Study bookmarks return to the listening library.
+  if (/^#\/(?:study|srs)(?:\/|$)/.test(location.hash)) history.replaceState(null, '', '#/');
   const hash = location.hash || '#/';
   for (const r of ROUTES) {
     const m = hash.match(r.re);
@@ -155,12 +155,12 @@ function kickOfflineCache() {
 }
 
 // 지연 로드의 유일한 트레이드오프(첫 진입 시 파싱 지연)를 없앤다: 부팅 후 유휴 시간에 다음에 열 확률이
-// 높은 뷰(episode → study)를 백그라운드로 미리 파싱해 첫 진입을 즉시로. (SW 캐시 히트라 네트워크 0.)
+// 높은 뷰(episode)를 백그라운드로 미리 파싱해 첫 진입을 즉시로. (SW 캐시 히트라 네트워크 0.)
 let _viewsWarmed = false;
 function prefetchViews() {
   if (_viewsWarmed) return;
   _viewsWarmed = true;
-  const warm = () => { import('/views/episode.js').catch(() => {}); import('/views/study.js').catch(() => {}); };
+  const warm = () => { import('/views/episode.js').catch(() => {}); };
   if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 3000 });
   else setTimeout(warm, 1500);
 }
@@ -301,10 +301,9 @@ $back.addEventListener('click', () => { if (_inAppNavs > 0) history.back(); else
 
 // 같은 해시로 route() 를 다시 돌리면 안 되는 화면. hashchange 가 없어 뷰의 teardown 이 돌지 않는다:
 //   에피소드 — 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다(버그헌트 #1)
-//   복습(#/srs) — renderSrs 재실행이 진행 중 카드 큐·점수를 리셋해 학습 데이터가 조용히 날아간다
 // ⚠ 재라우팅하는 곳(refreshData·'online' 핸들러)은 반드시 이 한 판정을 공유한다 — 한 곳에만 가드를
 // 두면 다음 호출자가 같은 문으로 걸어 들어온다(실제로 그렇게 됐다: 아래 'online' 주석).
-const NO_REROUTE = /^#\/(episode|srs)\b/;
+const NO_REROUTE = /^#\/episode\b/;
 function canReroute() { return !NO_REROUTE.test(location.hash || ''); }
 
 // 동기화 버튼 재활용 — 신규 에피소드는 GitHub Actions cron 이 Supabase 에 채운다.
@@ -322,8 +321,6 @@ function refreshData() {
   // 에피소드 화면에선 재라우팅 금지 — 같은 해시라 hashchange 없이 route()→renderEpisode 가 재실행되면
   // teardown(시트 제거·리스너 해제)이 안 돼 트랜스크립트 시트가 중복 생성되고 player 리스너가 겹친다
   // (버그헌트 #1). 에피소드 데이터는 이미 로드돼 있어 새로고침 불필요 → 스핀 애니메이션만.
-  // 복습(#/srs)도 재라우팅 금지 — renderSrs 재실행이 진행 중 카드 큐·점수를 처음부터 리셋해
-  // 학습 데이터가 조용히 날아간다(정밀진단 수정). 에피소드와 동일하게 스핀 애니메이션만.
   // 이 두 화면은 의도적으로 재라우팅하지 않는다(아래 사유) → 실제로는 아무것도 새로 받지 않으므로
   // 'Synced to latest' 는 거짓 확인이었다. 사실대로 알린다.
   if (!canReroute()) { done('Nothing to refresh here'); return; }
@@ -492,12 +489,3 @@ if ('serviceWorker' in navigator) {
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden && pendingReload) doReload(); });
 }
-
-// 비보안 컨텍스트(http LAN 직접접속 등)에서는 crypto.subtle 부재로 고품질 TTS 키 계산 불가 →
-// speak() 가 브라우저 기본음으로 자동 강등된다(tts.js). 왜 음질이 다른지 1회만 안내(https·설치앱에선 안 뜸).
-try {
-  if (!window.isSecureContext && !localStorage.getItem('aep-hint-insecure')) {
-    localStorage.setItem('aep-hint-insecure', '1');
-    setTimeout(() => toast('Browser voice over http · use https or the installed app for high-quality TTS'), 1600);
-  }
-} catch (e) { /* no-storage/quota */ }

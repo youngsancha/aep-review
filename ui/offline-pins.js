@@ -5,7 +5,6 @@
 // 그래서 정리 루프가 이 목록을 보존 대상에 포함시킨다.
 //
 // 순수 모듈(브라우저 전용 import 없음) — node --test 에서 그대로 import 하고
-// globalThis.localStorage 페이크로 검증한다(proficiency.js 와 동일 패턴).
 
 const PIN_KEY = 'aep-offline-pins';
 // 사용자가 계속 핀을 찍어도 저장 용량이 무한 증가하지 않도록 상한. 넘치면 가장 오래된 것부터 밀린다
