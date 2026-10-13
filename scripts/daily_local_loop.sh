@@ -3,6 +3,8 @@
 #
 # CI 가 끝난 뒤에 돈다: aep-sync(16:00Z, RSS→STT→R2 호스팅) · aep-r2-upload(17:00Z + ≤300분, 백카탈로그
 # 재STT). 그 결과물 위에서 세 단계를 순서대로:
+#   ⓪ storage guard      scripts/storage_guard   — drains retired Storage buckets (tts) and files a td-task
+#                        when Storage nears the 1 GB free cap (restricted 2026-10-11 at 1.25 GB).
 #   ① 문장 경계 재점검  scripts/resegment_llm   — ollama(로컬, 과금 0). 규칙 분절의 14단어/9초 컷을 뜻 기준으로.
 #   ② vocab 추출        ingest/extract_vocab    — Gemini(Vertex). CI 는 --no-vocab 이라 여기 말고는 아무도 안 한다.
 #   ③ 한국어 번역       scripts/ko_quality_pass — Gemini. A 백필(없는 문장) → B 재검수(직역→뉘앙스).
@@ -61,6 +63,7 @@ run_step() {  # run_step <이름> <명령...>
 }
 
 say "=== 일일 루프 시작 (reseg newest=$RESEG_NEWEST limit=$RESEG_LIMIT · vocab limit=$VOCAB_LIMIT · ko per-show=$KO_PER_SHOW) ==="
+run_step "⓪ storage guard" "$PY" -m scripts.storage_guard
 AEP_LLM_BACKEND=ollama run_step "① 문장 경계(ollama)" "$PY" -m scripts.resegment_llm --newest "$RESEG_NEWEST" --limit "$RESEG_LIMIT"
 AEP_LLM_BACKEND=gemini run_step "② vocab(gemini)"    "$PY" -m ingest.extract_vocab --limit "$VOCAB_LIMIT"
 AEP_LLM_BACKEND=gemini run_step "③ 한국어 번역(gemini)" bash "$ROOT/scripts/ko_quality_pass.sh" "$KO_PER_SHOW" "$KO_SHARDS"
