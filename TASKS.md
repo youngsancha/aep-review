@@ -173,3 +173,30 @@
   - 메모: v1.78.0 속도 작업 중 실측 (db.js 주석 '각 kind 는 1000행 미만' 은 틀림)
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:31ff790c-670e-4f00-9e0b-0bb1cae51bce -->
+
+## 2026-10-12 09:00 넘어옴
+
+- [x] **P1** Empty retired E-Podcast TTS bucket after Supabase unlocks deletion
+  - 메모: Support request submitted with Roy approval on 2026-10-11; Supabase confirmed Support request sent / ticket logged for aep-review. Reply destination yscha.roy+aep@gmail.com. Subject: Storage quota lock blocks deleting retired TTS files; request cleanup access. Requested FREE cleanup/delete access, preserving transcripts, DB records and R2 audio. Support diagnostic access remains OFF. v1.80.0 / 1eb86cc deployed; Study and TTS generation retired. ALL tts objects are authorized for deletion: 31,189 MP3s / 835,366,656 bytes. DELETE objects and POST bucket/tts/empty return 402. No MP3s deleted yet. Verify count, usage and app service after cleanup. Temporary read token was revoked.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  - 완료 2026-10-19: quota refilled; storage_guard drained tts (31,189 objects, 835.4 MB) and deleted the bucket. Storage now transcripts only = 0.442 GB.
+  <!-- td:60d17a2a-ab37-49b2-b1d5-ccb102be1e47 key:aep-retired-tts-cleanup -->
+- [x] **P2** Repair E-Podcast scheduled jobs failing to load Supabase credentials
+  - 메모: Observed 2026-10-11: aep-daily-loop.log shows all stages failing on Oct 9-10 because SUPABASE_URL / SUPABASE_SERVICE_KEY are missing under launchd; interactive Keychain lookup succeeds. Separate from live Supabase 402 exceed_storage_size_quota incident. Verify LaunchAgent runtime and secret injection after storage service is restored.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  - 완료 2026-10-19: secrets load from .env.local since 10-13 — the 10-16..18 loop runs reached Supabase and failed on 402, not on a missing key.
+  <!-- td:3fcb54eb-f712-4323-8435-448fe4612cac key:aep-launchd-secret-loading -->
+
+## 2026-10-18 09:00 넘어옴
+
+- [x] **P1** Supabase: aep-review 저장소 1.25GB > 무료 한도(1.1GB) — 402 풀리면 storage_guard로 1GB 아래까지 줄였는지 확인
+  - 마감: 2026-10-19
+  - 메모: 2026-10-17 Supabase 검토: 저장소 크기는 누적이라 결제 주기가 바뀌어도 줄지 않음. 한도 아래로 내리지 않으면 다시 제한됨. 오디오를 R2/Drive로 옮기거나 오래된 에피소드 정리.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  - 완료 2026-10-19: deleting the tts bucket took Storage 1.277 GB → 0.442 GB (2,200 transcript objects left). storage_guard warns daily above 0.8 GB.
+  <!-- td:d10ef617-c902-43cd-b981-af83090499fc -->
+- [ ] **P2** 보안: aep-review Supabase(lbcvuztpyaapyckxmqhk) 402 풀리면 가입 차단·RLS 확인
+  - 마감: 2026-10-19
+  - 메모: 2026-10-17 보안 점검: RLS가 로그인만 하면 전부 허용이라 Supabase 가입이 꺼져 있어야 안전. 프로젝트가 저장 용량 초과(402)라 확인 불가였음. 가입이 열려 있으면 mileage-bot 0018처럼 auth.users 가입 차단 트리거 + 이메일 허용 정책.
+  - 대시보드: https://task-das  - 2026-10-19 check: anon key reads 0 episode rows (RLS holds). But disable_signup=false (sign-ups OPEN) and the Google provider is OFF. Email sign-up still needs a confirmation mail, so it is blocked in practice today — but the moment Google is enabled, ANY Google account could sign up and get full access. Turn "Allow new users to sign up" OFF in the same dashboard visit. Dashboard-only: this project is not in the logged-in Supabase CLI account.up" OFF 필수. 대시보드 전용(이 프로젝트는 CLI 계정에 없음).
+  <!-- td:2ddb30e7-1524-4c07-9107-dd94b845e2e6 -->
