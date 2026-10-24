@@ -117,7 +117,7 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
       --permission-mode bypassPermissions: 도구 호출 prompt 없이 진행 (여기서는 도구 없음)
     """
     from ingest import llm_policy
-    llm_policy.require_claude_allowed()   # ⛔ 이중 opt-in 없이는 절대 — 자동 경로는 ollama/Gemini 만
+    llm_policy.require_claude_allowed()   # ⛔ 이중 opt-in 없이는 절대 — 자동 경로는 ollama 만
     cmd = ["claude", "-p", "--output-format", "json"]
     log.info("calling claude CLI prompt_chars=%d", len(prompt))
     proc = subprocess.run(
@@ -143,8 +143,7 @@ def call_claude(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
 def call_llm(prompt: str, timeout_sec: int = 300) -> dict[str, Any]:
     """백엔드 중립 진입점 — 정책은 ingest/llm_policy.py 하나가 정한다.
 
-      (미설정)/"auto"/"gemini" → Gemini 무료 크레딧. 소진되면 같은 프로세스에서 ollama 로 폴백.
-      "ollama"                  → 로컬 LLM. 과금 0 · Claude 한도 0.
+      (미설정)/"auto"/"ollama" → 로컬 LLM. 과금 0 · Claude 한도 0. ("gemini"/"vertex" 는 삭제됨 → ollama)
       "claude-cli"              → AEP_ALLOW_CLAUDE_QUOTA=1 이 함께 있을 때만(수동 A/B 전용).
       그 외                     → ValueError (오타가 엉뚱한 벤더로 새지 않게).
     """

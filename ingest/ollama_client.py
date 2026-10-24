@@ -1,4 +1,4 @@
-"""Ollama 백엔드 — 로컬 LLM. `claude -p`/Gemini 의 세 번째 대안.
+"""Ollama 백엔드 — 로컬 LLM. `claude -p` 의 대안 — 이제 유일한 자동 백엔드(Vertex 삭제, 2026-10-23).
 
 왜 필요한가 (2026-09-01, 이번엔 정말 비용이다):
   사전번역(_ko.json)이 없는 문장은 앱이 재생 중 MyMemory 로 폴백하는데, **오프라인이면 그
@@ -62,7 +62,7 @@ def installed_models() -> set[str]:
 
 def call_ollama(prompt: str, timeout_sec: int = 300, max_output_tokens: int = 8192,
                 schema: dict | None = None) -> str:
-    """프롬프트 → 응답 텍스트(raw). JSON 파싱은 호출부가 한다(call_gemini 와 같은 규약).
+    """프롬프트 → 응답 텍스트(raw). JSON 파싱은 호출부가 한다.
 
     ⚠ 실패는 반드시 raise 한다. 빈 문자열을 돌려주면 호출부의 연속실패 차단기가 돌지 않아,
     데몬이 꺼진 채로 전 회차를 '시도만' 하고 완주해 버린다 — claude 한도 사고와 같은 모양이다.

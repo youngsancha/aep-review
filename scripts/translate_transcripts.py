@@ -208,12 +208,12 @@ def trkey(text: str) -> str:
 
 # ─────────────────────────── claude (문맥 인지 번역) ───────────────────────────
 def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
-    # ⛔ 2026-09-13: refine 패스가 이 함수를 직접 불러 Gemini 스위치를 우회했고, 하룻밤 696회의
+    # ⛔ 2026-09-13: refine 패스가 이 함수를 직접 불러 백엔드 스위치를 우회했고, 하룻밤 696회의
     # `claude -p` 가 주간 구독 한도의 6%p 를 태웠다. Claude CLI 는 명시적 opt-in 일 때만 허용한다.
     from ingest import llm_policy
     if not llm_policy.claude_allowed():   # ⛔ 이중 opt-in(AEP_ALLOW_CLAUDE_QUOTA=1) 없이는 절대
         raise ClaudeUnavailable(
-            "claude -p refused: automated paths use ollama or the Gemini free credit only "
+            "claude -p refused: automated paths use ollama only "
             "(set BOTH AEP_LLM_BACKEND=claude-cli and AEP_ALLOW_CLAUDE_QUOTA=1 by hand for an A/B)")
     # 모델을 지정하지 않으면 CLI 기본값(=세션 모델, 보통 opus)을 상속한다. 번역은 추론이 아니라
     # 변환 작업이라 상위 모델이 꼭 필요하지 않다 → --model 로 낮춰 쿼터를 아낀다(_MODEL).
@@ -236,7 +236,7 @@ def _call_claude(prompt: str, timeout_sec: int = 300) -> dict:
 
 def _call_llm(prompt: str, timeout_sec: int = 300, n_lines: int = 0) -> dict:
     """백엔드 중립 진입점 — ingest.extract_vocab.call_llm 과 같은 규약, 정책은 ingest/llm_policy.py.
-    gemini(무료 크레딧) → 소진 시 ollama 폴백. claude-cli 는 이중 opt-in 일 때만."""
+    ollama 전용. claude-cli 는 이중 opt-in 일 때만."""
     from ingest import llm_policy
     if llm_policy.resolve() == "claude-cli":
         return _call_claude(prompt, timeout_sec=timeout_sec)

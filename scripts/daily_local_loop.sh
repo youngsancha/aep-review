@@ -6,8 +6,8 @@
 #   ⓪ storage guard      scripts/storage_guard   — drains retired Storage buckets (tts) and files a td-task
 #                        when Storage nears the 1 GB free cap (restricted 2026-10-11 at 1.25 GB).
 #   ① 문장 경계 재점검  scripts/resegment_llm   — ollama(로컬, 과금 0). 규칙 분절의 14단어/9초 컷을 뜻 기준으로.
-#   ② vocab 추출        ingest/extract_vocab    — Gemini(Vertex). CI 는 --no-vocab 이라 여기 말고는 아무도 안 한다.
-#   ③ 한국어 번역       scripts/ko_quality_pass — Gemini. A 백필(없는 문장) → B 재검수(직역→뉘앙스).
+#   ② vocab 추출        ingest/extract_vocab    — ollama(로컬). CI 는 --no-vocab 이라 여기 말고는 아무도 안 한다.
+#   ③ 한국어 번역       scripts/ko_quality_pass — ollama. A 백필(없는 문장) → B 재검수(직역→뉘앙스).
 # ⛔ 순서가 곧 정합성이다. 번역 키(trKey)는 문장 텍스트라 ①이 경계를 바꾼 문장만 키가 새로 생긴다 —
 #    ①을 ③ 뒤에 돌리면 방금 번역한 문장이 그날 바로 키를 잃는다. 재STT 된 회차도 segments 가 통째로
 #    새로 와서 ①의 표식(sent:true)이 사라지므로 다음날 ①이 다시 잡는다(멱등).
@@ -47,7 +47,7 @@ trap 'rm -rf "$LOCK"' EXIT INT TERM
 [ -x "$PY" ] || { say "missing venv at $PY"; exit 0; }
 cd "$ROOT" || exit 0
 
-# 자격증명: Supabase 는 Keychain(ccsecret), Gemini/Vertex 는 .env.local(GOOGLE_* — ccsecret 관리 밖).
+# 자격증명: Supabase 는 Keychain(ccsecret). LLM 은 로컬 ollama 라 자격증명이 없다.
 for v in SUPABASE_URL SUPABASE_SERVICE_KEY; do
   val="$("$CCSECRET" get aep-review "$v" 2>/dev/null || true)"
   [ -n "$val" ] && export "$v=$val"
@@ -65,7 +65,7 @@ run_step() {  # run_step <이름> <명령...>
 say "=== 일일 루프 시작 (reseg newest=$RESEG_NEWEST limit=$RESEG_LIMIT · vocab limit=$VOCAB_LIMIT · ko per-show=$KO_PER_SHOW) ==="
 run_step "⓪ storage guard" "$PY" -m scripts.storage_guard
 AEP_LLM_BACKEND=ollama run_step "① 문장 경계(ollama)" "$PY" -m scripts.resegment_llm --newest "$RESEG_NEWEST" --limit "$RESEG_LIMIT"
-AEP_LLM_BACKEND=gemini run_step "② vocab(gemini)"    "$PY" -m ingest.extract_vocab --limit "$VOCAB_LIMIT"
-AEP_LLM_BACKEND=gemini run_step "③ 한국어 번역(gemini)" bash "$ROOT/scripts/ko_quality_pass.sh" "$KO_PER_SHOW" "$KO_SHARDS"
+AEP_LLM_BACKEND=ollama run_step "② vocab(ollama)"    "$PY" -m ingest.extract_vocab --limit "$VOCAB_LIMIT"
+AEP_LLM_BACKEND=ollama run_step "③ 한국어 번역(ollama)" bash "$ROOT/scripts/ko_quality_pass.sh" "$KO_PER_SHOW" "$KO_SHARDS"
 say "=== 일일 루프 끝 ==="
 exit 0

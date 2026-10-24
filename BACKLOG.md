@@ -56,6 +56,6 @@
 - **4샤드 번역 잡 정지**: 로그 마지막 기록 ~18:05(약 6h 전), 각 샤드 67개 중 ~15개만 완료 후 중단. loop INVARIANT 상 재실행/_ko.json 쓰기 금지라 **건드리지 않음**. 재개는 사람이 `python -m scripts.translate_transcripts --shard i/4`(PID 죽음 확인 후). 현재 커버리지: 최신 ~50회차(225–268) 99.9%, 그 이하는 런타임 MyMemory 폴백.
 - Google OAuth 대시보드 설정 / Vercel v133 배포 확인(이전 세션 산출).
 
-## ⛔ BLOCKED — Gemini vocab backend
+## ⛔ BLOCKED — vocab backfill
 `SUPABASE_SERVICE_KEY` is empty in `.env` → ingest cannot write. Fetch the service_role key
-from the Supabase dashboard, then run the backlog. Full context: `HANDOFF_gemini_backend.md`.
+from the Supabase dashboard, then run the backlog.  (The Vertex/Gemini backend was deleted 2026-10-23; vocab runs on ollama.)
