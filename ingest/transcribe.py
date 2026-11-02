@@ -89,7 +89,7 @@ def _get_model():
     return _model
 
 
-# 정상 전사는 1마침표당 ~10단어, 전사 실패 잔재는 25단어+ → 임계 미달이면 beam 을 올려 1회 재시도.
+# 정상 전사는 1마침표당 ~10단어, 전사 실패 잔재는 25단어+ → 임계 미달이면 1회 재시도(아래 transcribe_one).
 # 구두점이 없으면 클라이언트가 문장을 구(句) 중간에서 자른다(사용자 보고 근본원인) → 여기서 자가복구.
 PUNCT_MIN = 0.04   # 1마침표 / 25단어
 
@@ -104,13 +104,14 @@ def _punct_ratio(data: dict[str, Any]) -> float:
 def transcribe_one(audio_path: Path) -> dict[str, Any]:
     model = _get_model()
 
-    def _pass(beam: int) -> dict[str, Any]:
+    def _pass(beam: int, **options: Any) -> dict[str, Any]:
         segments_iter, info = model.transcribe(
             str(audio_path),
             language="en",
             word_timestamps=True,
             vad_filter=True,  # 침묵 구간 스킵 → 빠르고 hallucination 감소
             beam_size=beam,
+            **options,
         )
         segments_out: list[dict[str, Any]] = []
         for i, seg in enumerate(segments_iter):
@@ -137,15 +138,18 @@ def transcribe_one(audio_path: Path) -> dict[str, Any]:
 
     beam_size = int(os.getenv("AEP_WHISPER_BEAM", "5"))
     data = _pass(beam_size)
-    # 구두점 품질 게이트(durable): 임계 미달이면 beam 을 올려 1회 재시도(더 나으면 채택) → 어떤 회차도
-    # '구두점 없는 자막'으로 저장되지 않게 자가복구. 모든 전사 경로(인제스트·재싱크) 공통 적용.
-    if _punct_ratio(data) < PUNCT_MIN and beam_size < 5:
-        r0 = _punct_ratio(data)
-        log.warning("구두점 빈약(1마침표/%.0f단어) → beam=5 재시도", 1 / max(r0, 1e-9))
-        data2 = _pass(5)
-        if _punct_ratio(data2) > r0:
+    # 구두점 품질 게이트(durable): 임계 미달이면 1회 재시도해 더 나을 때만 채택. 모든 전사 경로 공통.
+    # ⛔ 예전 조건 `beam_size < 5` 는 기본값이 5 라 한 번도 참이 된 적이 없다. 그 사이 1,133편 중 86편이
+    # 무너졌다(2026-11-01 실측, cnn10 은 15%): 120단어 넘게 문장 끝이 없고 그 구간이 회차의 처음 4% 에서
+    # 시작한다. 초반에 구두점 없는 출력이 나오면 그것이 다음 구간의 프롬프트가 되어 끝까지 이어지는 모양이라
+    # beam 이 아니라 그 고리를 끊는다. 더 나을 때만 채택하므로 틀려도 잃는 것은 시간뿐이다.
+    r0 = _punct_ratio(data)
+    if r0 < PUNCT_MIN:
+        data2 = _pass(beam_size, condition_on_previous_text=False)
+        r1 = _punct_ratio(data2)
+        log.warning("구두점 재시도 %.4f → %.4f (%s)", r0, r1, "채택" if r1 > r0 else "기각")
+        if r1 > r0:
             data = data2
-            log.info("beam=5 로 구두점 개선(1마침표/%.0f단어)", 1 / max(_punct_ratio(data), 1e-9))
     return data
 
 

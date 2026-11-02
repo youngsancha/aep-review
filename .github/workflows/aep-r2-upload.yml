@@ -96,11 +96,13 @@ jobs:
         run: |
           # ids 와 recent 는 배타적이다. ${IDS:-...} 로는 이걸 표현할 수 없다 —
           # IDS 가 설정돼 있으면 기본값이 아니라 IDS 값 자체가 튀어나와 인자가 중복된다.
+          # 명시한 id 는 다시 돌린다는 뜻이다. --skip-hosted 를 같이 주면 호스팅된 회차(지금은 전부)가
+          # 조용히 걸러져 아무것도 안 하고 성공 종료한다.
           if [ -n "$IDS" ]; then
-            sel=(--ids "$IDS")
+            sel=(--ids "$IDS" --redo)
           else
-            sel=(--recent "${{ inputs.retranscribe_recent || '1200' }}")
+            sel=(--recent "${{ inputs.retranscribe_recent || '1200' }}" --skip-hosted)
           fi
-          python -m scripts.retranscribe --from-r2 --skip-hosted "${sel[@]}" \
+          python -m scripts.retranscribe --from-r2 "${sel[@]}" \
             --limit ${{ inputs.retranscribe_limit || '40' }} \
             --time-budget-min ${{ inputs.retranscribe_budget_min || '300' }}

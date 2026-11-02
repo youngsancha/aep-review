@@ -28,7 +28,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 80   # --time-budget-min 50, plus room for one punctuation retry on the last episode
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,5 +62,5 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         # 건수(--limit)가 아니라 *시간* 으로 제한한다. CI job 은 시간으로 잘리므로 건수로 세면
         # 마지막 에피소드가 STT 도중 강제 종료되고 그 연산이 통째로 버려진다(실측: 매일 발생).
-        # 예산 50분 + 셋업 ≈ 6분 < timeout 60분.
+        # 예산 50분 + 셋업 ≈ 6분 + 마지막 회차의 구두점 재시도 여유 < timeout 80분.
         run: python -m ingest.cron_fetch --rss-limit 30 --time-budget-min 50 --no-vocab
