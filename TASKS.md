@@ -128,7 +128,8 @@
 
 ## 2026-08-28 09:00 넘어옴
 
-- [ ] **P2** 자막 JSON에 transcribed_at 을 넣어 스냅샷-자막 불일치를 감지 가능하게
+- [x] **P2** 자막 JSON에 transcribed_at 을 넣어 스냅샷-자막 불일치를 감지 가능하게
+  - Closed 2026-11-01, not doing it: a wrong jump needs a snapshot row with a network transcript, a re-STT in between, and a tap on a vocab card. That does not justify changing four transcript write paths.
   - 메모: ui/db.js getEpisode 가 스냅샷 폴백을 쓰는데 자막은 네트워크에서 새로 받는 조합에서, 그 사이 재STT가 돌았다면 vocab의 sentence_start_sec가 옛 자막 기준이라 vocab 탭 점프가 어긋난다. 지금은 클라이언트가 감지 불가 — transcripts/{id}.json 에 transcribed_at 이 없고 ?v= 는 캐시버스터일 뿐 내용을 고르지 않는다(파일은 제자리에서 덮임). ingest 가 자막 JSON 에 transcribed_at 을 쓰면 db.js 에서 대조해 어긋난 vocab 시각을 버릴 수 있다. xcheck 패널 grok 지적 2026-08-27.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:84e2ae32-609c-4271-a518-b8ff347d4cf1 -->
@@ -159,7 +160,8 @@
 
 ## 2026-09-15 09:00 넘어옴
 
-- [ ] **P2** allears 63편 + cnn10 347편: R2 오디오는 있는데 재STT 안 됨(매니페스트 밖) — 배너가 맞는 회차. --recent 12 버그 고쳐 내일부터 재STT 잡이 신규만 처리; 백카탈로그는 --recent 확대 결정 필요(allears 는 _ko.json 키 깨질 위험, cnn10 은 번역 없어 안전)
+- [x] **P2** allears 63편 + cnn10 347편: R2 오디오는 있는데 재STT 안 됨(매니페스트 밖) — 배너가 맞는 회차. --recent 12 버그 고쳐 내일부터 재STT 잡이 신규만 처리; 백카탈로그는 --recent 확대 결정 필요(allears 는 _ko.json 키 깨질 위험, cnn10 은 번역 없어 안전)
+  - Closed 2026-11-01: drained by the daily aep-r2-upload job. A full read of 1,133 transcripts (0 download failures) found `r2_audio=true` on every one.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:ba87b74a-123d-4c78-9cdf-893ed4c77a93 -->
 
