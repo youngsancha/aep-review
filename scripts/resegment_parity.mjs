@@ -1,6 +1,4 @@
-// resegment 파리티 하니스 — ui/views/episode.js 의 '실제' resegment / trKey 소스를 그대로 실행한다.
-//   복사본을 두지 않는다(드리프트 방지): episode.js 를 텍스트로 읽어 두 최상위 함수만 잘라
-//   new Function 으로 평가 → DOM/네트워크 의존 없이 진짜 앱 코드를 돌린다.
+// resegment 파리티 하니스 — 앱이 실제로 쓰는 ui/transcript-model.js 의 resegment / trKey 를 그대로 실행한다.
 //   tests/test_resegment_parity.py 가 이 출력을 Python 포팅(scripts/translate_transcripts.py)과 대조.
 //
 //   사용: node scripts/resegment_parity.mjs [--ids 1,2,3] [--dir <path>]
@@ -9,31 +7,11 @@
 //   checkout instead of skipping itself into a false green.
 //   출력(stdout, JSON): { "<id>": { "sents": [...문장...], "keys": [...trKey...] } }
 import { readFileSync, readdirSync } from 'node:fs';
+import { resegment, trKey } from '../ui/transcript-model.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-// episode.js 의 '최상위 function NAME(...) { ... }' 블록을 통째로 추출.
-// 최상위 함수는 닫는 '}' 가 컬럼0 단독 줄이라 그 줄까지 잘라낸다(파서 없이 안전).
-function extractTopLevelFn(src, name) {
-  const lines = src.split(/\r?\n/);
-  const start = lines.findIndex((l) => l.startsWith(`function ${name}(`) || l.startsWith(`function ${name} (`));
-  if (start < 0) throw new Error(`function ${name} 를 episode.js 에서 못 찾음`);
-  let end = -1;
-  for (let i = start + 1; i < lines.length; i++) {
-    if (lines[i].replace(/\s+$/, '') === '}') { end = i; break; }
-  }
-  if (end < 0) throw new Error(`function ${name} 의 닫는 } 를 못 찾음`);
-  return lines.slice(start, end + 1).join('\n');
-}
-
-const epSrc = readFileSync(join(ROOT, 'ui/views/episode.js'), 'utf8');
-const body =
-  extractTopLevelFn(epSrc, 'resegment') + '\n' +
-  extractTopLevelFn(epSrc, 'trKey') + '\n' +
-  'return { resegment, trKey };';
-const { resegment, trKey } = new Function(body)();
 
 // --ids / --dir 파싱
 let ids = null;

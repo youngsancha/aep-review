@@ -198,7 +198,8 @@ HARNESS_HTML = """<!doctype html><html><head><meta charset="utf-8" />
   "/app.js":"/_mocks.js","/db.js":"/_mocks.js","/speech.js":"/_mocks.js","/player.js":"/_mocks.js"
 }}</script><link rel="stylesheet" href="/style.css" /></head><body><main id="app"></main>
 <script type="module">
-  import { renderEpisode, detectContentStart, detectAdRanges } from '/views/episode.js';
+  import { renderEpisode } from '/views/episode.js'
+import { detectContentStart, detectAdRanges } from '/transcript-model.js';
   // video.js 는 importmap 에 안 잡혀 있어 실 모듈이 로드된다(ES 모듈은 URL 당 싱글턴이므로 episode.js
   // 가 내부에서 잡는 video 싱글턴과 완전히 같은 인스턴스) — 테스트가 영상 모드 중 재생 시각을
   // 직접 밀어(video.seek) KR 패널 겹침 회귀(아래 KR-PANEL-OVERLAP)를 실제 하이라이트 파이프라인으로

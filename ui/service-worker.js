@@ -64,7 +64,7 @@ const SHELL_CRITICAL = [
   '/style.css' + Q,
   '/app.js' + Q, '/speech.js' + Q,  '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q, '/sw-reload.js' + Q,
   '/config.js' + Q, '/supabase.js' + Q, '/auth-fetch.js' + Q, '/db.js' + Q,   '/translate.js' + Q,  '/settings.js' + Q,  '/offline.js' + Q, '/offline-pins.js' + Q,
-  '/views/timeline.js' + Q, '/views/episode.js' + Q,   '/views/login.js' + Q,
+  '/transcript-model.js' + Q, '/views/timeline.js' + Q, '/views/episode.js' + Q,   '/views/login.js' + Q,
 
   '/vendor/supabase-js.mjs' + Q,
   ...ICONS,
