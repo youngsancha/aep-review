@@ -44,5 +44,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check .
       - run: pytest -q
+      - run: ruff check .
+        if: ${{ !cancelled() }}     # report both: a lint failure must not hide the test result

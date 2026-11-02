@@ -4,6 +4,7 @@
   "buildCommand": null,
   "installCommand": null,
   "framework": null,
+  "ignoreCommand": "git diff --quiet \"${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}\" HEAD -- ui vercel.json .vercelignore",
   "headers": [
     {
       "source": "/service-worker.js",
