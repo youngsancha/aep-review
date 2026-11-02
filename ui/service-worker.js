@@ -13,7 +13,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.81.0';
+const VERSION = '1.81.1';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -213,14 +213,20 @@ async function imageCacheFirst(req) {
 // Range 요청마다 cached.blob() 을 다시 만들면 30~60 MB 본문을 요청 수만큼 복사한다 — 3× 반복 모드는
 // 문장마다 시크해 Range 를 쏟아낸다. 한 SW 수명 동안 URL 당 Blob 하나만 만들어 slice 만 나눠 준다.
 // (blob.slice 는 지연 로드라 slice 자체는 싸다. 비싼 건 blob() 이었다.)
-const _audioBlobs = new Map();   // url → Blob (최대 2개: 현재 회차 + 직전 회차)
-async function audioBlobFor(url, cached) {
+// Promise 를 보관한다: Blob 을 보관하면 첫 복사가 끝나기 전에 도착한 Range 들이 각자 또 복사한다.
+// ⛔ URL 만으로 재사용하면 재싱크로 같은 URL 의 파일이 바뀌어도 이 SW 가 살아 있는 동안 옛 바이트가 나간다 —
+// 새 자막에 옛 소리. 그래서 stamp 를 함께 본다. ETag 는 CORS 응답에 노출되지 않아 폰에서는 안 보이므로
+// 항상 읽을 수 있는 Last-Modified·Content-Length 가 실제 판별 기준이다.
+const _audioBlobs = new Map();   // url → { stamp, blob: Promise<Blob> } (최대 2개: 현재 회차 + 직전 회차)
+function audioBlobFor(url, cached) {
+  const stamp = ['etag', 'last-modified', 'content-length'].map((h) => cached.headers.get(h)).join('|');
   const hit = _audioBlobs.get(url);
-  if (hit) return hit;
-  const blob = await cached.blob();
-  _audioBlobs.set(url, blob);
+  if (hit && hit.stamp === stamp) return hit.blob;
+  const entry = { stamp, blob: cached.blob() };
+  _audioBlobs.set(url, entry);
+  entry.blob.catch(() => { if (_audioBlobs.get(url) === entry) _audioBlobs.delete(url); });
   while (_audioBlobs.size > 2) _audioBlobs.delete(_audioBlobs.keys().next().value);
-  return blob;
+  return entry.blob;
 }
 
 async function serveAudio(req) {
@@ -243,7 +249,7 @@ async function serveAudio(req) {
       const blob = await audioBlobFor(req.url, cached);   // URL 당 한 번만 materialize (아래)
       const start = Number(m[1]);
       const end = m[2] ? Math.min(Number(m[2]), blob.size - 1) : blob.size - 1;
-      if (start >= blob.size) {
+      if (start >= blob.size || end < start) {
         return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${blob.size}` } });
       }
       return new Response(blob.slice(start, end + 1), {

@@ -232,5 +232,5 @@
   - ep 985 is already repaired and needs that translation pass: its Korean is mostly missing until then.
   - Start with these 7 once ollama works: `1139,1089,1079,1052,556,562,589`. They are inside the newest 50 of their shows, so the daily loop re-translates them with no extra step. 1139 is the second newest cnn10. Not repaired yet on purpose: with ollama down they would lose their Korean, and 1139 sits in the offline window.
   - A batch was dispatched and cancelled on 11-01 before it rewrote anything, once the translation cost was measured.
-- [ ] **P3** Finish the `ui/transcript-model.js` refactor parked in the working tree
-  - Output hash identical on 7 real transcripts and `_pwtest` PASS, but `_smoke_realstack.py` failed while the machine was out of memory (audio did not advance, boot 14 s) and the run was then stopped. Run the smoke on a calm machine; if it passes, release with `--patch`. A new module needs a version bump for the service worker.
+- [ ] **P3** Merge local branch `refactor/transcript-model` once its smoke passes
+  - Output hash identical on 7 real transcripts and `_pwtest` PASS, but `_smoke_realstack.py` failed while the machine was out of memory (audio did not advance, boot 14 s) and the run was then stopped. Run the smoke on a calm machine; if it passes, merge and release with `--patch`. A new module needs a version bump for the service worker. The branch is local only: no push was possible while native binaries could not start.
