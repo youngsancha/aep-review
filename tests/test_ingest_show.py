@@ -243,3 +243,13 @@ def test_episodes_by_recency_limit_above_the_page_cap(big):
         r["audio_url"] = f"http://x/{r['guid']}.mp3"
     assert len(store.episodes_by_recency(limit=1500)) == 1026
     assert len(store.episodes_by_recency(limit=1200)) == 1026
+
+
+def test_timestamp_format_is_the_one_the_offline_cache_keys_on():
+    # transcribed_at is compared as a string by the app's offline cache, so a format change would
+    # invalidate every downloaded episode.
+    import re
+
+    from ingest import store
+
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z", store._now())

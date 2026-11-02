@@ -142,7 +142,8 @@
 
 ## 2026-08-31 09:00 넘어옴
 
-- [ ] **P2** E-Podcast Talk 모드 폰 실사용 검증 (S23 Chrome): 마이크 권한 / 첫-단어 지연이 현실적인지 / 상대 발화 TTS 자연스러운지
+- [x] **P2** E-Podcast Talk 모드 폰 실사용 검증 (S23 Chrome): 마이크 권한 / 첫-단어 지연이 현실적인지 / 상대 발화 TTS 자연스러운지
+  - Closed 2026-11-01: Talk was removed with Study in v1.80.0, so there is nothing left to verify.
   - 메모: v1.72.0 배포됨. iOS Safari 는 SpeechRecognition 미지원이라 녹음-비교로만 떨어짐. 점수 가중치(표현0.35/길이0.25/지연0.2/유창0.2)와 목표치(8단어·2초·100-170wpm)는 ui/convo.js 상단 상수 하나로 조정 가능
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:6bfef83d-8d92-4e8a-a316-23105ae3cbd2 -->
@@ -169,7 +170,8 @@
 
 ## 2026-09-30 09:00 넘어옴
 
-- [ ] **P2** Study 목록 잘림: kind 마다 800장(알파벳순) + allExpressions 는 PostgREST 1000행 상한 — 전체 12,730장 중 일부만 보임. 페이지네이션/검색 서버화 설계 필요
+- [x] **P2** Study 목록 잘림: kind 마다 800장(알파벳순) + allExpressions 는 PostgREST 1000행 상한 — 전체 12,730장 중 일부만 보임. 페이지네이션/검색 서버화 설계 필요
+  - Closed 2026-11-01: Study was retired in v1.80.0.
   - 메모: v1.78.0 속도 작업 중 실측 (db.js 주석 '각 kind 는 1000행 미만' 은 틀림)
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:31ff790c-670e-4f00-9e0b-0bb1cae51bce -->
@@ -200,3 +202,18 @@
   - 메모: 2026-10-17 보안 점검: RLS가 로그인만 하면 전부 허용이라 Supabase 가입이 꺼져 있어야 안전. 프로젝트가 저장 용량 초과(402)라 확인 불가였음. 가입이 열려 있으면 mileage-bot 0018처럼 auth.users 가입 차단 트리거 + 이메일 허용 정책.
   - 대시보드: https://task-das  - 2026-10-19 check: anon key reads 0 episode rows (RLS holds). But disable_signup=false (sign-ups OPEN) and the Google provider is OFF. Email sign-up still needs a confirmation mail, so it is blocked in practice today — but the moment Google is enabled, ANY Google account could sign up and get full access. Turn "Allow new users to sign up" OFF in the same dashboard visit. Dashboard-only: this project is not in the logged-in Supabase CLI account.up" OFF 필수. 대시보드 전용(이 프로젝트는 CLI 계정에 없음).
   <!-- td:2ddb30e7-1524-4c07-9107-dd94b845e2e6 -->
+
+## 2026-10-19 09:00 넘어옴
+
+- [ ] **P1** E-Podcast: turn on Google sign-in (Supabase URL config + sign-ups OFF + Google provider; Google callback)
+  - 메모: Needs Claude in Chrome side panel open + Roy pastes the client secret. Details in TASKS.md security item and memory aep-review-project (Login section).
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:117c3cf8-fa61-49a8-be9b-bac17b52d630 -->
+
+## 2026-10-25 09:00 넘어옴
+
+- [x] **P1** aep-ko-quality (ollama exaone, 4 shards) drives swap to 15/16 GB and internal free to 17 GB
+  - Fixed 2026-11-01: `daily_local_loop.sh` now defaults to `KO_SHARDS=2`, pinned by `tests/test_daily_loop.py`. The job itself moved into the daily loop on 09-14, so this was the only place left to change.
+  - 메모: llama-server pid 3662 footprint 10 GB (5.2 GB model + KV for 4 parallel shards), swap 4.7->14.8 GB between 14:51 and 17:30, internal free 30->17.8 GB (swap files live on the SSD). Job is com.roy.aep-ko-quality via scripts/ko_quality_pass.sh 50 4, resumable. Recommend: run it with 1-2 shards (or OLLAMA_NUM_PARALLEL=1, smaller context) or only when RAM is idle; sysops will not stop another project's legitimate job.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:b4183ebb-af6f-4d27-8443-2abf89e9637a -->

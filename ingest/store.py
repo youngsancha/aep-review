@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from collections.abc import Sequence
@@ -27,7 +27,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _now() -> str:
-    return datetime.utcnow().isoformat() + "Z"
+    # Naive-looking on purpose: "2026-11-01T02:03:04.123456Z". transcribed_at is the app's offline cache
+    # key, so the format must not change. isoformat() on an aware value would add "+00:00".
+    return datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
 
 
 @lru_cache(maxsize=1)
