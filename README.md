@@ -1,88 +1,98 @@
-# aep-review
+# E-Podcast (aep-review)
 
-American English Podcast (Shana Thompson) 복습 PWA.
-**Supabase + Vercel + PWA** 서버리스 스택 — PC 없이 폰만으로 항상 사용.
+A phone-first PWA for listening to English podcasts with a synced transcript, Korean translation and
+shadowing. Live at <https://aep-review.vercel.app>. No server of its own: Supabase, Vercel static
+hosting and a service worker that keeps whole episodes playable offline.
 
-> **멀티-쇼(배포됨·휴면):** 한 앱에서 두 영어 팟캐스트(American English Podcast +
-> All Ears English)를 골라 듣는 기능이 main 에 배포돼 있다(`MULTISHOW=false` 라 현재는 단일쇼,
-> 라이브 동작 불변). 두 번째 쇼 활성화 절차는 **[MULTISHOW.md](MULTISHOW.md)** 참고
-> (마이그레이션 → AEE 적재 → 플래그 ON).
+| Show | Slug | Source |
+|---|---|---|
+| American English Podcast | `aep` | Megaphone RSS |
+| All Ears English | `allears` | Megaphone RSS |
+| White House press briefings | `wh` | YouTube and whitehouse.gov (`ingest/wh_fetch.py`) |
+| CNN 10 | `cnn10` | Megaphone RSS |
 
-## 아키텍처
+`ui/config.js` and `ingest/shows.py` must list the same shows; `tests/test_shows_parity.py` enforces it.
+
+## Architecture
 
 ```
-[인제스트] GitHub Actions / 로컬 GPU   ← Python 은 여기에만
-  RSS → episode audio → faster-whisper STT → vocabulary extraction
-       → Supabase write (Postgres 행 + Storage 파일)
-
-[저장] Supabase (무료)
-  Postgres: episodes / vocab_cards (+ view episodes_list) + RLS
-  Storage : transcripts/{id}.json and translations (public read)
-
-[앱] Vercel(정적) + PWA
-  데이터 : @supabase/supabase-js 직접 쿼리 (런타임 서버 0)
-  오디오 : <audio src=episode.audio_url>  ← 원본 CDN 직접 스트리밍
-  Speech : device speech synthesis for episode word pronunciation
-  인증   : Supabase Auth (email+password) 단일 사용자
+GitHub Actions and the local Mac                         Python lives only here
+  RSS → audio → faster-whisper STT → vocabulary, sentence boundaries, Korean translation
+        │
+        ▼
+Supabase                  Postgres: episodes, vocab_cards (row level security on)
+                          Storage:  transcripts/{id}.json and {id}_ko.json (public read)
+Cloudflare R2             hosted episode audio, so word timings match what plays
+        │
+        ▼
+Vercel (static ui/)       vanilla ES modules, no bundler, importmap in index.html
+  data   supabase-js called directly from the browser
+  audio  <audio> pointed at R2, or at the original CDN when an episode is not hosted yet
+  speech the device's speech synthesis for word pronunciation
+  auth   Supabase Auth, single owner
 ```
 
-## 셋업 순서
+Ad insertion is why R2 exists: Megaphone stitches different ads into each play, so only audio we host
+ourselves stays in sync with the transcript. `transcript.r2_audio === true` is the app's truth for
+perfect sync, not the `audio_hosted.json` manifest.
 
-### 1. Supabase (1회, 사용자 직접)
-`supabase/README.md` 참고 — 프로젝트 생성 → `supabase/schema.sql` 실행 →
-키 확보 → 로그인 계정 1개 생성.
+## Running it
 
-### 2. 키 채우기
-- 프론트: `ui/config.js` 에 `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
-- 인제스트: 루트 `.env` 에 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (`.env.example` 참고).
-
-### 3. 로컬 확인
-```pwsh
-npx serve ui          # 또는: python -m http.server 8000 --directory ui
+```bash
+npx serve ui                       # or: python -m http.server 8000 --directory ui
 ```
-브라우저로 열어 로그인 → 타임라인/오디오/트랜스크립트/SRS 동작 확인.
-(crypto.subtle 은 https 또는 localhost 에서만 동작 — LAN IP http 로는 TTS 키 계산 불가)
 
-### 4. Vercel 배포
-이 폴더는 git 미초기화 → GitHub repo 를 만들고(인제스트 cron 에도 필요) Vercel 에 연결.
-```pwsh
-git init && git add -A && git commit -m "supabase+vercel migration"
-# GitHub 에 push 후 https://vercel.com → New Project → 이 repo import
+`ui/config.js` holds the public Supabase URL and anon key. Ingest reads `.env` and `.env.local`
+(see `.env.example`). First-time Supabase setup is in `supabase/README.md`.
+
+## Gates
+
+```bash
+npm run gate                       # eslint (no warnings allowed), syntax check, node tests
+.venv/bin/python -m pytest -q      # python tests, including the JS/Python resegment parity
+.venv/bin/ruff check .
+.venv/bin/python scripts/_pwtest.py   # real Chromium against mocked data, about 80 seconds
 ```
-`vercel.json` 이 `ui/` 를 사이트 루트로 서빙한다(빌드 없음). anon 키는 `config.js` 에 있어
-Vercel 시크릿 불필요. 배포 URL 을 폰에서 열어 **PWA 설치** → 홈 화면 앱처럼 사용.
 
-또는 CLI 즉시 배포: `npx vercel --prod`.
+`.github/workflows/ci.yml` runs all of these except the browser harness on every push. The harness is
+tuned to phone viewports and Android and macOS fonts, so it runs locally, and `scripts/release.py` will
+not release without it.
 
-## 지속 인제스트 (신규 에피소드)
-```pwsh
-python -m ingest.cron_fetch              # RSS→STT→vocab→TTS, Supabase 에 write
-python -m ingest.cron_fetch --no-vocab   # STT 만 (claude CLI 없을 때)
+## Releasing
+
+```bash
+python -m scripts.release --patch "fix: …"        # gates, bump both versions, commit, push
+python -m scripts.release --no-push "fix: …"      # same, without the push
 ```
-- `.github/workflows/aep-sync.yml` 가 매일 cron 으로 STT 까지 수행(CI 는 `--no-vocab`).
-- vocab+TTS 는 claude CLI(Claude Max) 가 있는 로컬에서 `cron_fetch` 로 마저 처리.
-  GitHub repo secret 에 `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` 등록 필요.
 
-## 구조
-- `ui/` — PWA (vanilla JS). `db.js`=Supabase 데이터 shim, `supabase.js`/`config.js`=클라이언트.
-- `ingest/` — RSS/STT/vocab/TTS 파이프라인. `store.py`=Supabase sink(단일 출처).
-- `supabase/` — `schema.sql` + 셋업 가이드.
+`window.APP_VERSION` in `ui/index.html` and `VERSION` in `ui/service-worker.js` key the shell cache and
+must stay equal; the script keeps them so. Every push to `main` spends one of the roughly 100 Vercel
+deployments a day shared by the whole account, so batch them. `aep-deploy-watch` deploys by itself
+when production falls behind `origin/main`, for example after the daily limit resets.
 
-## 비용
-$0 — Supabase 무료(DB 500MB / Storage 1GB / 대역폭 5GB) + Vercel Hobby +
-GitHub Actions + Edge TTS. 오디오는 원본 CDN 스트리밍이라 Storage/대역폭에 안 잡힘.
+## What runs unattended
 
-## 데이터 소스
-RSS: `https://feeds.megaphone.fm/americanenglishpodcast` (Shana Thompson, Megaphone)
+| When | Where | What |
+|---|---|---|
+| 16:00 UTC | `aep-sync` (Actions) | New episodes: RSS, STT, host the audio on R2 |
+| 17:00 UTC | `aep-r2-upload` (Actions) | Re-transcribes hosted audio, working through the back catalogue |
+| 16:30 local | `com.roy.aep-daily-loop` (Mac) | `scripts/daily_local_loop.sh`: storage guard, then sentence boundaries, vocabulary and Korean translation on local ollama |
 
-## Study retirement (v1.80.0)
+The local loop must never touch the Claude quota: `ingest/llm_policy.py` refuses it without a double
+opt-in. It files a `td-task` when ollama cannot see its model or a step fails.
 
-Study, Review, Essentials, drills, proficiency scoring, and Drive capture were removed.
-Old Study links return to Library. Episode playback, transcripts, translations, vocabulary,
-shadowing, and offline episode downloads remain. Word pronunciation uses device speech
-synthesis without stored MP3s. Ingestion no longer creates SRS cards or speech files.
+## Layout
 
-The `tts` Storage bucket is retired and may be emptied after this release is deployed.
-Do not remove the `transcripts` bucket, episode audio in R2, or database records. Existing
-SRS history is retained in the database but is no longer read or written by the app.
-The PWA removes its retired local TTS cache on service-worker activation.
+- `ui/`: the PWA. `views/` holds the Library, Episode and login screens; `db.js` is the data layer.
+- `ingest/`: RSS, STT and LLM pipeline. `store.py` is the single Supabase and R2 sink.
+- `scripts/`: operations, audits, the release script and the browser harness.
+- `supabase/`: schema, migrations and setup notes.
+- `tests/`: `*.mjs` run under `node --test`, `test_*.py` under pytest.
+
+## Cost
+
+Nothing: Supabase free tier (the 1 GB Storage cap is watched by `scripts/storage_guard.py`), Vercel
+Hobby, GitHub Actions on a public repo, Cloudflare R2's free tier and a local LLM.
+
+Study, Review, Essentials, drills and stored speech were retired in v1.80.0. Their SRS history stays in
+the database, unread by the app. Old Study links return to the Library.
