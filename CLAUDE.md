@@ -25,6 +25,8 @@ Read `README.md` for the architecture. These are the rules that have cost someth
   page fails to link there while production is fine.
 - **Translation keys are sentence text** (`trKey`), identical in JS and Python. Changing resegmentation
   or normalisation orphans existing `_ko.json` entries. `tests/test_resegment_parity.py` guards it.
+- **Re-transcribing an episode discards its translations in practice.** Nearly every sentence changes, so
+  run `translate_transcripts --ids` on the same ids. See `scripts/audit_punctuation.py`.
 - **Order of the daily loop is a data invariant.** Sentence boundaries run before translation, or the
   day's translations lose their keys. See the header of `scripts/daily_local_loop.sh`.
 - **The local LLM must run with batch size 1.** Larger batches make exaone merge lines and renumber:

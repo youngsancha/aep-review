@@ -98,7 +98,8 @@
   - ⚠ 트레이드오프: 상한은 쉐도잉 반복 단위 길이이기도 하다. 올리면 절단은 줄지만 반복 단위가 길어진다 — 쇼별 상수로 나누는 게 자연스럽다(현재는 전역 상수).
   - ⛔ **상한을 바꾸면 그 쇼의 `_ko.json` 키가 전부 무효가 된다**(문장 텍스트가 곧 키다). cnn10 은 어차피 385편이 미번역이라 지금이 가장 싼 시점이다.
 
-- [ ] **P2** `ingest/transcribe.py` 의 구두점 품질 게이트가 **구조적으로 죽어 있다**
+- [x] **P2** `ingest/transcribe.py` 의 구두점 품질 게이트가 **구조적으로 죽어 있다**
+  - Fixed 2026-11-01. The cause was never the beam: an early unpunctuated output becomes the prompt for the rest of the episode. The retry now sets `condition_on_previous_text=False` and keeps only a better result. Measured on real audio (ep 985, CI): 0.0042 → 0.0633 sentence ends per word, against a normal median of 0.07. New episodes repair themselves; the stored ones are the next item.
   - `beam_size = int(os.getenv("AEP_WHISPER_BEAM", "5"))` 인데 재시도 조건이 `_punct_ratio(data) < PUNCT_MIN and beam_size < 5` — 기본값이 5 라 `beam_size < 5` 가 **항상 False**. 실행으로 확인(구두점 비율 0.0 인 가짜 입력에도 재시도 안 함).
   - 주석은 "어떤 회차도 '구두점 없는 자막'으로 저장되지 않게 자가복구"라고 적혀 있지만 실제로는 한 번도 동작한 적이 없다. 그 게이트가 막으려던 증상이 바로 위 항목이다(주석에도 "구두점이 없으면 클라이언트가 문장을 구 중간에서 자른다(사용자 보고 근본원인)"라고 쓰여 있다).
   - 임계값 미달 회차: aep 4/269 · allears 10/276 · **wh 9/64** · **cnn10 28/391** = 51편. 게이트가 살아 있었다면 전부 재시도 대상이었다.
@@ -222,3 +223,14 @@
   - 메모: llama-server pid 3662 footprint 10 GB (5.2 GB model + KV for 4 parallel shards), swap 4.7->14.8 GB between 14:51 and 17:30, internal free 30->17.8 GB (swap files live on the SSD). Job is com.roy.aep-ko-quality via scripts/ko_quality_pass.sh 50 4, resumable. Recommend: run it with 1-2 shards (or OLLAMA_NUM_PARALLEL=1, smaller context) or only when RAM is idle; sysops will not stop another project's legitimate job.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:b4183ebb-af6f-4d27-8443-2abf89e9637a -->
+
+## 2026-11-01 session
+
+- [ ] **P2** Repair the 85 stored transcripts whose punctuation collapsed (cnn10 65, allears 15, wh 3, aep 2)
+  - Worst first: `python -m scripts.audit_punctuation --show cnn10 --ids`. Send 25 ids at a time: `gh workflow run aep-r2-upload.yml -f retranscribe_ids=<ids> -f retranscribe_limit=25`.
+  - ⛔ Translate the same ids right after each batch: `AEP_LLM_BACKEND=ollama python -m scripts.translate_transcripts --ids <ids>`. A repair changes nearly every sentence, and sentence text is the translation key: the pilot kept 14 of 153. About 12 minutes of local LLM per cnn10 episode, so 13 hours for cnn10. Blocked until ollama can read T5 again.
+  - ep 985 is already repaired and needs that translation pass: its Korean is mostly missing until then.
+  - Start with these 7 once ollama works: `1139,1089,1079,1052,556,562,589`. They are inside the newest 50 of their shows, so the daily loop re-translates them with no extra step. 1139 is the second newest cnn10. Not repaired yet on purpose: with ollama down they would lose their Korean, and 1139 sits in the offline window.
+  - A batch was dispatched and cancelled on 11-01 before it rewrote anything, once the translation cost was measured.
+- [ ] **P3** Finish the `ui/transcript-model.js` refactor parked in the working tree
+  - Output hash identical on 7 real transcripts and `_pwtest` PASS, but `_smoke_realstack.py` failed while the machine was out of memory (audio did not advance, boot 14 s) and the run was then stopped. Run the smoke on a calm machine; if it passes, release with `--patch`. A new module needs a version bump for the service worker.
