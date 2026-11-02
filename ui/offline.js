@@ -145,7 +145,12 @@ async function cacheAudio(url) {
   try {
     const res = await fetch(url, { mode: 'cors' });
     if (res.ok) { await cache.put(url, res); return true; }
-  } catch (e) { /* 버킷 CORS 미설정 — opaque 폴백 */ }
+    // ⛔ 읽을 수 있는 비정상 응답(404/5xx)은 서버가 답한 것 — no-cors 로 재요청해 opaque 오류 본문을
+    // 캐시하면 '다운로드됨'으로 보이는데 재생이 안 된다. CORS fetch 가 THROW 일 때만 폴백한다.
+    throw new Error('audio HTTP ' + res.status);
+  } catch (e) {
+    if (!(e instanceof TypeError)) throw e;   // fetch 의 CORS/네트워크 실패는 TypeError — 그때만 opaque 폴백
+  }
   const res = await fetch(url, { mode: 'no-cors' });
   await cache.put(url, res);
   return true;
@@ -186,10 +191,15 @@ export async function removeEpisodeAudio(id) {
   } catch (e) { return false; }
 }
 
-let _ran = false;
+let _ran = false, _busy = false;
 export async function ensureOfflineCache() {
-  if (_ran) return;              // 세션당 1회
-  _ran = true;
+  // 세션당 1회 — 단 '목록을 실제로 받은 뒤'에만 1회로 친다(아래 _ran). 예전엔 진입 즉시 true 라
+  // 데드존에서 켠 앱은 신호가 돌아와도 영영 자동 다운로드를 못 했다. _busy 는 동시 실행만 막는다.
+  if (_ran || _busy) return;
+  _busy = true;
+  try { await runOfflineCache(); } finally { _busy = false; }
+}
+async function runOfflineCache() {
   const n = offlineCount();
   if (!n) { setStatus({ phase: 'skipped', note: 'disabled (aep-offline-n=0)' }); return; }
   if (!navigator.onLine) return;   // 오프라인 접속 자체는 정상 상황 — 기록 안 함
@@ -205,10 +215,13 @@ export async function ensureOfflineCache() {
     [items, hosted] = await Promise.all([listEpisodes(), hostedSet()]);
   } catch (err) {
     setStatus({ phase: 'error', note: 'list: ' + String(err && err.message || err).slice(0, 100) });
-    return;
+    return;   // _ran 은 그대로 — 다음 'online' 에서 재시도
   }
   const targets = items.filter((e) => hosted.has(Number(e.id))).slice(0, n);
   if (!targets.length) {
+    // ⛔ 빈 매니페스트는 답이 아니다. hostedSet() 은 실패해도 던지지 않고 빈 집합을 주므로, lie-fi 에서 목록만
+    // SW 캐시로 오면 여기에 닿는다 → 이때 완료로 치면 신호가 돌아와도 이번 세션엔 다시 시도하지 않는다.
+    if (hosted.size) _ran = true;
     // 원인을 구분한다. 예전엔 둘 다 'no hosted episodes in list' 였는데, 오프라인에서 매니페스트를
     // 못 받아 hosted 가 빈 집합이 된 경우까지 '이 쇼에 호스팅 회차가 없다'고 잘못 말했다.
     const note = hosted.size === 0 ? 'hosted manifest unavailable (offline?)'
@@ -264,6 +277,10 @@ export async function ensureOfflineCache() {
     }
   }
   setStatus({ phase: 'done', done: ok, total: targets.length });
+  // 전부 받았을 때만 이번 세션의 일이 끝난 것이다. lie-fi 에선 목록·매니페스트는 SW 캐시로 오고 오디오만 실패하므로,
+  // '목록을 받았다'는 건 아무것도 보장하지 않는다. 남은 회차는 다음 'online' 에서 이어받는다(받은 회차는 위에서 건너뜀).
+  const complete = ok === targets.length;
+  _ran = complete;
 
   // 수동 핀(자동 대상 N개 밖 — 예: 다른 쇼 회차, 오래전에 받아 둔 회차)도 같은 취급을 받는다.
   // 오디오가 이미 있는(=사용자가 실제로 받아 둔) 핀만 대상 — 오디오조차 없는 핀은 여기서 할 일이 없다
@@ -287,12 +304,15 @@ export async function ensureOfflineCache() {
   // curIds 에 없는(=다른 쇼) 키는 건드리지 않는다.
   // ⚠ 수동 다운로드(핀)는 자동 대상 밖이어도 보존한다 — 없으면 사용자가 손수 받아 둔 회차가
   // 다음 부팅의 이 정리 루프에서 말없이 삭제된다(무신호 통근길에 재생 불가).
+  // ⚠ 교체본을 다 받았을 때만 비운다. 다운로드가 실패한 채로 지우면 데드존에서 들을 회차만 줄어든다.
   const curIds = new Set(items.map((e) => Number(e.id)));
+  // ⛔ 핀은 위의 긴 순차 다운로드 '전'에 읽은 스냅샷이 아니라 지금 다시 읽는다 — 그 사이 사용자가
+  // 받은 회차가 stale 스냅샷 때문에 삭제되던 문제.
   const keep = new Set([
     ...targets.map((e) => hostedAudioUrl(e.id)),
-    ...pins.map((id) => hostedAudioUrl(id)),
+    ...loadPins().map((id) => hostedAudioUrl(id)),
   ]);
-  try {
+  if (complete) try {
     const keys = await cache.keys();
     for (const req of keys) {
       const cid = Number((new URL(req.url).pathname.match(/\/(\d+)\.mp3$/) || [])[1]);

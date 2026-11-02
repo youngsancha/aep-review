@@ -5,9 +5,15 @@ Read `README.md` for the architecture. These are the rules that have cost someth
 ## Before calling anything done
 
 1. `npm run gate`, `.venv/bin/python -m pytest -q`, `.venv/bin/ruff check .`
-2. `.venv/bin/python scripts/_pwtest.py` for anything under `ui/`. Exactly one copy at a time: it binds
-   port 8123 and writes `ui/_*` fixtures that it removes on exit. A green `node --test` run says little
-   about the episode screen, which only the harness actually renders.
+2. For anything under `ui/`, both browser checks, one at a time:
+   - `.venv/bin/python scripts/_pwtest.py`: the episode screen in depth, with `/player.js`, `/db.js` and
+     `/app.js` mocked. Binds port 8123 and writes `ui/_*` fixtures that it removes on exit.
+   - `.venv/bin/python scripts/_smoke_realstack.py`: every real module and the real service worker,
+     with a fake network, through a dead-network cold boot. Binds port 8124.
+
+   Green unit tests say little about the episode screen. A green `_pwtest` says nothing about the real
+   player or data layer: those are covered by `tests/player_recovery`, `offline_prefetch` and the smoke.
+   To test a real module in node, use `tests/helpers/ui-modules.mjs`.
 
 ## Invariants
 

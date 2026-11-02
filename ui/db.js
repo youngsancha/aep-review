@@ -2,9 +2,6 @@
 import { supabase, STORAGE_URL } from '/supabase.js';
 import { hostedAudioUrl, currentShow, MULTISHOW } from '/config.js';
 
-const NEW_LIMIT = 5;
-const REVIEW_LIMIT = 50;
-
 // 비활성(기본)이면 무필터 → 기존 단일쇼 동작·스키마와 완전히 동일(컬럼 없어도 안전). id 로 직접
 const withShow = (q) => (MULTISHOW ? q.eq('show', currentShow()) : q);
 

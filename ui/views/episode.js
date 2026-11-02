@@ -181,9 +181,13 @@ export async function renderEpisode(root, idStr, tStr) {
   // guid 없는 wh)는 오늘과 100% 동일한 단일 Transcript 칩 레이아웃을 그대로 쓴다(요구사항: 비-wh
   // 화면은 손대지 않는다).
   const hasExternalVideoLink = ep.show === 'wh' && !!ep.guid;
-  const useVideoLayout = showPrimaryVideo || hasExternalVideoLink;
 
-  const showLabel = `S${ep.season ?? '–'}${ep.episode_no != null ? ` · E${ep.episode_no}` : ''} · ${fmtDate(ep.pub_date)}`;
+  // 시즌/회차 번호가 없으면(wh) 'S–' 자리표시자 대신 날짜만 — 의미 없는 대시를 화면에 안 그린다.
+  const showLabel = [
+    ep.season != null ? `S${ep.season}` : '',
+    ep.episode_no != null ? `E${ep.episode_no}` : '',
+    fmtDate(ep.pub_date),
+  ].filter(Boolean).join(' · ');
   const txTitle = (ep.title || '').replace(/^\d+\s*[-:.]\s*/, '');
   // wh(백악관 브리핑) description 은 'White House press briefing — https://…/' 형태로 원본 링크를
   // 그대로 끝에 박아 넣는다 — 이제 그 링크는 아래 About 옆 조용한 링크(np-ext-video-link)가 대신하므로
@@ -222,30 +226,22 @@ export async function renderEpisode(root, idStr, tStr) {
         <div class="np-extras">
           <button class="speed" id="np-speed">1×</button>
           <button class="speed np-end-btn" id="np-endmode" aria-label="After the episode ends"></button>
-          ${(sentences.length && !useVideoLayout) ? `
-          <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
-            <span>Transcript</span>
-          </button>
-          ` : ''}
           ${isHosted ? `
           <button class="speed np-dl-btn" id="np-dl" aria-label="Download for offline listening">${SVG_DL}<span class="np-dl-txt">Offline</span></button>
           ` : ''}
-        </div>
-        ${(sentences.length && useVideoLayout) ? `
-        <div class="np-primary-row">
-          <button class="np-tx-btn" id="np-tx-btn" aria-label="Transcript">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
+          ${sentences.length ? `
+          <button class="speed np-tx-btn" id="np-tx-btn" aria-label="Transcript">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg>
             <span>Transcript</span>
           </button>
           ${showPrimaryVideo ? `
-          <button class="np-tx-btn np-video-btn" id="np-video-btn" aria-label="Watch video">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><polygon points="23 7 16 12 23 17 23 7"/></svg>
+          <button class="speed np-video-btn" id="np-video-btn" aria-label="Watch video">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/><polygon points="23 7 16 12 23 17 23 7"/></svg>
             <span>Video</span>
           </button>
           ` : ''}
+          ` : ''}
         </div>
-        ` : ''}
       ` : `<div class="empty">audio not downloaded yet</div>`}
     </div>
 
@@ -367,6 +363,9 @@ export async function renderEpisode(root, idStr, tStr) {
     cover: COVER_SM(),
     src: ep.audio_url,
   };
+  // 이미 이 회차가 플레이어에 올라 있었나(재생 중이거나 이어 듣던 중 화면만 다시 들어옴) — 아래
+  // 이어듣기 seek 가 저장 진행률(최대 5초 전 값)로 되감지 않게 load 전에 기억해 둔다.
+  const wasAlreadyCurrent = !!(player.current && player.current.id === track.id);
   player.load(track);
   const drv = new DriverRouter();   // 이 회차 렌더 동안의 재생 엔진 라우터(오디오로 시작)
 
@@ -505,8 +504,10 @@ export async function renderEpisode(root, idStr, tStr) {
     if (dur) {
       if (!npScrubbing) $scrub.value = (drv.time / dur * 100).toFixed(2);  // 드래그 중엔 안 덮어씀(#6)
       $scrub.setAttribute('aria-valuetext', `${fmtTime(drv.time)} / ${fmtTime(dur)}`);  // 스크린리더에 시간 맥락
-      $cur.textContent = fmtTime(drv.time);
-      $rem.textContent = '-' + fmtTime(Math.max(0, dur - drv.time));
+      if (!npScrubbing) {   // 드래그 중엔 미리보기 시각을 덮어쓰지 않는다
+        $cur.textContent = fmtTime(drv.time);
+        $rem.textContent = '-' + fmtTime(Math.max(0, dur - drv.time));
+      }
       // 트랜스크립트 시트 시크 바도 동기화 — 시트가 열려 있을 때만(닫힘 시엔 안 보이는 쓰기 낭비 방지).
       // 스크럽 드래그 중엔 미리보기 위치를 유지(덮어쓰지 않음).
       if (txScrub && !txScrub.isDragging() && $sheet && $sheet.classList.contains('open')) {
@@ -826,8 +827,11 @@ export async function renderEpisode(root, idStr, tStr) {
   }
   function renderNotes(idx) {
     if (!$notes) return;
-    // VOCAB(즉시해설)은 더 이상 표시하지 않음 — 단어/표현은 Study·Review 에서 학습.
+    // VOCAB(즉시해설)은 표시하지 않음.
     // 재생 중 하단 카드엔 한글번역만(충분함, 사용자 요청). vNotes 는 난이도 판정에만 계속 사용.
+    // 문장이 바뀔 때마다 번호를 올려, 이전 문장의 늦은 번역 응답(성공/실패)이 새 패널을 덮거나 숨기지 못하게 한다
+    // (예전엔 온디맨드 경로만 올려서, 사전번역/캐시로 채운 B 위에 A 의 지연 실패가 B 를 숨겼다).
+    _trSeq++;
     const wantTrans = showTrans && idx >= 0 && !isEasySentence(idx);
     if (!wantTrans) {
       $notes.classList.remove('show');
@@ -835,7 +839,7 @@ export async function renderEpisode(root, idStr, tStr) {
       syncNotesOverlayPad();
       return;
     }
-    $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">KR</span><span class="tx-trans-ko">…</span></div>`;
+    $notes.innerHTML = `<div class="tx-trans-row" data-idx="${idx}"><span class="tx-trans-ico">KR</span><span class="tx-trans-ko" lang="ko">…</span></div>`;
     $notes.classList.add('show');
     $notes.setAttribute('aria-hidden', 'false');
     syncNotesOverlayPad();   // placeholder('…') 높이 기준 1차 반영 — fillTranslation 이 실제 번역으로 재조정
@@ -1701,6 +1705,7 @@ export async function renderEpisode(root, idStr, tStr) {
                          // 반영돼(player.js/media-session.js 기존 배선) 팬텀(무음인데 재생중) 상태를 피한다.
       if ($videoWrap) $videoWrap.hidden = false;
       await video.mount($videoFrame, ep.transcript.video_id);
+      if (_cleanedUp) { video.unmount(); videoBusy = false; return; }   // 마운트 도중 화면을 떠남 — 붙이지 않고 폐기
       video.seek(atTime);          // 오디오에서 보던 지점 그대로 이어서(요구사항: 자리 잃지 않기)
       video.rate(SPEEDS[speedIdx]);
       drv.useVideo(video);
@@ -1710,7 +1715,7 @@ export async function renderEpisode(root, idStr, tStr) {
       if (wasPlaying) drv.play();
     } catch (err) {
       console.error('[video] mount failed:', err);
-      toast('Could not load video — staying on audio');
+      if (!_cleanedUp) toast('Could not load video — staying on audio');
       if ($videoWrap) $videoWrap.hidden = true;
       video.unmount();
       if (wasPlaying) player.play();
@@ -1779,7 +1784,7 @@ export async function renderEpisode(root, idStr, tStr) {
     e.stopPropagation();
     exitFullscreen();
   });
-  // 메인 화면 1차 Video 버튼(#np-video-btn, useVideoLayout 블록) — Library 의 📺 Video ›(timeline.js)
+  // 메인 화면 1차 Video 버튼(#np-video-btn, .np-extras 칩) — Library 의 📺 Video ›(timeline.js)
   // 와 정확히 같은 결과(시트 열기 + Video 모드 on)를 같은 함수(openSheet/turnVideoOn)로 낸다. Library
   // 쪽은 다른 화면에서 넘어오므로 aep-open-video 세션플래그 + hashchange 로 이 회차 렌더까지 데려온
   // 뒤 그 플래그를 여기(아래 wantVideo)서 읽어 트리거하지만, 이 버튼은 '이미 이 회차 화면'이라 그
@@ -1947,6 +1952,7 @@ export async function renderEpisode(root, idStr, tStr) {
     window.removeEventListener('offline', onVideoOffline);
     offVideoSync();
     if (videoOn) turnVideoOff();
+    video.unmount();   // 진행 중(onReady 대기) mount 가 있으면 거부시켜 videoBusy 가 풀리게 한다(없으면 no-op)
     drv.destroy();
     clearTimeout(wakeIdleTimer);
     document.removeEventListener('pointerdown', onAnyPointer, { capture: true });
@@ -1967,10 +1973,6 @@ export async function renderEpisode(root, idStr, tStr) {
     setBgInert(false);           // 시트 열린 채 이탈해도 배경 inert 가 다음 화면에 남지 않게
     document.removeEventListener('keydown', escClose);
     document.body.style.overflow = '';
-    // 운전 캡처 OFF 로 복원 — 회차를 떠나면 차/잠금화면 ⏭(nexttrack)이 다시 +30초 스킵이 되게 한다.
-    // 없으면 캡처를 켠 채 라이브러리/학습으로 나가도 ⏭ 이 계속 '직전 회차 북마크'로 하이재킹된다
-    // (다음 회차 진입 시 initDriveCapture 가 어차피 OFF 로 리셋하므로 회차↔회차 전환엔 무해). v1.41.0.
-    setDrive(false);
     // 에피소드↔에피소드 전환에선 on-episode 유지 → 미니플레이어가 잠깐 보였다 사라지는 깜빡임 방지.
     if (!/^#?\/episode\/\d+/.test(location.hash)) document.body.classList.remove('on-episode');
     $sheet?.remove();
@@ -1984,9 +1986,22 @@ export async function renderEpisode(root, idStr, tStr) {
   // 메인 Now-Playing 화면의 ⏮/⏭ — 트랜스크립트와 동일 동작(시트는 안 열고 자동재생만, openScript=false).
   document.getElementById('np-prev')?.addEventListener('click', () => prevPress(false));
   document.getElementById('np-next')?.addEventListener('click', () => nextPress(false));
+  // input(~60Hz)마다 seek 하면 셀룰러에서 Range 요청이 폭주한다 → 드래그 중엔 시각만 미리보기,
+  // 손을 뗄 때(change) 한 번만 seek.
+  let scrubFrac = null;
   $scrub.addEventListener('input', () => {
     const dur = drv.duration;
-    if (dur) drv.seek(dur * parseFloat($scrub.value) / 100);
+    if (!dur) return;
+    scrubFrac = parseFloat($scrub.value) / 100;   // pointerup 직후 refresh 가 value 를 덮어쓰기 전에 값을 붙든다
+    const t = dur * scrubFrac;
+    if ($cur) $cur.textContent = fmtTime(t);
+    if ($rem) $rem.textContent = '-' + fmtTime(Math.max(0, dur - t));
+    $scrub.setAttribute('aria-valuetext', fmtTime(t));
+  });
+  $scrub.addEventListener('change', () => {
+    const dur = drv.duration;
+    if (dur && scrubFrac != null) drv.seek(dur * scrubFrac);
+    scrubFrac = null;
   });
   // 드래그 중 표시 — 이 사이엔 refresh 가 $scrub.value 를 안 덮어써 썸이 튀지 않는다(#6).
   ['pointerdown', 'touchstart'].forEach((ev) => $scrub.addEventListener(ev, () => { npScrubbing = true; }, { passive: true }));
@@ -2025,7 +2040,8 @@ export async function renderEpisode(root, idStr, tStr) {
   const prog = getProgress(ep.id);
   let startAt = null;
   if (Number.isFinite(seekTo) && seekTo > 0) startAt = seekTo;
-  else if (prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) startAt = prog.t;
+  // 이미 이 회차 위에 있고 실제 위치가 있으면(>1s) 저장값은 '과거'다 — 명시적 딥링크 시각이 없을 땐 건너뛴다.
+  else if (!(wasAlreadyCurrent && drv.time > 1) && prog && prog.t > 5 && (!prog.dur || prog.t < prog.dur - 10)) startAt = prog.t;
   const autoPlay = (Number.isFinite(seekTo) && seekTo > 0) || wantScript || wantAutoplay || wantVideo;
   if (wantVideo) {
     // 오디오를 먼저 재생시켰다가 곧바로 video 로 넘기는 경합(먼저 재생 → 그 순간 시각을 읽어 video
@@ -2239,7 +2255,7 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
             </div>
           </div>
           ` : ''}
-          <div class="tx-scroll">
+          <div class="tx-scroll" tabindex="0" role="region" aria-label="Transcript text">
             ${body}
           </div>
         </div>
@@ -2278,8 +2294,18 @@ function transcriptSheetHtml(segments, title, sub, perfectSync, showVideoToggle)
   `;
 }
 
+// 피드 description 에 들어 있는 HTML 엔티티(&nbsp; &amp; &#8217; …)를 '텍스트'로 되돌린다.
+// 태그를 먼저 걷어낸 뒤 textarea 로 디코드 → 결과는 순수 텍스트이고 출력 시 escapeHtml 을 다시 탄다
+// (textarea.value 는 마크업을 실행/파싱하지 않으므로 피드 HTML 이 렌더되는 일은 없다).
+function decodeEntities(s) {
+  if (!s || s.indexOf('&') < 0) return s;
+  const ta = document.createElement('textarea');
+  ta.innerHTML = s;
+  return ta.value;
+}
 function stripTags(s) {
-  return String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = String(s || '').replace(/<[^>]+>/g, ' ');
+  return decodeEntities(t).replace(/[\u00a0\s]+/g, ' ').trim();
 }
 
 // === 문장 난이도 판정 (#8) ===
@@ -2309,7 +2335,7 @@ function easyByWords(text) {
   return true;
 }
 
-// translateEnKo 는 /translate.js 로 분리(episode·study 공용). 아래는 per-episode 표시 캐시만 유지.
+// translateEnKo 는 /translate.js 로 분리. 아래는 per-episode 표시 캐시만 유지.
 // 번역 캐시 키 = '문장 텍스트'(정규화). 인덱스 기준이면 resegment/광고 슬라이스로 문장 경계가 바뀔 때
 // 같은 인덱스가 다른 문장을 가리켜 번역이 엉뚱한 문장에 붙는다(영↔한 mismatch). 텍스트 기준이면 안전.
 function trKey(text) {
@@ -2531,13 +2557,13 @@ function renderSegmentWords(seg) {
 }
 
 // 회차 화면에서 '알아요' 처리한 vocab id (localStorage) — 재방문 시 흐리게 표시.
-// SRS 마스터(markKnown)와 별개의 로컬 힌트라, 오프라인/SRS 카드 부재에도 카드 상태가 유지된다.
 const VKNOWN_KEY = 'aep-vocab-known';
 function loadVKnown() { try { return new Set(JSON.parse(localStorage.getItem(VKNOWN_KEY) || '[]')); } catch { return new Set(); } }
 function saveVKnown(set) { try { localStorage.setItem(VKNOWN_KEY, JSON.stringify([...set])); } catch (e) { /* quota */ } }
 
 function vocabHtml(v, known) {
-  const kind = v.kind || 'word';
+  // kind 는 class 속성에 그대로 들어가고, 값의 출처는 제3자 자막을 읽은 LLM 출력이다.
+  const kind = /^[a-z_]+$/.test(v.kind || '') ? v.kind : 'word';
   const ex = v.example_sentence
     ? `<p class="ex" data-start="${v.sentence_start_sec || 0}">${escapeHtml(v.example_sentence)}</p>`
     : '';

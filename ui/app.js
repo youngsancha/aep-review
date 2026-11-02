@@ -4,6 +4,7 @@
 // SW SHELL 이 전부 캐시하므로 지연 로드여도 오프라인·재방문은 즉시(네트워크 아닌 파싱만 지연).
 import { supabase } from '/supabase.js';
 import { APP_NAME } from '/config.js';
+import { createUpdateReloader } from '/sw-reload.js';
 
 export const APP_VERSION = String(window.APP_VERSION || 'dev');
 
@@ -39,7 +40,10 @@ const ROUTES = [
 ];
 
 let _prevKey = null;  // 직전 라우트 키 — 같은 뷰(에피소드↔에피소드) 전환 감지용
+let _routeSeq = 0;    // route() 호출 순번 — 느린 렌더가 뒤늦게 끝나 새 화면을 덮는 것을 막는다
 async function route() {
+  const seq = ++_routeSeq;
+  const stale = () => seq !== _routeSeq;
   // Retired Study bookmarks return to the listening library.
   if (/^#\/(?:study|srs)(?:\/|$)/.test(location.hash)) history.replaceState(null, '', '#/');
   const hash = location.hash || '#/';
@@ -63,12 +67,14 @@ async function route() {
         await handler($app, ...m.slice(1));
       } catch (e) {
         console.error('[route] view render failed:', e);
+        if (stale()) return;   // 이미 다른 화면으로 넘어감 — 오류 UI/재시도로 새 화면을 덮지 않는다
         $app.innerHTML = `<div class="empty error">
           <p>Something went wrong.</p>
           <button class="btn primary" id="route-retry">Retry</button>
         </div>`;
         document.getElementById('route-retry')?.addEventListener('click', () => route());
       }
+      if (stale()) return;     // _prevKey 도 건드리지 않는다(늦은 렌더가 다음 에피소드 탭을 '제자리'로 오판시킴)
       _prevKey = r.key;
       if (!inPlace) {
         // 뷰 전환 페이드인 (reflow 트릭으로 재시작; reduced-motion 에선 무시됨)
@@ -143,11 +149,14 @@ function consumeShortcut() {
 
 // 로그인 후 잠시 뒤 백그라운드로 최근 회차(자막+오디오)를 내려받아 오프라인 청취를 준비한다.
 // 부팅 직후 대역폭 경쟁(목록/자막 로딩)을 피해 지연 실행. 세션당 1회(offline.js 내부 가드).
+// 완료 판정(세션당 1회)은 offline.js 가 '목록을 받은 뒤'에만 내린다 — 여기선 대기 중 중복 예약만 막고,
+// 데드존에서 켠 앱이 'online' 복귀 때 다시 시도할 수 있게 한다.
 let _offlineKicked = false;
 function kickOfflineCache() {
   if (_offlineKicked || !navigator.onLine) return;
   _offlineKicked = true;
   setTimeout(() => {
+    _offlineKicked = false;
     import('/offline.js')
       .then((m) => m.ensureOfflineCache())
       .catch((e) => console.warn('[offline] prefetch failed:', e));
@@ -289,6 +298,7 @@ window.addEventListener('online', () => {
   // '첫 번째 .tx-scroll' 을 잡으므로 그 옛 시트를 스크롤하고, 보이는 시트는 하이라이트만 움직인 채
   // 화면이 안 따라갔다(사용자 신고 2026-08-27 "싱크위치로 안 감", 간헐적 — 트리거가 네트워크였다).
   // 실측: 'online' 1회 → .tx-sheet 2개, 같은 재생 구간에서 scrollTop 0→139 가 0→0 으로.
+  if (authed) kickOfflineCache();   // 데드존에서 부팅한 앱도 신호 복귀 시 자동 다운로드(offline.js 가 중복 실행은 막는다)
   if (authed && canReroute()) route();
 });
 
@@ -392,21 +402,6 @@ export function escapeHtml(s) {
   }[c]));
 }
 
-// 문장 속에서 표현(term)이 나온 부분을 <mark> 로 강조 (나머지는 escape). 조각별 안전 결합.
-// Study/Review 에서 "Shana 가 정확히 어떤 문장에서 이 표현을 썼는지" 한눈에 보여주기 위함.
-export function highlightTerm(text, term) {
-  const s = String(text || '');
-  if (!term) return escapeHtml(s);
-  const re = new RegExp(String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-  let out = '', last = 0, m;
-  while ((m = re.exec(s)) !== null) {
-    out += escapeHtml(s.slice(last, m.index)) + '<mark class="term-hl">' + escapeHtml(m[0]) + '</mark>';
-    last = m.index + m[0].length;
-    if (m[0].length === 0) re.lastIndex++;  // 빈 매치 무한루프 방지
-  }
-  return out + escapeHtml(s.slice(last));
-}
-
 export function fmtTime(sec) {
   if (sec == null) return '';
   const m = Math.floor(sec / 60);
@@ -481,11 +476,19 @@ if ('serviceWorker' in navigator) {
   // 또는 사용자가 직접 새로고침할 때만 적용 → 활성 사용 중엔 절대 끊기지 않음.
   // 예외: 페이지가 갓 로드된 상태(<15s, 사용자가 방금 새로고침한 직후)라면 즉시 완료한다 —
   // 당겨서 새로고침 한 번으로 업데이트가 그 자리에서 끝나고 바로 재생 가능(사용자 요청 2026-07-09).
-  let reloaded = false, pendingReload = false;
-  const doReload = () => { if (!reloaded) { reloaded = true; location.reload(); } };
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (document.hidden || performance.now() < 15000) doReload();
-    else pendingReload = true;
+  // ⛔ 듣는 중에는 reload 하지 않는다 — 판단은 sw-reload.js. player.js 가 app.js 를 import 하므로 순환을 피해
+  // 디버그 훅과 같은 window.__player 를 본다.
+  const updates = createUpdateReloader({
+    audio: () => window.__player?.audio,
+    isHidden: () => document.hidden,
+    isFresh: () => performance.now() < 15000,
+    reload: () => location.reload(),
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && pendingReload) doReload(); });
+  navigator.serviceWorker.addEventListener('controllerchange', updates.onControllerChange);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) updates.onHidden(); });
+  import('/player.js').then(({ player: { audio } }) => {
+    audio.addEventListener('play', updates.onPlay);
+    audio.addEventListener('pause', updates.onPause);
+    audio.addEventListener('ended', updates.onEnded);
+  }).catch(() => {});
 }

@@ -5,11 +5,12 @@
 // 사용: const s = bindScrub(trackEl, { onPreview(frac), onSeek(frac) });
 //   onPreview(frac) : 드래그 중 매 이동마다 호출(오디오는 아직 안 옮김 — fill/핸들/시간만 갱신해 부드럽게).
 //   onSeek(frac)    : 손을 뗄 때 1회(실제 player.seek). 탭만 해도 그 지점으로 1회 호출된다.
+//   onCancel()      : (선택) 제스처가 취소되면 호출 — seek 없이 미리보기만 되돌린다.
 //   s.isDragging()  : 드래그 중이면 true — 외부 refresh 루프가 fill 을 덮어쓰지 않게 게이트로 쓴다.
 //   s.destroy()     : 라우트 이탈 시 리스너 해제(트랜스크립트 시트처럼 매번 새로 만들 때 필수).
 //
 // frac 은 항상 [0,1]. track 엔 CSS `touch-action: none` 을 줘야 가로 드래그 시 페이지가 안 스크롤된다.
-export function bindScrub(track, { onPreview, onSeek } = {}) {
+export function bindScrub(track, { onPreview, onSeek, onCancel: onCancelCb } = {}) {
   let dragging = false;
 
   const fracAt = (clientX) => {
@@ -41,13 +42,21 @@ export function bindScrub(track, { onPreview, onSeek } = {}) {
     track.classList.remove('scrubbing');
     onSeek && onSeek(fracAt(ptX(e)));
   };
+  // 취소(OS 가 제스처를 가져감 — 스크롤/전화 수신 등)는 손을 뗀 게 아니다: seek+play 를 타면 의도하지 않은
+  // 위치로 점프해 재생이 시작된다. 드래그 상태와 미리보기만 정리하고(onCancel 로 미리보기 복원) 끝낸다.
+  const onCancel = () => {
+    if (!dragging) return;
+    dragging = false;
+    track.classList.remove('scrubbing');
+    onCancelCb && onCancelCb();
+  };
   // 드래그/탭 뒤 발생하는 click 이 부모로 전파돼(미니플레이어 네비게이트) 오작동하지 않게 차단.
   const onClick = (e) => { e.stopPropagation(); };
 
   track.addEventListener('pointerdown', onDown);
   track.addEventListener('pointermove', onMove);
   track.addEventListener('pointerup', onUp);
-  track.addEventListener('pointercancel', onUp);
+  track.addEventListener('pointercancel', onCancel);
   track.addEventListener('click', onClick);
 
   return {
@@ -56,7 +65,7 @@ export function bindScrub(track, { onPreview, onSeek } = {}) {
       track.removeEventListener('pointerdown', onDown);
       track.removeEventListener('pointermove', onMove);
       track.removeEventListener('pointerup', onUp);
-      track.removeEventListener('pointercancel', onUp);
+      track.removeEventListener('pointercancel', onCancel);
       track.removeEventListener('click', onClick);
     },
   };

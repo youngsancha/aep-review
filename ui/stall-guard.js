@@ -35,6 +35,15 @@ export function noteTime(st, t, now) {
   return st;
 }
 
+// 재생 시작(play/playing): 긴 일시정지 뒤 첫 ▶ 에서 5초 감시가 '옛 진행 시각'과의 거대한 간격을 보고 불필요한
+// 재로드를 하지 않도록 시계를 되감는다(재로드 예산 5분 4회 소진 방지). '진행한 적 있음'(null 아님)일 때만 —
+// 로드 직후(null)의 ①규칙은 건드리지 않는다.
+export function notePlay(st, now) {
+  if (st.lastAdvanceAt !== null) st.lastAdvanceAt = now;
+  st.waitingSince = 0;
+  return st;
+}
+
 export function noteWaiting(st, now) { if (!st.waitingSince) st.waitingSince = now; return st; }
 export function noteTrackChange(st) { return Object.assign(st, initialState()); }
 

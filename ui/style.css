@@ -210,7 +210,7 @@ body.on-episode {
 /* 이모지 아이콘은 color 를 무시하므로, 선택 상태를 opacity+scale 로 표현(예전엔 라벨 색만 바뀌어
    현재 탭이 거의 안 보였다). 미선택은 흐리게, 선택은 또렷+살짝 확대. */
 #tabbar a .icon { font-size: 22px; line-height: 1; opacity: 0.45; transition: opacity 0.15s, transform 0.15s; }
-#tabbar a[aria-current="page"] { color: var(--tint); font-weight: 800; }
+#tabbar a[aria-current="page"] { color: var(--tint-hover); font-weight: 800; }   /* --tint is 3.8:1 on the light bar */
 #tabbar a[aria-current="page"] .icon { opacity: 1; transform: scale(1.06); }
 
 /* ========== Layout ========== */
@@ -478,7 +478,7 @@ body.on-episode {
 /* 오프라인 준비된 회차(오디오 캐시 완료) — timeline.js markOfflineReady 가 부착 */
 .chip.offline-ep { background: var(--chip-audio-bg); color: var(--chip-audio-tx); text-transform: none; }
 /* 라이브러리 헤더의 오프라인 준비 상태줄 (timeline.js markOfflineReady 가 채움) */
-.library-offline { font-size: 12px; color: var(--text-4); margin-top: 3px; min-height: 15px; }
+.library-offline { font-size: 12px; color: var(--text-3); margin-top: 3px; min-height: 15px; }
 .library-offline:empty { display: none; }
 .library-offline.tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .library-offline.tappable:active { opacity: 0.6; }
@@ -608,8 +608,10 @@ body.on-episode {
 /* Transport controls */
 .np-controls {
   display: flex; align-items: center; justify-content: center;
-  gap: 18px; margin: 18px 0 8px;  /* ⏮ 15 ▶ 30 ⏭ 5개가 좁은 폰에서도 들어가게(28→18) */
-  padding: 0 12px;
+  /* ⏮ 15 ▶ 30 ⏭ 5개가 좁은 폰에서도 들어가게 폭에 맞춰 줄인다. 412px 이상은 18px·12px 그대로. */
+  gap: clamp(8px, calc((100vw - 320px) / 4), 18px);
+  margin: 18px 0 8px;
+  padding: 0 clamp(0px, calc((100vw - 320px) / 8), 12px);
 }
 .np-ctrl-btn {
   background: transparent; border: 0;
@@ -629,6 +631,7 @@ body.on-episode {
   pointer-events: none;
 }
 .np-play-btn {
+  flex: none;   /* 고정폭이 없으면 줄이 넘칠 때 ▶ 만 눌려 타원이 된다(360px 폰) */
   width: 72px; height: 72px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--grad-1) 0%, var(--grad-3) 100%);
@@ -646,7 +649,7 @@ body.on-episode {
      넘긴다(360px 화면에서 394px 필요 → 66px 넘침, 첫 칩 left:-17px, 마지막 칩이 화면 밖).
      nowrap 이면 body 의 overflow-x:hidden 이 양쪽을 잘라 Offline 칩이 사라진다(사용자 신고
      2026-07-30). 좁은 화면에서는 두 줄로 접히게 둔다. */
-  display: flex; justify-content: center; gap: 12px;
+  display: flex; justify-content: center; gap: 8px;
   flex-wrap: wrap; row-gap: 10px;
   padding: 0 10px;
   margin: 8px 0 16px;
@@ -669,7 +672,7 @@ body.on-episode {
 /* 히트영역 44px — 속도/종료모드 칩도 시각 크기 유지하며 터치 정확도 확보(v1.41.0) */
 .np-extras .speed::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 44px; }
 /* .pressed = 종료모드 칩의 탭 하이라이트 유지(속도 칩의 모바일 끈적 hover 와 동일한 느낌) */
-.np-extras .speed:hover, .np-extras .speed.pressed { background: var(--tint-soft); color: var(--tint-hover); }
+.np-extras .speed:not(.np-tx-btn):not(.np-video-btn):hover, .np-extras .speed.pressed { background: var(--tint-soft); color: var(--tint-hover); }
 /* 종료 동작 칩(np-endmode): 항상 1× 속도 칩과 동일한 회색 칩 + 텍스트색 글리프(회색/흰 조합) */
 .np-end-btn svg { display: block; }
 /* 오프라인 저장 칩 — 속도/종료모드 칩과 같은 회색 칩 톤. 아이콘+라벨이라 고정폭만 넓힌다.
@@ -678,34 +681,16 @@ body.on-episode {
 .np-extras .np-dl-btn.on { background: var(--tint-soft); color: var(--tint-hover); }
 .np-extras .np-dl-btn[disabled] { opacity: 0.6; cursor: default; }
 .np-dl-btn svg { display: block; }
-.np-tx-btn {
-  background: var(--grad-brand);
-  color: #fff;
-  border: 0;
-  padding: 11px 22px 11px 18px;
-  border-radius: 999px;
-  font-size: 14.5px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  display: inline-flex; align-items: center; gap: 7px;
-  box-shadow: var(--glow-brand);
-  transition: transform 0.1s, filter 0.15s;
-}
-.np-tx-btn:hover { filter: brightness(1.05); }
-.np-tx-btn:active { transform: scale(0.97); }
+/* Transcript = 같은 .speed 칩 프리미티브(크기·라운드·폰트 동일) + 액센트 채움. 속도·종료모드·오프라인·
+   Transcript·(Video) 가 쇼와 무관하게 한 줄(.np-extras)에 놓이고, 폭이 모자라면 가운데 정렬로 접힌다.
+   큰 ▶ 가 유일한 1차 액션이라 전폭 버튼은 쓰지 않는다. */
+.np-extras .np-tx-btn { background: var(--grad-brand); color: #fff; gap: 5px; padding: 0 14px; }
+.np-extras .np-tx-btn:hover { background: var(--grad-brand); color: #fff; filter: brightness(1.05); }
+.np-extras .np-tx-btn:active { transform: scale(0.97); }
 .np-tx-btn svg { display: block; }
-
-/* row 2 — Transcript 와 Video 를 동급 1차 액션으로(v1.60.0, 사용자 요청: Video 를 Transcript 와
-   같은 크기·존재감으로). wh(video_id 있는 회차)에서만 렌더 — 그 외 전부(AEP/AAE 포함)는 위
-   .np-tx-btn 이 .np-extras 안에서 오늘과 똑같이 혼자 그려진다(레이아웃 자체가 안 쓰임). */
-.np-primary-row { display: flex; gap: 10px; padding: 0 10px; margin: 4px 0 16px; }
-.np-primary-row .np-tx-btn { flex: 1 1 0; justify-content: center; }
-/* Video 는 .np-tx-btn 의 크기·라운드·폰트 토큰을 그대로 물려받아(하드코딩 카피 없음) 배경만
-   surface 틴트로 바꾼다 — 그라디언트 두 개를 나란히 두면 하나가 둘로 쪼개진 것처럼 읽히므로
-   (사용자 판단), '같은 크기의 다른 액션'으로 구분되게 브랜드 그라디언트 대신 은은한 틴트를 쓴다. */
-.np-video-btn { background: var(--tint-soft); color: var(--tint-hover); box-shadow: none; }
-.np-video-btn:hover { background: var(--tint-soft-2); filter: none; }
+/* Video 칩 — 같은 칩 크기, 배경만 은은한 틴트(Transcript 와 구분). */
+.np-extras .np-video-btn { gap: 5px; padding: 0 14px; background: var(--tint-soft); color: var(--tint-hover); }
+.np-extras .np-video-btn:hover { background: var(--tint-soft-2); }
 
 /* ========== Transcript bottom sheet (Apple Podcasts) ========== */
 .tx-sheet {

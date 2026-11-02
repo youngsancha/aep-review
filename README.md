@@ -51,12 +51,13 @@ npx serve ui                       # or: python -m http.server 8000 --directory 
 npm run gate                       # eslint (no warnings allowed), syntax check, node tests
 .venv/bin/python -m pytest -q      # python tests, including the JS/Python resegment parity
 .venv/bin/ruff check .
-.venv/bin/python scripts/_pwtest.py   # real Chromium against mocked data, about 80 seconds
+.venv/bin/python scripts/_pwtest.py          # the episode screen in Chromium, core modules mocked
+.venv/bin/python scripts/_smoke_realstack.py  # every real module and service worker, fake network
 ```
 
-`.github/workflows/ci.yml` runs all of these except the browser harness on every push. The harness is
-tuned to phone viewports and Android and macOS fonts, so it runs locally, and `scripts/release.py` will
-not release without it.
+`.github/workflows/ci.yml` runs everything except the two browser checks on every push. Those are
+tuned to phone viewports and Android and macOS fonts, so they run locally, and `scripts/release.py`
+will not release without them.
 
 ## Releasing
 

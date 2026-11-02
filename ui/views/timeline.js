@@ -16,7 +16,11 @@ function refreshCovers() {
   _coverSm = c + '&w=160&h=160';
 }
 
+// 쇼 전환을 빠르게 두 번 누르면 두 renderTimeline 이 경쟁한다 — 느린 응답이 이전 쇼를 덮어쓰지 않게
+// 호출마다 번호를 매겨 최신이 아니면 그리지 않는다.
+let _renderSeq = 0;
 export async function renderTimeline(root) {
+  const seq = ++_renderSeq;
   refreshCovers();
   root.innerHTML = skeletonHtml();  // shimmer 플레이스홀더 (로드 전 바로 표시)
   const _startHash = location.hash;
@@ -26,7 +30,7 @@ export async function renderTimeline(root) {
   } catch (e) {
     // 스테일 렌더 방지: 실패를 기다리는 사이 다른 화면으로 이동했으면 아무것도 안 그린다(아래 성공
     // 경로와 동일 관례).
-    if (location.hash !== _startHash) return;
+    if (location.hash !== _startHash || seq !== _renderSeq) return;
     // 예전엔 이 예외를 여기서 안 잡아 app.js 라우트 레벨 catch(66-70행)까지 올라갔다 → 화면 전체가
     // 범용 "Something went wrong" 카드로 바뀌며 라이브러리 고유 맥락(쇼 스위처 등)이 사라졌다.
     console.error('[timeline] listEpisodes failed:', e);
@@ -37,7 +41,7 @@ export async function renderTimeline(root) {
   }
   // 스테일 렌더 방지: listEpisodes 를 기다리는 사이 다른 화면(에피소드 등)으로 이동했으면 중단
   // (느린 초기 로드 중 회차 탭 → 열린 에피소드를 라이브러리가 덮어쓰던 경우). 해시 없는 하니스는 무영향.
-  if (location.hash !== _startHash) return;
+  if (location.hash !== _startHash || seq !== _renderSeq) return;
   _prog = getProgressMap();
   _done = getCompleted();
 
@@ -196,7 +200,13 @@ function wirePlay(scope, items) {
       const resume = parseFloat(btn.dataset.resume || '0') || 0;
       const go = () => { if (resume > 0) player.seek(resume); player.play(); };
       if (player.duration) go();
-      else { const offMeta = player.on((ev) => { if (ev === 'meta') { go(); offMeta(); } }); }
+      else {
+        // 로드 실패('error')에도 해제 — 안 그러면 리스너가 남아 이후 아무 재생의 meta 에서 낡은 seek 이 터진다.
+        const offMeta = player.on((ev) => {
+          if (ev === 'meta') { offMeta(); go(); }
+          else if (ev === 'error') offMeta();
+        });
+      }
     });
   });
   // "스크립트로 보기" → transcript 화면 진입 + 자동재생 + 시트 자동 열기 (논스톱)

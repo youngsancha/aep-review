@@ -19,8 +19,11 @@ export async function translateEnKo(text) {
   const de = (TRANSLATE_EMAIL && TRANSLATE_EMAIL.indexOf('@') > 0) ? '&de=' + encodeURIComponent(TRANSLATE_EMAIL) : '';
   const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(key)}&langpair=en|ko${de}`;
   let j = null;
+  // 무응답 요청이 번역행을 영원히 붙잡지 않게 ~4초 뒤 중단 → 아래 catch 의 실패 값('')으로 흐른다.
+  const ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const tm = ctl ? setTimeout(() => ctl.abort(), 4000) : null;
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
     if (r.status === 429) { _trQuotaHit = true; _lastIssue = 'quota'; return ''; }
     if (!r.ok) { _lastIssue = 'error'; return ''; }
     j = await r.json();
@@ -29,12 +32,19 @@ export async function translateEnKo(text) {
     // true 여도 실제로는 끊겨 있을 수 있으므로(캡티브 포털·차량 이동 중 셀룰러 끊김).
     _lastIssue = (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'error';
     return '';
+  } finally {
+    if (tm) clearTimeout(tm);   // 429/오류 응답의 조기 return 도 타이머를 남기지 않는다
   }
   let ko = (j && j.responseData && j.responseData.translatedText) || '';
   const st = j && j.responseStatus;
-  // 한도/경고/오류 응답은 빈 값으로 처리하고 이후 요청 중단
-  if (/MYMEMORY WARNING|YOU USED ALL|QUOTA|INVALID/i.test(ko) || st === 403 || st === '403' || st === 429 || st === '429') {
+  // 진짜 한도 응답만 세션 중단: responseStatus 429, 또는 MyMemory 가 번역문 자리에 넣는 경고문
+  // ("MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS…" — 문장 맨 앞). 번역 '결과 텍스트'에
+  // 우연히 INVALID/QUOTA 가 들어갔다고, 혹은 403(잘못된 de 이메일 등 한도와 무관)이라고 세션 전체를
+  // 침묵시키지 않는다 — 403 은 이번 건만 실패 처리.
+  if (st === 429 || st === '429' || /^\s*MYMEMORY WARNING/i.test(ko)) {
     _trQuotaHit = true; ko = '';
+  } else if (st === 403 || st === '403') {
+    ko = '';
   }
   if (ko) _TR_MEM.set(key, ko);  // 성공한 것만 캐시(빈 값은 캐시 안 함 → 한도 회복 후 재시도 가능)
   _lastIssue = ko ? '' : (_trQuotaHit ? 'quota' : 'error');

@@ -20,6 +20,7 @@
 //     가짜 YT.Player 모양의 스텁(playVideo/pauseVideo/seekTo/getCurrentTime/getDuration/
 //     setPlaybackRate/destroy)을 주입해 틱 합성·seek·rate·재생상태·teardown 만 검증한다.
 
+const MOUNT_TIMEOUT_MS = 10000;   // onReady 대기 상한 — 넘으면 mount() 거부(episode.js 가 오디오로 복귀)
 const POLL_MS = 250;   // ~4Hz — ui/player.js 의 <audio> timeupdate 체감 주기와 동일하게 맞춘다
 
 // YT.PlayerState 상수(문서화): -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued.
@@ -42,6 +43,7 @@ export class VideoAdapter {
     this._lastTime = 0;
     this._duration = 0;
     this._paused = true;
+    this._abortMount = null;            // 진행 중인 mount() 를 거부시키는 함수(타임아웃·unmount 가 쓴다)
   }
 
   // === 재생 표면 — player.js 와 완전히 동일 ===============================================
@@ -116,6 +118,19 @@ export class VideoAdapter {
     if (!container || !videoId) throw new Error('video mount: container/videoId 필요');
     await loadApi();
     return new Promise((resolve, reject) => {
+      // onReady 가 영영 안 오면(lie-fi·iframe 차단·마운트 도중 화면 이탈) 이 Promise 가 pending 인 채로
+      // episode.js 의 videoBusy 가 안 풀려 토글이 죽고 오디오도 멈춘 채 남는다 → 시한을 두고, unmount() 도
+      // 같은 경로로 진행 중 mount 를 거부시킨다. settled 이후 늦게 오는 onReady 는 무시한다.
+      let settled = false;
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this._abortMount = null;
+        reject(err);
+      };
+      const timer = setTimeout(() => fail(new Error('YT player mount timed out')), MOUNT_TIMEOUT_MS);
+      this._abortMount = fail;
       try {
         const el = document.createElement('div');
         container.appendChild(el);
@@ -139,15 +154,23 @@ export class VideoAdapter {
           //                 아래 시트 컨트롤과 영상 탭(enterFullscreen 경로)으로 그대로 된다.
           playerVars: { rel: 0, playsinline: 1, fs: 0, modestbranding: 1, iv_load_policy: 3, cc_load_policy: 0, controls: 0 },
           events: {
-            onReady: () => { this.attach(yt); resolve(this); },
+            onReady: () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              this._abortMount = null;
+              this.attach(yt);
+              resolve(this);
+            },
             onStateChange: (e) => this.handleState(e.data),
-            onError: () => { this._emit('error'); reject(new Error('YT player error')); },
+            onError: () => { this._emit('error'); fail(new Error('YT player error')); },
           },
         });
-      } catch (err) { reject(err); }
+      } catch (err) { fail(err); }
     });
   }
   unmount() {
+    if (this._abortMount) this._abortMount(new Error('video mount aborted'));
     this._stopTick();
     if (this.yt) { safeCall(() => this.yt.destroy()); }
     this.yt = null;

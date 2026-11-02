@@ -379,6 +379,9 @@ export async function hostedSet() { return new Set(); }
 export function cleanAudioUrl(u) { return u; }
 export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function episodeNav() { return { prevId:null, nextId:null }; }
+export function loadEpisodeSnapshot() { return null; }
+export function saveEpisodeSnapshot() {}
+export function transcriptKoUrl(id, transcribedAt) { return `/mock-transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function getEpisode(id) {
   const FIX = [[0,'Hello everyone welcome back.'],[4,'Today we have a briefing.'],[8,'Thanks for watching along.']];
   const segments = FIX.map((s,i)=>{
@@ -553,10 +556,11 @@ def main() -> int:
                 pg.click("#np-tx-btn"); time.sleep(0.4)
                 sheet_open = pg.eval_on_selector(".tx-sheet", "el=>el.classList.contains('open')")
                 if pg.query_selector("#tx-mini-play"):
+                    # The controls hide after 6 s without touch, and on a loaded machine that can pass before
+                    # this line runs. A real first tap wakes them through pointerdown, so do the same.
+                    pg.evaluate("""document.querySelector('.tx-sheet-card')
+                      .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))""")
                     pg.click("#tx-mini-play")
-            # 운전 캡처(v1.39.1): 칩은 transcript 시트 툴바(#tx-drive) — 시트를 연 뒤에만 클릭 가능
-            # (닫힌 시트는 pointer-events:none). 칩 ON → FAB 표시 → 탭 = 현재 시각 마크(aep-marks)
-            # → 칩 OFF → FAB 숨김. 저장된 마크는 아래 Study 하니스가 트리아지로 이어받는다.
             # ⚡ 성능 회귀 가드 — 닫힌 시트가 레이아웃되면 안 된다.
             # 실측(2026-08-01, 자막 420문장·CPU 4x): 닫힌 시트도 transform 으로만 숨겨져 있어 span
             # 11,650개가 매번 배치됐고, 회차 열기가 롱태스크 173ms 였다(트랜스크립트를 안 여는
@@ -875,9 +879,9 @@ def main() -> int:
                 tb_normal[_vw] = _toolbar_row_of_last_open_sheet()
                 _shot(pg, f"tx-toolbar-normal-{_vw}")
             pg.set_viewport_size(_vp_before_tb1); time.sleep(0.2)
-            print("TX-TOOLBAR-NORMAL (7 chips):", tb_normal)
+            print("TX-TOOLBAR-NORMAL (6 chips):", tb_normal)
             tb_normal_ok = all(
-                isinstance(tb_normal[v], dict) and tb_normal[v]["n"] == 7
+                isinstance(tb_normal[v], dict) and tb_normal[v]["n"] == 6
                 and tb_normal[v]["offscreen"] == 0 and tb_normal[v]["topRange"] < 8
                 for v in (360, 390))
             pg.evaluate("window.__renderEp(4)"); time.sleep(0.4)
@@ -976,7 +980,7 @@ def main() -> int:
                 # 가로 넘침(overflow)은 한 폭에서만 assert 한다. ⚠ 2026-08-07 의 '하니스가 실기기보다
                 # 49px 넓게 잰다'는 더 이상 사실이 아니다 — 칩 대부분이 고정폭이 된 뒤 2026-09-25 에
                 # Roboto(안드로이드 기본)를 주입해 재니 칩 폭 합계가 SF 하니스와 2px 차이였다.
-                and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 9
+                and all(isinstance(tx_toolbar_worst[v], dict) and tx_toolbar_worst[v]["n"] == 8
                         and tx_toolbar_worst[v]["topRange"] < 8 for v in (360, 390, 412))
                 # v1.77.0: ⤒ Lift 로 영상 회차 칩이 9개가 됐다. 넘침 0 기준 폭을 390 → 412(사용자 실기기,
                 # 스크린샷 칩 폭으로 역산)로 옮긴다. 390 에선 6px(SF)/384 에선 9px(Roboto) 가로 스와이프가
@@ -1885,11 +1889,11 @@ def main() -> int:
               const tb = sheet.querySelector('.tx-toolbar');
               const sc = sheet.querySelector('.tx-scroll');
               const lift = sheet.querySelector('#tx-lift');
-              const drive = sheet.querySelector('#tx-drive');
+              const ref = sheet.querySelector('#tx-speed');   // a neighbouring chip (#tx-drive retired in v1.80.0)
               const p0 = sc.querySelector('.tx-para');
               const r = (el) => el ? el.getBoundingClientRect() : null;
               const R = (x) => Math.round(x * 10) / 10;
-              const lr = r(lift), dr = r(drive), tr = r(tb);
+              const lr = r(lift), rr = r(ref), tr = r(tb);
               return {
                 lifted: card.classList.contains('lifted'),
                 pressed: lift ? lift.getAttribute('aria-pressed') : null,
@@ -1899,10 +1903,10 @@ def main() -> int:
                 tbTop: R(tr.top), tbBot: R(tr.bottom),
                 scTop: R(r(sc).top), scrollTop: sc.scrollTop,
                 p0Top: p0 ? R(r(p0).top - r(sc).top + sc.scrollTop) : null,
-                liftH: lr ? R(lr.height) : null, driveH: dr ? R(dr.height) : null,
+                liftH: lr ? R(lr.height) : null, refH: rr ? R(rr.height) : null,
                 liftW: lr ? R(lr.width) : null,
                 liftRightGap: lr ? R(tr.right - lr.right) : null,
-                liftMidY: lr ? R(lr.top + lr.height / 2) : null, driveMidY: dr ? R(dr.top + dr.height / 2) : null,
+                liftMidY: lr ? R(lr.top + lr.height / 2) : null, refMidY: rr ? R(rr.top + rr.height / 2) : null,
                 chips: tb.querySelectorAll('.tx-toggle').length,
                 overflow: Math.max(0, tb.scrollWidth - tb.clientWidth),
                 store: localStorage.getItem('aep-tx-lift'),
@@ -1921,15 +1925,27 @@ def main() -> int:
                     page.add_init_script("try{localStorage.setItem('aep-tx-lift','%s')}catch(e){}" % pre)
                 page.route("**/api.mymemory.translated.net/**", _mm)
                 page.goto("http://localhost:8123/_harness.html" + fx)
-                page.wait_for_function("window.__ready===true", timeout=10000)
+                try:
+                    page.wait_for_function("window.__ready===true", timeout=10000)
+                except Exception:
+                    print("LIFT-PAGE-NOT-READY errs=", lift_errs[-6:], flush=True)
+                    raise
                 return ctx, page
 
             ctx_l, pl = _lift_page()
             pl.eval_on_selector("#np-tx-btn", "el=>el.click()"); time.sleep(0.6)
             lift_a = pl.evaluate(LIFT_GEO_JS)
             _shot(pl, "lift-0-normal-412")
+            # The chip must animate, not snap. Recorded in the page with transitionrun: a 120 ms sleep
+            # followed by a geometry read overshoots a 300 ms transition when the machine is loaded.
+            pl.evaluate("""() => {
+              const c = [...document.querySelectorAll('.tx-sheet.open')].pop().querySelector('.tx-sheet-card');
+              window.__liftRuns = [];
+              c.addEventListener('transitionrun', (e) => { if (e.target === c) window.__liftRuns.push(e.propertyName); });
+            }""")
             pl.tap("#tx-lift"); time.sleep(0.12)
             lift_mid = pl.evaluate(LIFT_GEO_JS)
+            lift_runs = pl.evaluate("window.__liftRuns")
             _shot(pl, "lift-1-mid-412")
             time.sleep(0.5)
             lift_b = pl.evaluate(LIFT_GEO_JS)
@@ -1939,10 +1955,11 @@ def main() -> int:
             _shot(pl, "lift-3-restored-412")
             ctx_l.close()
             print("LIFT-NORMAL:", lift_a)
-            print("LIFT-MID(120ms):", lift_mid)
+            print("LIFT-MID(120ms):", lift_mid, " transitionrun=", lift_runs)
             print("LIFT-ON:", lift_b)
             print("LIFT-RESTORED:", lift_c)
-            _ok = lambda d: isinstance(d, dict)
+            def _ok(d):
+                return isinstance(d, dict)
             gain = (lift_a["scTop"] - lift_b["scTop"]) if _ok(lift_a) and _ok(lift_b) else 0
             want_gain = (round(lift_a["vh"] * 0.08, 1) + lift_a["headerH"]) if _ok(lift_a) else -1
             lift_on_ok = (_ok(lift_a) and _ok(lift_b) and lift_a["lifted"] is False and lift_a["pressed"] == "false"
@@ -1951,14 +1968,16 @@ def main() -> int:
                           and lift_b["tbTop"] == 0 and lift_b["radius"] == "0px"
                           and abs(gain - want_gain) <= 1 and gain >= 120
                           and lift_b["scrollTop"] == lift_a["scrollTop"] and lift_b["store"] == "1")
-            # 전환이 실제로 '움직이는지'(스냅이 아닌지) — 120ms 시점엔 카드 top 이 두 끝값 사이여야 한다.
-            lift_anim_ok = _ok(lift_mid) and 0 < lift_mid["cardTop"] < lift_a["cardTop"]
+            # 전환이 실제로 '움직이는지'(스냅이 아닌지) — 카드 높이 전환이 시작됐다는 브라우저 이벤트로 판정한다.
+            lift_anim_ok = "height" in lift_runs
             lift_off_ok = (_ok(lift_c) and lift_c["lifted"] is False and lift_c["pressed"] == "false"
                            and lift_c["store"] == "0"
                            and all(abs(lift_c[k] - lift_a[k]) <= 0.5 for k in ("cardTop", "headerH", "tbTop", "scTop")))
-            lift_chip_ok = (_ok(lift_a) and lift_a["liftH"] == lift_a["driveH"]
-                            and abs(lift_a["liftMidY"] - lift_a["driveMidY"]) <= 0.5
-                            and lift_a["liftRightGap"] <= 5.5 and lift_a["chips"] == 7 and lift_a["overflow"] == 0)
+            # Icon chips are 34px and text chips 30px by design (#tx-drive was the lift chip's icon twin), so
+            # height is a ceiling here; what the row needs is a shared midline.
+            lift_chip_ok = (_ok(lift_a) and lift_a["liftH"] <= lift_a["refH"] + 4
+                            and abs(lift_a["liftMidY"] - lift_a["refMidY"]) <= 0.5
+                            and lift_a["liftRightGap"] <= 5.5 and lift_a["chips"] == 6 and lift_a["overflow"] == 0)
             # ⑦ 올린 상태의 문단 앵커는 본문 한 줄만큼 더 위(사용자 요청 2026-10-01). 같은 문단 진입을 기본/올림
             #    두 상태에서 재고, '스크롤 영역 윗변 → 문단 윗변' 거리를 비교한다.
             PARA_GAP_JS = """(t) => new Promise((res) => {
@@ -2007,7 +2026,7 @@ def main() -> int:
             lift_vid2 = pl.evaluate(LIFT_GEO_JS)
             ctx_l.close()
             print("LIFT-VIDEO:", lift_vid, " FS:", lift_fs, " AFTER-FS:", lift_vid2)
-            lift_video_ok = (_ok(lift_vid) and lift_vid["chips"] == 9 and lift_vid["overflow"] == 0
+            lift_video_ok = (_ok(lift_vid) and lift_vid["chips"] == 8 and lift_vid["overflow"] == 0
                              and lift_vid["lifted"] is True and lift_vid["tbTop"] == 0
                              and isinstance(lift_fs, dict) and lift_fs["fs"] is True and lift_fs["top"] == 0
                              and lift_fs["padTop"] == "0px"

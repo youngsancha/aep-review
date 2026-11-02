@@ -13,7 +13,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.80.0';
+const VERSION = '1.81.0';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -25,6 +25,7 @@ const IMG_CACHE = 'aep-review-img-v1';
 // (아래 KEEP 에도 등록 — 없으면 다음 activate 에서 통째로 삭제된다).
 const DOC_CACHE = 'aep-review-doc-v1';
 const DATA_MAX = 400;
+const AUDIO_NET_TIMEOUT_MS = 2500;   // opaque 오디오 사본이 있을 때 네트워크에 주는 시간 — serveAudio 참고
 const NET_TIMEOUT_MS = 3000;   // 캐시 사본이 있을 때 네트워크에 주는 시간(lie-fi 상한) — networkFirst 참고   // 회차 프리페치(최근 N개 행+자막+번역)가 들어가도록 160→400
 const IMG_MAX = 30;
 
@@ -61,8 +62,8 @@ const ICONS = [
 const SHELL_CRITICAL = [
   '/', '/index.html', '/manifest.json',
   '/style.css' + Q,
-  '/app.js' + Q, '/speech.js' + Q,  '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q,
-  '/config.js' + Q, '/supabase.js' + Q, '/db.js' + Q,   '/translate.js' + Q,  '/settings.js' + Q,  '/offline.js' + Q, '/offline-pins.js' + Q,
+  '/app.js' + Q, '/speech.js' + Q,  '/player.js' + Q, '/video.js' + Q, '/media-session.js' + Q, '/stall-guard.js' + Q, '/scrub.js' + Q, '/sw-reload.js' + Q,
+  '/config.js' + Q, '/supabase.js' + Q, '/auth-fetch.js' + Q, '/db.js' + Q,   '/translate.js' + Q,  '/settings.js' + Q,  '/offline.js' + Q, '/offline-pins.js' + Q,
   '/views/timeline.js' + Q, '/views/episode.js' + Q,   '/views/login.js' + Q,
 
   '/vendor/supabase-js.mjs' + Q,
@@ -73,7 +74,6 @@ const SHELL_OPTIONAL = [
 
   '/icons/wh-cover.png?v=1',
 ];
-const SHELL = [...SHELL_CRITICAL, ...SHELL_OPTIONAL];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
@@ -181,7 +181,8 @@ async function networkFirst(req, pinId, event) {
   if (cached) {
     const timeout = new Promise((res) => setTimeout(() => res(null), NET_TIMEOUT_MS));
     const res = await Promise.race([net.catch(() => null), timeout]);
-    if (res) return res;
+    // ⛔ 401/429/5xx 같은 비정상 응답은 사본을 이기면 안 된다 — 사본이 있는데 오류 화면을 받는 건 퇴보.
+    if (res && res.ok) return res;
     if (event) { try { event.waitUntil(net.catch(() => {})); } catch (_) { /* settled */ } }
     return cached;
   }
@@ -227,7 +228,13 @@ async function serveAudio(req) {
   const cached = await cache.match(req.url, { ignoreVary: true });
   if (!cached) return fetch(req);
   if (cached.type === 'opaque') {
-    try { return await fetch(req); } catch (err) { return cached; }
+    // ⛔ lie-fi(onLine=true 인데 데이터가 죽음)에서 fetch 가 OS 타임아웃까지 매달리면 받아 둔 회차가
+    // 재생되지 않는다 → 네트워크에 AUDIO_NET_TIMEOUT_MS 만 주고 사본으로 폴백(reject 도 사본).
+    // 읽을 수 있는 오류(502 등)도 사본을 이기면 안 된다. ⚠ 단 no-cors <audio> 응답은 opaque 라 성공해도 ok=false
+    // 이므로, ok 만 보면 스트리밍이 조용히 끊겨 항상 사본(시크 불가)으로 재생된다.
+    const timeout = new Promise((res) => setTimeout(() => res(null), AUDIO_NET_TIMEOUT_MS));
+    const res = await Promise.race([fetch(req).catch(() => null), timeout]);
+    return (res && (res.ok || res.type === 'opaque')) ? res : cached;
   }
   const range = req.headers.get('range');
   if (range && cached.status === 200) {

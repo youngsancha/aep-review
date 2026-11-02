@@ -183,6 +183,8 @@ def check_ui_tracked() -> None:
         rel = p.relative_to(ROOT).as_posix()
         if p.name.startswith("_"):   # 하니스 픽스처(_mocks.js/_harness*.html)는 일시 생성물 → 제외
             continue
+        if "__pycache__" in p.parts:  # ui/icons/build.py 를 돌리면 생긴다. 재생성물이라 배포 대상이 아니다.
+            continue
         if rel not in tracked:
             missing.append(rel)
     if missing:
@@ -258,6 +260,7 @@ def run_gates() -> None:
         ("eslint + jscheck + node tests", ["npm", "run", "-s", "gate"]),
         ("pytest", [sys.executable, "-m", "pytest", "-q"]),
         ("browser harness", [sys.executable, "scripts/_pwtest.py"]),
+        ("real-stack smoke", [sys.executable, "scripts/_smoke_realstack.py"]),
     ]
     for label, cmd in steps:
         print(f"gate: {label}", flush=True)

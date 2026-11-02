@@ -3,8 +3,10 @@
 // import 체인이 오프라인 부팅을 깨뜨렸다(v? + 스켈레톤) — 근거는 그 스크립트 상단 주석.
 import { createClient } from '/vendor/supabase-js.mjs';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '/config.js';
+import { keepSessionOnOutage } from '/auth-fetch.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: keepSessionOnOutage((input, init) => fetch(input, init)) },
   auth: {
     persistSession: true,        // 폰에서 1회 로그인 후 세션 유지
     autoRefreshToken: true,

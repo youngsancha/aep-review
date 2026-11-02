@@ -14,6 +14,7 @@ class Player {
   constructor() {
     this.audio = new Audio();
     this.audio.preload = 'metadata';
+    this._resumeAt = null; this._resumeRate = null; this._restoreFn = null;
     this.current = null;  // { id, title, show, cover, src }
     this.listeners = new Set();
 
@@ -27,6 +28,11 @@ class Player {
     // === 정체 감시(stall-guard.js) — 오프라인·화면꺼짐·에어팟에서 재생이 소리 없이 멈추는 문제 ===
     this._guard = guard.initialState();
     this.audio.addEventListener('timeupdate', () => guard.noteTime(this._guard, this.audio.currentTime, Date.now()));
+    // 일시정지가 길었다면 lastAdvanceAt 이 한참 옛날 → ▶ 직후 5초 감시가 '정체'로 오판해 불필요한 재로드를 한다.
+    // 단 shouldReloadBeforePlay 는 play() 안에서 이 이벤트보다 먼저 평가되므로 죽은 파이프라인 복구는 그대로다.
+    // ⛔ 'playing' 에는 걸지 않는다: waiting↔playing 을 오가며 시간이 멈춘 파이프라인이 매번 시계를 되감아
+    // 정체 판정이 영영 안 난다. 일시정지 복귀는 'play' 하나로 충분하고, 그 뒤 진행은 timeupdate 가 잡는다.
+    this.audio.addEventListener('play', () => guard.notePlay(this._guard, Date.now()));
     this.audio.addEventListener('waiting', () => { guard.noteWaiting(this._guard, Date.now()); playLog('waiting', this._snap()); });
     this.audio.addEventListener('stalled', () => { guard.noteWaiting(this._guard, Date.now()); playLog('stalled', this._snap()); });
     this.audio.addEventListener('error', () => playLog('error', this._snap()));
@@ -54,21 +60,37 @@ class Player {
     this._reload(true);
   }
 
+  // 재로드 직전 위치·속도를 인스턴스에 하나씩만 보관한다(트랙 변경 시 해제). src 를 다시 세팅하면 load 알고리즘이
+  // currentTime 을 0, playbackRate 를 기본값으로 되돌리므로, 에러 후 재생·겹친 재로드가 0:00·1× 로 가거나 옛 위치를
+  // 새 트랙에 적용하지 않게 모든 경로가 이 값을 쓴다. 이미 복원 대기 중이면(아직 loadedmetadata 전) 덮어쓰지 않는다.
+  _resetSrc(thenPlay) {
+    const a = this.audio;
+    if (this._resumeAt == null) this._resumeAt = a.currentTime || 0;
+    if (this._resumeRate == null) this._resumeRate = a.playbackRate || 1;
+    if (this._restoreFn) a.removeEventListener('loadedmetadata', this._restoreFn);   // 겹친 재로드: 앞의 복원은 폐기
+    const track = this.current;
+    a.src = track.src;
+    const restore = () => {
+      a.removeEventListener('loadedmetadata', restore);
+      if (this._restoreFn === restore) this._restoreFn = null;
+      if (this.current !== track) return;           // 그 사이 트랙이 바뀜 — 옛 위치를 새 트랙에 쓰지 않는다
+      const t = this._resumeAt, rate = this._resumeRate;
+      this._resumeAt = null; this._resumeRate = null;
+      try { if (t) a.currentTime = t; if (rate) a.playbackRate = rate; } catch (e) {}
+      if (thenPlay) a.play().catch((err) => playLog('reload-play-failed', { name: err && err.name }));
+    };
+    this._restoreFn = restore;
+    a.addEventListener('loadedmetadata', restore);
+    try { a.load(); } catch (e) {}
+  }
+
   // 같은 위치로 src 를 다시 로드한다: 새 fetch → (죽어 있던 SW 가 다시 뜨고) 캐시에서 다시 읽는다.
   _reload(thenPlay) {
     const a = this.audio;
-    const t = a.currentTime || 0, rate = a.playbackRate || 1;
     guard.noteRecovery(this._guard, Date.now());
-    playLog('reload', { t, thenPlay });
+    playLog('reload', { t: this._resumeAt ?? (a.currentTime || 0), thenPlay });
     try { a.pause(); } catch (e) {}
-    a.src = this.current.src;
-    const restore = () => {
-      a.removeEventListener('loadedmetadata', restore);
-      try { a.currentTime = t; a.playbackRate = rate; } catch (e) {}
-      if (thenPlay) a.play().catch((err) => playLog('reload-play-failed', { name: err && err.name }));
-    };
-    a.addEventListener('loadedmetadata', restore, { once: true });
-    try { a.load(); } catch (e) {}
+    this._resetSrc(thenPlay);
   }
 
   load(track) {
@@ -77,6 +99,8 @@ class Player {
       return;
     }
     this.current = track;
+    this._resumeAt = null; this._resumeRate = null;
+    if (this._restoreFn) { this.audio.removeEventListener('loadedmetadata', this._restoreFn); this._restoreFn = null; }
     this.audio.src = track.src;
     guard.noteTrackChange(this._guard);
     this._emit('track');
@@ -87,8 +111,7 @@ class Player {
     // 딥링크/새로고침 직후 콜드 스타트: src 가 비었거나 에러면 현재 트랙으로 (재)설정 + 강제 로드.
     // (네비게이션과 달리 직접 에피소드 로드 시 오디오가 한 번도 '워밍업' 안 돼 첫 재생이 먹통이던 문제)
     if (this.current && this.current.src && (a.error || !a.currentSrc)) {
-      a.src = this.current.src;
-      try { a.load(); } catch (e) {}
+      this._resetSrc(false);   // 위치 보존(예전엔 src 재설정으로 0:00 부터 다시 시작) — 재생은 아래 tryPlay/onReady
     } else if (this.current && this.current.src
                && guard.shouldReloadBeforePlay(this._guard, this._snap(), Date.now())) {
       // 에어팟/잠금화면 ▶: 오래 waiting 이던 파이프라인은 play() 가 resolve 만 하고 소리가 안 난다 → 재로드 후 재생.
@@ -112,9 +135,9 @@ class Player {
   }
   pause()   { this.audio.pause(); }
   toggle()  { this.audio.paused ? this.play() : this.pause(); }
-  seek(t)   { if (Number.isFinite(t)) this.audio.currentTime = t; }
-  rate(r)   { this.audio.playbackRate = r; }
-  skip(d)   { this.audio.currentTime = Math.max(0, this.audio.currentTime + d); }
+  seek(t)   { if (Number.isFinite(t)) { this._resumeAt = null; this.audio.currentTime = t; } }   // 사용자 시크가 대기 중인 복원 위치를 이긴다
+  rate(r)   { this._resumeRate = null; this.audio.playbackRate = r; }   // 사용자 선택이 대기 중인 복원 속도를 이긴다
+  skip(d)   { this._resumeAt = null; this.audio.currentTime = Math.max(0, this.audio.currentTime + d); }
 
   on(fn)  { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   _emit(ev) {
@@ -229,10 +252,12 @@ function refreshMini() {
   if (!player.current) {
     $mp.classList.add('hidden');
     $mp.setAttribute('aria-hidden', 'true');
+    $mp.inert = true;            // 숨긴 플레이어의 버튼에 키보드 포커스가 들어가지 않게
     return;
   }
   $mp.classList.remove('hidden');
   $mp.setAttribute('aria-hidden', 'false');
+  $mp.inert = false;
   // 커버/제목은 '트랙이 바뀔 때만' 재기록 — 매 timeupdate(4Hz)마다 .src/.textContent 쓰기를 없앤다.
   if (player.current.id !== _miniTrackId) {
     _miniTrackId = player.current.id;
@@ -275,6 +300,8 @@ if ($prog) {
       const dur = player.duration;
       if (dur) { player.seek(dur * frac); player.play(); }
     },
+    onCancel() { refreshMini(); },   // 제스처 취소: seek 없이 미리보기를 실제 재생 위치로 되돌린다
+
   });
 }
 

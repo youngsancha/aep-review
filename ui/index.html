@@ -24,7 +24,7 @@
   <script>
     // 버전 표기: 유의적 버전(major.minor.patch) — 기능 추가→minor, 버그·미세수정→patch.
     // (과거 정수 표기 144 = 1.4.4 기준; 이후 점 표기로 전환)
-    window.APP_VERSION = '1.80.0';
+    window.APP_VERSION = '1.81.0';
     // 페인트 전에 저장된 테마를 적용해 깜빡임 방지 (auto 면 시스템 설정에 맡김)
     (function () { try {
       var t = localStorage.getItem('aep-theme');
@@ -37,8 +37,8 @@
       document.head.appendChild(css);
 
       const paths = [
-        '/app.js', '/speech.js',  '/player.js', '/video.js', '/media-session.js', '/stall-guard.js', '/scrub.js',
-        '/config.js', '/supabase.js', '/db.js',  '/offline.js', '/offline-pins.js',
+        '/app.js', '/speech.js',  '/player.js', '/video.js', '/media-session.js', '/stall-guard.js', '/scrub.js', '/sw-reload.js',
+        '/config.js', '/supabase.js', '/auth-fetch.js', '/db.js',  '/offline.js', '/offline-pins.js',
          '/translate.js',  '/settings.js',
         '/views/timeline.js', '/views/episode.js',   '/views/login.js',
          '/vendor/supabase-js.mjs',
@@ -75,7 +75,7 @@
        첫 렌더(renderTimeline/showLogin)가 #app.innerHTML 을 교체하며 자연스럽게 사라진다. -->
   <main id="app"><div class="skel-hero"></div><div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div><div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div><div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div><div class="skel-row"><div class="skel-thumb"></div><div class="skel-lines"><span class="skel-line w40"></span><span class="skel-line w90"></span><span class="skel-line w60"></span></div></div></main>
 
-  <div id="miniplayer" class="hidden" aria-hidden="true">
+  <div id="miniplayer" class="hidden" aria-hidden="true" inert>
     <img id="mp-cover" class="mp-cover" alt="" />
     <div class="mp-body">
       <div id="mp-title" class="mp-title">—</div>

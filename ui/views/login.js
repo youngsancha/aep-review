@@ -2,7 +2,6 @@
 // email+password 폼은 기본 숨김 — Google 프로바이더가 서버(대시보드)에서 비활성(400)일 때만
 // 비상 폴백으로 노출한다(안 그러면 프로바이더 설정 전엔 로그인 수단이 전무). 성공 시 onSuccess().
 import { supabase } from '/supabase.js';
-import { escapeHtml } from '/app.js';
 import { SHOW_COVER, APP_NAME } from '/config.js';
 
 // Google 버튼은 리다이렉트 직전 disabled 로 잠근다. 사용자가 Google 페이지에서 '뒤로가기' 하면
@@ -96,7 +95,7 @@ export function renderLogin(root, onSuccess) {
       if (error) throw error;
       onSuccess();
     } catch (err) {
-      $err.textContent = 'Sign-in failed: ' + escapeHtml(String(err.message || err));
+      $err.textContent = 'Sign-in failed: ' + String(err.message || err);
       $err.hidden = false;
       $btn.disabled = false;
       $btn.textContent = 'Sign In';

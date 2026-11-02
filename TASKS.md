@@ -113,7 +113,8 @@
 
 ## 2026-08-26 09:00 넘어옴
 
-- [ ] **P2** _pwtest download 서브체크 red: 오디오를 캐시에 심어도 오프라인 칩이 Saved 로 안 바뀐다
+- [x] **P2** _pwtest download 서브체크 red: 오디오를 캐시에 심어도 오프라인 칩이 Saved 로 안 바뀐다
+  - Closed 2026-11-01: the whole harness is green (`RESULT: PASS`, no failed groups).
   - 메모: 2026-08-25 측정: EP-SUBFAILED 에 download 가 들어 있다(OFFLINE-CHIP: idle=Offline saved=Offline, 기대값 saved=Saved). libvideo 를 고친 뒤에도 남아 있고, 오늘 밤 첫 실행(아무것도 안 고친 상태)에서도 이미 red 였으니 내 변경 탓이 아니다. 프로젝트 메모리엔 v1.68.0 기준 알려진 red 가 libvideo 하나뿐이라고 적혀 있으므로, v1.69/v1.70 의 오프라인 관련 커밋 4건(HEAD count 캐시, ko 사전번역까지 있어야 ready, 네트워크 실패 안 기다리기, 오디오 업로드) 사이에서 생긴 회귀일 가능성이 높다. 확인한 것: 캐시 이름은 offline.js/service-worker.js/하니스 셋 다 aep-review-audio-v1 로 일치, isEpisodeCached 는 여전히 오디오만 본다. 다음 단계는 __seedAudio 가 실제로 캐시에 들어가는지(캐시 키 URL 대조) 확인.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:eff30852-0f07-4ac7-9625-c64381115720 -->
@@ -135,7 +136,8 @@
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   - 고침 2026-08-30: upsert 문제가 아니라 **PostgREST 의 조용한 1,000 행 상한**이었다. 일일 cron 은 show=None 으로 돌아 필터 없는 dedupe 조회를 하는데, episodes 가 1,026 행이 되면서 그 집합에 1,000 개만 담겼다. 잘린 26 개 중 하나가 RSS 에 다시 나타나 중복키로 런 전체(전사 포함)가 죽었다 — 코드는 안 바뀌고 데이터가 자라서 깨진 것. existing_guids 가 이제 배치 guid 만 물어보고(테이블 크기와 무관), 배치 없이 부르는 경로는 명시적으로 페이지를 넘긴다. 같은 상한에 걸려 있던 episodes_by_recency 도 고쳤다 — 감사·R2 업로드가 35 개 회차를 아예 못 보고 있었다.
   <!-- td:e9b1c6f5-c9d1-43d4-b07f-2a80ef45126e -->
-- [ ] **P3** 오프라인 회차 스냅샷 회귀 하네스를 _pwtest 에 편입 (25.5s→1.3s 계측 고정)
+- [x] **P3** 오프라인 회차 스냅샷 회귀 하네스를 _pwtest 에 편입 (25.5s→1.3s 계측 고정)
+  - Done 2026-11-01 as `scripts/_smoke_realstack.py`: real service worker, supabase-js, db.js and player.js with a fake network, including a dead-network cold boot proven by a page marker. 2.7 to 3.3 s at load 35-40. Runs in `scripts/release.py`.
   - 메모: 실제 ui/ + 실제 SW + 실제 supabase-js 로 오프라인 회차 진입 시간을 재는 하네스가 세션 스크래치에만 있다. 리포로 옮기면 이 회귀(무한 스피너)를 CI 에서 잡을 수 있다. ⚠ 하네스 트랩 두 개: (1) goto() 로 해시만 바꾸면 재로드가 안 돼 옛 DOM 을 측정한다(양쪽 arm 이 3ms 로 나왔다) — reload() + window.__preReload 마커로 콜드부팅을 증명할 것. (2) 시나리오가 staged 안 됐으면 pass 로 읽히지 않게 명시적으로 거부할 것.
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:3e71e0ce-173e-45cd-b587-d82dde3007b2 -->
@@ -163,7 +165,8 @@
 
 ## 2026-09-25 09:00 넘어옴
 
-- [ ] **P2** _pwtest 기존 실패 3그룹 수리: realvideo/ytblocked (db 목에 markUnknown·loadEpisodeSnapshot 없음), study (qb_ico/qb_txt 9개 vs 기대 8, qb_uniform False)
+- [x] **P2** _pwtest 기존 실패 3그룹 수리: realvideo/ytblocked (db 목에 markUnknown·loadEpisodeSnapshot 없음), study (qb_ico/qb_txt 9개 vs 기대 8, qb_uniform False)
+  - Closed 2026-11-01: harness green. The Study groups went with Study; the rest fell to the db mock stubs, the teardown fix and updated chip counts.
   - 메모: v1.77.0 전엔 settings 하니스가 중간에 죽어 가려져 있었음
   - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
   <!-- td:57f9e515-f591-4a69-9aa3-0347961f4c26 -->

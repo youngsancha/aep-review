@@ -51,11 +51,18 @@ function seg(name, steps, cur, keyOf) {
   }).join('')}</div>`;
 }
 
+let _opening = false;
 export async function openSettings(deps) {
-  if (document.querySelector('.set-backdrop')) return;   // 중복 열림 방지
-  let off = null;
-  try { off = await import('/offline.js'); } catch (e) { /* 오프라인 모듈 없으면 그 섹션만 생략 */ }
-  const account = await fetchAccount();
+  // 중복 열림 방지 — 아래 await 두 개(모듈 import·계정 조회) 이전에 '동기적으로' 막아야 한다.
+  // 늦게 막으면 더블탭이 시트 둘 + keydown 리스너 둘을 쌓는다.
+  if (_opening || document.querySelector('.set-backdrop')) return;
+  _opening = true;
+  let off = null, account = null;
+  try {
+    try { off = await import('/offline.js'); } catch (e) { /* 오프라인 모듈 없으면 그 섹션만 생략 */ }
+    account = await fetchAccount();
+  } finally { _opening = false; }
+  if (document.querySelector('.set-backdrop')) return;
 
   const curTheme = (() => {
     let s = null; try { s = localStorage.getItem('aep-theme'); } catch (e) {}
@@ -102,11 +109,13 @@ export async function openSettings(deps) {
   function close() {
     back.classList.remove('open');
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('hashchange', close);
     setTimeout(() => back.remove(), 240);
   }
   back.addEventListener('click', (e) => { if (e.target === back) close(); });
   back.querySelector('#set-x')?.addEventListener('click', close);
   document.addEventListener('keydown', onKey);
+  window.addEventListener('hashchange', close);   // 화면이 바뀌면 시트도 닫는다
 
   // 테마 세그먼트 — Auto/Light/Dark. Auto 는 localStorage 제거(시스템 추종 복귀).
   back.querySelectorAll('.set-seg')[0]?.querySelectorAll('.set-seg-btn').forEach((b) => {
