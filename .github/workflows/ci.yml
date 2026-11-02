@@ -1,0 +1,48 @@
+# Fast gates on every push and PR.
+#
+# Why this exists (2026-11-01): v1.80.0 removed `setDrive`'s import and left one call behind. That is
+# a ReferenceError on every exit from an episode, so the rest of cleanup() never ran and each visit
+# left a dead transcript sheet in the DOM. `eslint` reported it as `no-undef` the day it shipped, but
+# nothing ran eslint: the only automation in this repo was the ingest cron.
+#
+# The browser harness (scripts/_pwtest.py) stays out of CI on purpose: its layout checks are tuned to
+# a phone viewport with Android/macOS fonts, so a Linux runner would report font widths, not bugs.
+# scripts/release.py runs it locally instead.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run gate
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest -q

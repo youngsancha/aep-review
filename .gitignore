@@ -15,6 +15,8 @@ logs/
 .idea/
 .vscode/
 node_modules/
+# Supabase CLI scratch. Left untracked it keeps the tree dirty, and aep-deploy-watch skips a dirty tree.
+supabase/.temp/
 .vercel
 .env*
 

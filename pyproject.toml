@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.8"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.8", "pyyaml>=6.0"]
 
 # ── ruff ─────────────────────────────────────────────────────────────────────
 # 목표: '통과하는 린트 게이트'. 이전엔 76건이 상시 빨간불이라 아무도 보지 않았고, 그래서 그 안에

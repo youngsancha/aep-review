@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "eslint ui scripts tests",
+    "lint": "eslint ui scripts tests --max-warnings=0",
     "check": "node scripts/jscheck.mjs",
-    "test": "node --test tests/*.mjs"
+    "test": "node --test tests/*.mjs",
+    "gate": "npm run -s lint && npm run -s check && npm test"
   },
   "devDependencies": {
     "eslint": "^10.7.0"

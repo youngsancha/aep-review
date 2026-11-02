@@ -1,12 +1,19 @@
-"""One-click release for overnight builds: bump APP_VERSION and the SW VERSION together, commit, push.
-
-Call it from each loop iteration that changed code:
+"""One-click release: run the gates, bump APP_VERSION and the SW VERSION together, commit, push.
 
     python -m scripts.release "feat: 문장 반복(쉐도잉) 토글"      # minor bump (default): 1.70.0 -> 1.71.0
     python -m scripts.release --patch "fix: typo"                   # 1.70.0 -> 1.70.1
     python -m scripts.release --major "feat!: new shell"            # 1.70.0 -> 2.0.0
     python -m scripts.release --set 2.0.0 "feat!: new shell"        # explicit
     python -m scripts.release --dry-run "..."                       # print the plan, touch nothing
+    python -m scripts.release --no-push "..."                       # commit only (see below)
+    python -m scripts.release --skip-gates "..."                    # hotfix when a gate is itself broken
+
+⛔ Every push to main spends one of the ~100 Vercel deployments shared by the whole account. A loop
+that releases more than once must use --no-push and push once at the end.
+
+⛔ The gates are not optional decoration. v1.80.0 went out through this script with an undefined
+`setDrive` in the episode teardown: eslint had reported it, the browser harness had failed on it, and
+this script ran neither, so every exit from an episode threw until someone happened to run eslint.
 
 `window.APP_VERSION` in ui/index.html and `VERSION` in ui/service-worker.js MUST hold the
 same value (they key the SW cache and the importmap query string). Bumping both in one step and
@@ -26,6 +33,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 # Windows 콘솔(cp949)에서 커밋 메시지의 em-dash 등 비ASCII 출력 시 크래시 방지.
@@ -203,46 +211,81 @@ def check_ui_tracked() -> None:
             )
 
 
-def parse_args(argv: list[str]) -> tuple[str, str, str | None, bool]:
-    """-> (commit message, level, explicit version or None, dry_run)."""
-    level = "minor"
+@dataclass
+class Options:
+    msg: str
+    level: str = "minor"
     explicit: str | None = None
-    dry_run = False
+    dry_run: bool = False
+    push: bool = True
+    gates: bool = True
+
+
+def parse_args(argv: list[str]) -> Options:
+    opts = Options(msg="update")
     rest: list[str] = []
     i = 0
     while i < len(argv):
         a = argv[i]
         if a in ("--major", "--minor", "--patch"):
-            level = a[2:]
+            opts.level = a[2:]
         elif a == "--dry-run":
-            dry_run = True
+            opts.dry_run = True
+        elif a == "--no-push":
+            opts.push = False
+        elif a == "--skip-gates":
+            opts.gates = False
         elif a == "--set":
             i += 1
             if i >= len(argv):
                 raise SystemExit("release aborted — --set needs a version, e.g. --set 2.0.0")
-            explicit = argv[i]
+            opts.explicit = argv[i]
         elif a.startswith("--set="):
-            explicit = a.split("=", 1)[1]
+            opts.explicit = a.split("=", 1)[1]
         elif a.startswith("--"):
             raise SystemExit(f"release aborted — unknown flag {a!r}")
         else:
             rest.append(a)
         i += 1
-    msg = rest[0] if rest else "update"
-    return msg, level, explicit, dry_run
+    if rest:
+        opts.msg = rest[0]
+    return opts
+
+
+def run_gates() -> None:
+    """Stop before anything is bumped if the tree fails a gate. Prints the tail of what failed."""
+    steps = [
+        ("eslint + jscheck + node tests", ["npm", "run", "-s", "gate"]),
+        ("pytest", [sys.executable, "-m", "pytest", "-q"]),
+        ("browser harness", [sys.executable, "scripts/_pwtest.py"]),
+    ]
+    for label, cmd in steps:
+        print(f"gate: {label}", flush=True)
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            tail = "\n".join((r.stdout + r.stderr).splitlines()[-25:])
+            raise SystemExit(f"release aborted — {label} failed:\n{tail}")
+
+
+def commit_message(msg: str, version: str) -> str:
+    """Put the version on the subject line, so trailers in `msg` stay the last paragraph."""
+    subject, sep, body = msg.partition("\n")
+    return f"{subject} (v{version}){sep}{body}"
 
 
 def main() -> None:
-    msg, level, explicit, dry_run = parse_args(sys.argv[1:])
+    opts = parse_args(sys.argv[1:])
     check_ui_tracked()   # 배포 누락 가드(아래 bump/commit 전에)
-    new = bump(level=level, explicit=explicit, dry_run=dry_run)
-    if dry_run:
+    if opts.gates and not opts.dry_run:
+        run_gates()
+    new = bump(level=opts.level, explicit=opts.explicit, dry_run=opts.dry_run)
+    if opts.dry_run:
         return
-    full = f"{msg}\n\nv{new}\n\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
     subprocess.run(["git", "add", "-A"], cwd=ROOT, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", full], cwd=ROOT, check=True)
-    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=ROOT, check=True)
-    print(f"released v{new}: {msg}")
+    subprocess.run(["git", "commit", "-q", "-m", commit_message(opts.msg, new)], cwd=ROOT, check=True)
+    if opts.push:
+        subprocess.run(["git", "push", "-q", "origin", "main"], cwd=ROOT, check=True)
+    print(f"{'released' if opts.push else 'committed (not pushed)'} v{new}: {opts.msg.splitlines()[0]}")
 
 
 if __name__ == "__main__":
