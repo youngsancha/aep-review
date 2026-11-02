@@ -25,8 +25,15 @@ function load({ fetchImpl }) {
   const listeners = {};
   const sandbox = {
     self: { addEventListener: (k, fn) => { listeners[k] = fn; }, navigator: { onLine: true },
+            location: { origin: 'https://app.test' },
             skipWaiting() {}, clients: { claim() {} }, registration: {} },
-    caches: { open, keys: async () => [...stores.keys()], delete: async () => true },
+    caches: {
+      open, keys: async () => [...stores.keys()], delete: async () => true,
+      match: async (key) => {
+        for (const m of stores.values()) { if (m.has(key)) return m.get(key); }
+        return undefined;
+      },
+    },
     fetch: fetchImpl, Request, Response, Headers, URL, console,
     setTimeout, clearTimeout, setImmediate, Promise,
   };
@@ -181,4 +188,48 @@ test('range: a failed read is not remembered, so the next request tries again', 
   Response.prototype.blob = proto;
   await new Promise((r) => setImmediate(r));
   assert.equal((await ranged(t, 'bytes=0-9')).status, 206);
+});
+
+// Opening the app. The worst incidents in this repo happened on this path, and it had no test.
+const PAGE = 'https://app.test/';
+const SHELL_CACHE = /const CACHE\s*=\s*[`'"]([^`'"$]*)/.exec(SRC)[1] + /const VERSION = '([^']+)'/.exec(SRC)[1];
+const html = (body, status = 200) => withType(new Response(body, { status, headers: { 'Content-Type': 'text/html' } }), 'basic');
+const open_ = (t) => respond(t.listeners, { url: PAGE, mode: 'navigate', method: 'GET', headers: new Headers() });
+async function withShell(fetchImpl) {
+  const t = load({ fetchImpl });
+  await (await t.open(SHELL_CACHE)).put('/index.html', html('cached shell'));
+  return t;
+}
+
+test('opening the app: a good response is served and refreshes the shell', async () => {
+  const t = await withShell(async () => html('new shell'));
+  assert.equal(await (await open_(t)).text(), 'new shell');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(await (await (await t.open(SHELL_CACHE)).match('/index.html')).clone().text(), 'new shell');
+});
+
+test('opening the app: a 5xx from the host does not replace a working app with an error page', async () => {
+  const t = await withShell(async () => html('Bad gateway', 503));
+  const cache = await t.open(SHELL_CACHE);
+  const shell = await cache.match('/index.html');
+  assert.equal(await (await open_(t)).clone().text(), 'cached shell');
+  assert.equal(await cache.match('/index.html'), shell, 'an error must not overwrite the cached shell');
+});
+
+test('opening the app: with no shell yet the real error is shown, not a blank failure', async () => {
+  const t = load({ fetchImpl: async () => html('Bad gateway', 503) });
+  const res = await open_(t);
+  assert.equal(res.status, 503);
+});
+
+test('opening the app: no network falls back to the shell', async () => {
+  const t = await withShell(async () => { throw new TypeError('offline'); });
+  assert.equal(await (await open_(t)).text(), 'cached shell');
+});
+
+test('opening the app: a hanging network gives way to the shell within seconds', async () => {
+  const t = await withShell(() => new Promise(() => {}));
+  const t0 = Date.now();
+  assert.equal(await (await open_(t)).text(), 'cached shell');
+  assert.ok(Date.now() - t0 < 4000);
 });

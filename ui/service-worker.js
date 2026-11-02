@@ -349,7 +349,8 @@ self.addEventListener('fetch', (e) => {
       // 업데이트 유실은 없다. 최초 로드(캐시 없음)면 셸이 null 이라 네트워크 완료를 계속 기다린다.
       const timeout = new Promise((r) => setTimeout(() => r('__timeout__'), 2500));
       const winner = await Promise.race([netFetch, timeout]);
-      if (winner && winner !== '__timeout__') return winner;
+      // ⛔ 호스트의 5xx·한도 오류가 멀쩡한 앱을 오류 페이지로 덮으면 안 된다. 셸이 없을 때만 그 오류를 보여 준다.
+      if (winner && winner !== '__timeout__' && winner.ok) return winner;
       return (await cachedShell()) || (await netFetch) || Response.error();
     })());
     return;
