@@ -183,3 +183,34 @@ test('캐시 적중은 이전 실패 사유를 지운다', async () => {
   assert.equal(await m.translateEnKo('hi'), '안녕');   // 캐시 적중
   assert.equal(m.lastTrIssue(), '', '캐시로 성공했는데 옛 실패 사유가 남으면 오안내가 나간다');
 });
+
+test('403 fails this sentence only: it must not silence translation for the session', async () => {
+  // A bad contact address answers 403 with no quota involved.
+  const f = stubFetch(okBody('안녕', 403), okBody('다음 문장'));
+  const tr = makeFn(f);
+  assert.equal(await tr('first'), '');
+  assert.equal(await tr('second'), '다음 문장');
+  assert.equal(f.count, 2);
+});
+
+test('a real translation containing a warning word is not a quota answer', async () => {
+  const f = stubFetch(okBody('INVALID 카드입니다'), okBody('QUOTA 초과 안내문'), okBody('세 번째'));
+  const tr = makeFn(f);
+  assert.equal(await tr('a'), 'INVALID 카드입니다');
+  assert.equal(await tr('b'), 'QUOTA 초과 안내문');
+  assert.equal(await tr('c'), '세 번째');
+});
+
+test('a hung request is abandoned, so a sentence row cannot wait forever', async () => {
+  const seen = [];
+  const hang = (_url, init) => new Promise((_res, rej) => {
+    seen.push(init?.signal);
+    init.signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
+  });
+  const m = makeMod(hang);
+  const t0 = Date.now();
+  assert.equal(await m.translateEnKo('slow'), '');
+  assert.ok(Date.now() - t0 < 6000);
+  assert.ok(seen[0] instanceof AbortSignal);
+  assert.equal(m.lastTrIssue(), 'error');
+});
