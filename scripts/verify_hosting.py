@@ -176,7 +176,7 @@ def main():
     _env()
 
     eps = store.episodes_by_recency()
-    manifest = set(_get_json(f"{STORAGE}/transcripts/audio_hosted.json"))
+    manifest = set(_get_json(f"{STORAGE}/aep-transcripts/audio_hosted.json"))
     transcribed = [e for e in eps if e.get("transcribed_at")]
 
     # A. 호스팅 완료
@@ -197,7 +197,7 @@ def main():
         time.sleep(0.03)  # rate-limit 회피
         url = f"https://pub-6226ae33abbc474dbea6ae140582eb8d.r2.dev/{eid}.mp3"
         try:
-            t = _get_json(f"{STORAGE}/transcripts/{eid}.json")
+            t = _get_json(f"{STORAGE}/aep-transcripts/{eid}.json")
             tdur = t.get("duration") or (t["segments"][-1]["end"] if t.get("segments") else 0)
             clen = _head_len(url)
             adur = mp3_duration(url, clen) or 0

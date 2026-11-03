@@ -93,7 +93,7 @@ def main() -> int:
     rows = fetch_rows(store.client())
     if args.show:
         rows = [r for r in rows if r["show"] == args.show]
-    base = os.environ["SUPABASE_URL"].rstrip("/") + "/storage/v1/object/public/transcripts/"
+    base = os.environ["SUPABASE_URL"].rstrip("/") + "/storage/v1/object/public/aep-transcripts/"
     results: list[dict] = []
     failures = 0
     with cf.ThreadPoolExecutor(3) as ex:

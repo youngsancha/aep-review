@@ -124,7 +124,7 @@ class FakeNetwork:
 
     def _supabase(self, route, request, url):
         path = url.path
-        if path.startswith("/storage/v1/object/public/transcripts/"):
+        if path.startswith("/storage/v1/object/public/aep-transcripts/"):
             name = path.rsplit("/", 1)[1]
             if name == "audio_hosted.json":
                 self._json(route, self.ids)
@@ -144,7 +144,7 @@ class FakeNetwork:
 
 SEED_SESSION = """
 (() => {
-  const key = 'sb-lbcvuztpyaapyckxmqhk-auth-token';
+  const key = 'sb-tehwsogihlqwqmclxcyd-auth-token';
   if (localStorage.getItem(key)) return;
   const exp = Math.floor(Date.now() / 1000) + 3600 * 24;
   const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\\+/g, '-').replace(/\\//g, '_');

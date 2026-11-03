@@ -91,7 +91,7 @@ def _download(path: str, tries: int = 3):
     last: Exception | None = None
     for attempt in range(tries):
         try:
-            return json.loads(store.client().storage.from_("transcripts").download(path)), "ok"
+            return json.loads(store.client().storage.from_(store.BUCKET).download(path)), "ok"
         except Exception as e:                      # noqa: BLE001 - classified immediately below
             if _is_not_found(e):
                 return None, "missing"

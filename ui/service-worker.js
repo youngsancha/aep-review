@@ -13,7 +13,7 @@
 //     Range 요청에 206 합성 → 오프라인 시크 지원. opaque(no-cors 폴백) 캐시는 온라인=네트워크
 //     우선(평소와 동일), 오프라인=전체 응답 폴백. 미캐시 회차는 그대로 네트워크 스트리밍.
 //  ⑤ 쇼 커버(imgix) → cache-first — 오프라인 라이브러리/로그인 화면용.
-const VERSION = '1.81.1';
+const VERSION = '1.81.2';
 const CACHE = 'aep-review-shell-v' + VERSION;
 // 데이터/벤더/오디오/이미지/doc 캐시는 버전과 무관하게 유지(셸 업그레이드해도 오프라인 자료 보존).
 const DATA_CACHE = 'aep-review-data-v1';
@@ -37,13 +37,13 @@ let pinnedEpisodeIds = new Set();
 
 // 이 요청이 어떤 회차 id 에 속하는지 판별 — DOC_CACHE 기록/조회 대상 판별용.
 //  · REST 회차 상세: /rest/v1/episodes?...&id=eq.N        (db.js::getEpisode 의 단일 요청)
-//  · Storage 자막:   /storage/v1/object/public/transcripts/N.json · N_ko.json
+//  · Storage 자막:   /storage/v1/object/public/aep-transcripts/N.json · N_ko.json
 function pinnedEpisodeIdFor(url) {
   if (url.pathname === '/rest/v1/episodes') {
     const m = /^eq\.(\d+)$/.exec(url.searchParams.get('id') || '');
     return m ? Number(m[1]) : null;
   }
-  const m2 = /\/storage\/v1\/object\/public\/transcripts\/(\d+)(?:_ko)?\.json$/.exec(url.pathname);
+  const m2 = /\/storage\/v1\/object\/public\/aep-transcripts\/(\d+)(?:_ko)?\.json$/.exec(url.pathname);
   return m2 ? Number(m2[1]) : null;
 }
 const Q = '?v=' + VERSION;

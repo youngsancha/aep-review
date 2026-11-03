@@ -85,7 +85,7 @@ async function deleteEpisodeDoc(id) {
     await Promise.all(keys.filter((req) => {
       const u = new URL(req.url);
       if (u.pathname === '/rest/v1/episodes' && u.searchParams.get('id') === `eq.${id}`) return true;
-      const m = /\/storage\/v1\/object\/public\/transcripts\/(\d+)(?:_ko)?\.json$/.exec(u.pathname);
+      const m = /\/storage\/v1\/object\/public\/aep-transcripts\/(\d+)(?:_ko)?\.json$/.exec(u.pathname);
       return !!m && Number(m[1]) === Number(id);
     }).map((req) => cache.delete(req)));
   } catch (e) {}

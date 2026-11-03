@@ -37,7 +37,7 @@ def main() -> None:
     ok = near = bad = runon_eps = err = lowpunct = noR2 = clip_eps = 0
     for eid in done:
         try:
-            t = json.load(urllib.request.urlopen(f"{st}/transcripts/{eid}.json", timeout=30))
+            t = json.load(urllib.request.urlopen(f"{st}/aep-transcripts/{eid}.json", timeout=30))
             segs = t.get("segments") or []
             tdur = t.get("duration") or (segs[-1]["end"] if segs else 0)
             req = urllib.request.Request(f"{R2}/{eid}.mp3", method="HEAD", headers={"User-Agent": "Mozilla/5.0"})

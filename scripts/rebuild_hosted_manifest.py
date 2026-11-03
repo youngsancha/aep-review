@@ -59,7 +59,7 @@ def main() -> None:
         return
 
     body = json.dumps(r2_ids).encode("utf-8")
-    sb = store.client().storage.from_("transcripts")
+    sb = store.client().storage.from_(store.BUCKET)
     try:
         sb.update(store.HOSTED_MANIFEST, body, {"content-type": "application/json", "upsert": "true"})
     except Exception:  # noqa: BLE001

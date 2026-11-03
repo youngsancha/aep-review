@@ -221,7 +221,7 @@ export async function hostedSet() {
       // (과거 버그: 일시적 fetch 실패 → 빈 집합 캐시 → 그 세션 전체가 megaphone 폴백 → 자막 desync.)
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const r = await fetch(`${STORAGE_URL}/transcripts/audio_hosted.json`, { cache: 'no-cache' });
+          const r = await fetch(`${STORAGE_URL}/aep-transcripts/audio_hosted.json`, { cache: 'no-cache' });
           if (r.ok) {
             const a = await r.json();
             _hosted = new Set((a || []).map(Number));
@@ -241,10 +241,10 @@ export async function hostedSet() {
 // (postgrest-js 의 select 인코딩과 달리 이건 우리 코드의 순수 문자열 템플릿이라 손으로 재현해도
 // 안전 — 그래도 드리프트를 원천 차단하려면 여기서 export 한 걸 그대로 재사용하는 편이 낫다).
 export function transcriptUrl(id, transcribedAt) {
-  return `${STORAGE_URL}/transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`;
+  return `${STORAGE_URL}/aep-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`;
 }
 export function transcriptKoUrl(id, transcribedAt) {
-  return `${STORAGE_URL}/transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`;
+  return `${STORAGE_URL}/aep-transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`;
 }
 
 // 자막 문장 한국어 사전번역 맵(trKey(문장) → ko). episode.js 가 재생 중 즉시 조회(직역 MyMemory 대체).

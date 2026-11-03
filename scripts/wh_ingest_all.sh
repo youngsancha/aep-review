@@ -25,7 +25,7 @@ import os, json, urllib.request
 u, k = os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"]
 r = json.load(urllib.request.urlopen(urllib.request.Request(
     f"{u}/rest/v1/episodes?select=id&show=eq.wh&order=id.desc&limit=1",
-    headers={"apikey": k, "Authorization": f"Bearer {k}"})))
+    headers={"apikey": k, "Authorization": f"Bearer {k}", "Accept-Profile": "aep"})))
 print(r[0]["id"] if r else 0)
 PY
 }

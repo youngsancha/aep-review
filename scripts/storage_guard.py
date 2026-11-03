@@ -6,8 +6,8 @@ is the billing-period AVERAGE size, so a cleanup only helps if it happens early 
 that is why this runs daily instead of when someone notices.
 
 1. Any bucket in RETIRED is emptied object by object, verified empty, then deleted.
-   `tts` = Study speech mp3s, retired with Study in v1.80.0 (the SW answers 410 for them).
-2. The remaining buckets are measured; above WARN_BYTES a td-task is filed (de-duplicated).
+   `aep-tts` (was `tts` in the old project) = Study speech mp3s, retired with Study in v1.80.0 (the SW answers 410 for them).
+2. The remaining aep-* buckets (never other apps' buckets on roy-hub) are measured; above WARN_BYTES a td-task is filed (de-duplicated).
 
 Idempotent: once the retired buckets are gone it is a few list calls and exits 0.
 
@@ -24,10 +24,16 @@ from typing import Any, Iterator
 
 from ingest import store
 
-RETIRED = ("tts",)
+# Only buckets with this prefix are ever listed, measured or deleted: roy-hub is shared with other
+# apps whose buckets (and whose own `tts`, if any) are not ours to touch. The old standalone project's
+# `tts` bucket was never copied to roy-hub, so the retired entry is `aep-tts` and normally absent (no-op).
+PREFIX = "aep-"
+RETIRED = ("aep-tts",)
 PAGE = 1000          # Storage list page size
 REMOVE_BATCH = 500   # paths per remove() call
-WARN_BYTES = 800_000_000  # 80% of the 1 GB free quota (decimal GB — the conservative reading)
+# The org is now on Pro with a 100 GB pooled quota shared by every app on roy-hub, so 5 GB for the
+# aep- buckets alone is the point where it is worth a look (the old free-plan 1 GB cap no longer applies).
+WARN_BYTES = 5_000_000_000
 
 
 def walk(bucket: Any, prefix: str = "") -> Iterator[tuple[str, int]]:
@@ -60,8 +66,8 @@ def drain(storage: Any, bucket_id: str) -> tuple[int, int]:
 
 
 def _warn(total: int) -> None:
-    title = (f"Supabase Storage at {total / 1e9:.2f} GB (free quota 1 GB, warn at "
-             f"{WARN_BYTES / 1e9:.1f}) — move assets to R2 before the org is restricted again")
+    title = (f"Supabase Storage (aep- buckets) at {total / 1e9:.2f} GB (warn at "
+             f"{WARN_BYTES / 1e9:.1f} GB, pooled org quota 100 GB) — move assets to R2")
     print(f"WARNING: {title}")
     if shutil.which("td-task"):
         subprocess.run(["td-task", "add", title, "-P", "aep-review", "-p", "1"], check=False)
@@ -73,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     storage = store.client().storage
-    present = {b.id for b in storage.list_buckets()}
+    present = {b.id for b in storage.list_buckets() if b.id.startswith(PREFIX)}
     for bucket_id in RETIRED:
         if bucket_id not in present:
             continue

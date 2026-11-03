@@ -45,7 +45,7 @@ write-only by design — they cannot be read back, so they have to be re-copied 
 the dashboards once:
 
 ```bash
-# Supabase → project lbcvuztpyaapyckxmqhk → Project Settings → API Keys → "Secret" (sb_secret_…)
+# Supabase → project roy-hub (tehwsogihlqwqmclxcyd) → Project Settings → API Keys → "Secret" (sb_secret_…)
 pbpaste | ccsecret set aep-review SUPABASE_SERVICE_KEY
 
 # Cloudflare → R2 → Manage R2 API Tokens → create/reveal a token with write access to aep-audio

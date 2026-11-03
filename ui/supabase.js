@@ -6,6 +6,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from '/config.js';
 import { keepSessionOnOutage } from '/auth-fetch.js';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: 'aep' },       // roy-hub 공유 프로젝트: 이 앱의 테이블은 aep 스키마
   global: { fetch: keepSessionOnOutage((input, init) => fetch(input, init)) },
   auth: {
     persistSession: true,        // 폰에서 1회 로그인 후 세션 유지
@@ -16,5 +17,5 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// public Storage 객체 베이스 URL (transcripts/{id}.json, tts/{sha1}.mp3)
+// public Storage 객체 베이스 URL (aep-transcripts/{id}.json)
 export const STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public`;

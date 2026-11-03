@@ -491,7 +491,7 @@ function chain(getRow) {
 let _row = null;
 window.__setEpisodeRow = (row) => { _row = row; };
 export const supabase = { from: () => chain(() => _row) };
-// db.js 는 `${STORAGE_URL}/transcripts/...` 로 자막을 받는다 — 실제 프로젝트 호스트 대신 같은 출처
+// db.js 는 `${STORAGE_URL}/aep-transcripts/...` 로 자막을 받는다 — 실제 프로젝트 호스트 대신 같은 출처
 // 상대경로를 써서, page.route() 가 실제 supabase.co 를 흉내낼 필요 없이 같은 서버(8123)에서 가로챈다.
 export const STORAGE_URL = '/storage/v1/object/public';
 """
@@ -1722,7 +1722,7 @@ def main() -> int:
                     route.fulfill(status=200, content_type="application/json", body="[]")
                 elif path.endswith("_ko.json"):
                     route.fulfill(status=200, content_type="application/json", body="{}")
-                elif "/transcripts/" in path and path.endswith(".json"):
+                elif "/aep-transcripts/" in path and path.endswith(".json"):
                     i = min(dbcache_hits["transcript"], len(TRANSCRIPT_BODIES) - 1)
                     dbcache_hits["transcript"] += 1
                     route.fulfill(status=200, content_type="application/json",

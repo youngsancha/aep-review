@@ -1,5 +1,8 @@
 # Supabase 셋업 (사용자 1회 작업)
 
+> **현재 라이브(2026-11)**: 공유 프로젝트 **roy-hub** (`tehwsogihlqwqmclxcyd`), 스키마 `aep`, 공개 버킷 `aep-transcripts`.
+> Google OAuth 콜백: `https://tehwsogihlqwqmclxcyd.supabase.co/auth/v1/callback`. 아래 절차는 최초 단독 프로젝트 기준 기록이다.
+
 aep-review 의 클라우드 백엔드. **이 단계만 사용자가 직접** 하면, 나머지(마이그레이션·
 프론트·인제스트)는 코드가 처리한다.
 
@@ -12,7 +15,7 @@ aep-review 의 클라우드 백엔드. **이 단계만 사용자가 직접** 하
 1. 좌측 **SQL Editor** → **New query**
 2. `supabase/schema.sql` 전체 붙여넣기 → **Run**
 3. 테이블 `episodes / vocab_cards / srs_cards`, 뷰 `episodes_list`,
-   Storage 버킷 `transcripts / tts` 가 생성됐는지 확인 (Table Editor / Storage 탭).
+   Storage 버킷 `aep-transcripts` (roy-hub; the old `tts` bucket is retired) 가 생성됐는지 확인 (Table Editor / Storage 탭).
 
 ## 3. 키 확보 (새 키 스타일)
 **Project Settings → API Keys** 에서 복사. **새 키 스타일(`sb_publishable_…` / `sb_secret_…`)** 을 쓴다.
@@ -45,7 +48,7 @@ aep-review 의 클라우드 백엔드. **이 단계만 사용자가 직접** 하
 1. **Google Cloud Console** → *APIs & Services → Credentials* → **Create OAuth client ID**
    - Application type: **Web application**
    - **Authorized redirect URIs** 에 Supabase 콜백 추가:
-     `https://lbcvuztpyaapyckxmqhk.supabase.co/auth/v1/callback`
+     `https://tehwsogihlqwqmclxcyd.supabase.co/auth/v1/callback`
      (로컬 테스트도 쓰면 `http://127.0.0.1:54321/auth/v1/callback` 추가)
    - 생성된 **Client ID / Client secret** 복사.
 2. **Supabase → Authentication → Providers → Google** → 사용 설정 후 위 Client ID/Secret 붙여넣기 → Save.
@@ -62,5 +65,5 @@ aep-review 의 클라우드 백엔드. **이 단계만 사용자가 직접** 하
 이후 절차는 `../README.md` 의 "마이그레이션 / 배포" 참고.
 
 ## 무료 티어 한도 (현재 데이터 기준 여유)
-- DB 500MB (현재 수 MB) · Storage 1GB (transcripts 102MB + tts 수십 MB) · 대역폭 5GB/월
+- DB 500MB (현재 수 MB) · Storage 1GB (aep-transcripts ≈102MB) · 대역폭 5GB/월
 - 오디오는 원본 CDN 직접 스트리밍 → Storage/대역폭에 안 잡힘

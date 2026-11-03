@@ -68,48 +68,56 @@ def _fake(monkeypatch, storage):
 def test_walk_pages_and_recurses(monkeypatch):
     monkeypatch.setattr(sg, "PAGE", 3)
     objs = {f"{i:02d}.mp3": 10 for i in range(7)} | {"sub/a.mp3": 5, "sub/deep/b.mp3": 1}
-    st = _Storage({"tts": objs})
-    got = dict(sg.walk(st.from_("tts")))
+    st = _Storage({"aep-tts": objs})
+    got = dict(sg.walk(st.from_("aep-tts")))
     assert got == objs
 
 
 def test_drain_removes_everything_in_batches_and_deletes_bucket(monkeypatch):
     monkeypatch.setattr(sg, "PAGE", 4)
     monkeypatch.setattr(sg, "REMOVE_BATCH", 5)
-    st = _Storage({"tts": {f"{i}.mp3": 100 for i in range(12)}, "transcripts": {"1.json": 7}})
-    assert sg.drain(st, "tts") == (12, 1200)
+    st = _Storage({"aep-tts": {f"{i}.mp3": 100 for i in range(12)}, "aep-transcripts": {"1.json": 7}})
+    assert sg.drain(st, "aep-tts") == (12, 1200)
     assert st.remove_calls == [5, 5, 2]
-    assert st.deleted == ["tts"]
-    assert st.objects == {"transcripts": {"1.json": 7}}
+    assert st.deleted == ["aep-tts"]
+    assert st.objects == {"aep-transcripts": {"1.json": 7}}
 
 
 def test_drain_keeps_bucket_when_objects_survive(monkeypatch):
-    st = _Storage({"tts": {"a.mp3": 1, "b.mp3": 1}}, sticky={"b.mp3"})
+    st = _Storage({"aep-tts": {"a.mp3": 1, "b.mp3": 1}}, sticky={"b.mp3"})
     with pytest.raises(RuntimeError, match="1 objects still present"):
-        sg.drain(st, "tts")
+        sg.drain(st, "aep-tts")
     assert st.deleted == []
 
 
 def test_main_drains_retired_and_warns_over_threshold(monkeypatch, capsys):
-    st = _Storage({"tts": {"x.mp3": 400}, "transcripts": {"1.json": 900}})
+    st = _Storage({"aep-tts": {"x.mp3": 400}, "aep-transcripts": {"1.json": 900}})
     _fake(monkeypatch, st)
     monkeypatch.setattr(sg, "WARN_BYTES", 500)
     assert sg.main([]) == 0
-    assert st.deleted == ["tts"]
+    assert st.deleted == ["aep-tts"]
     assert st.warned == 900          # only what is LEFT counts, not the drained bucket
-    assert "tts: removed 1 objects" in capsys.readouterr().out
+    assert "aep-tts: removed 1 objects" in capsys.readouterr().out
 
 
 def test_main_is_a_noop_once_retired_buckets_are_gone(monkeypatch):
-    st = _Storage({"transcripts": {"1.json": 9}})
+    st = _Storage({"aep-transcripts": {"1.json": 9}})
     _fake(monkeypatch, st)
     assert sg.main([]) == 0
     assert st.deleted == [] and st.remove_calls == [] and "warned" not in st.__dict__
 
 
 def test_dry_run_deletes_nothing(monkeypatch, capsys):
-    st = _Storage({"tts": {"x.mp3": 4}, "transcripts": {}})
+    st = _Storage({"aep-tts": {"x.mp3": 4}, "aep-transcripts": {}})
     _fake(monkeypatch, st)
     assert sg.main(["--dry-run"]) == 0
-    assert st.objects["tts"] == {"x.mp3": 4} and st.deleted == []
+    assert st.objects["aep-tts"] == {"x.mp3": 4} and st.deleted == []
     assert "would remove 1 objects" in capsys.readouterr().out
+
+
+def test_other_apps_buckets_are_never_touched_or_counted(monkeypatch):
+    st = _Storage({"tts": {"x.mp3": 4}, "other-app": {"a": 99}, "aep-transcripts": {"1.json": 9}})
+    _fake(monkeypatch, st)
+    monkeypatch.setattr(sg, "WARN_BYTES", 50)
+    assert sg.main([]) == 0
+    assert st.deleted == [] and "warned" not in st.__dict__

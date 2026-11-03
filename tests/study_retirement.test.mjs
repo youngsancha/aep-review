@@ -28,7 +28,7 @@ test('SW upgrade retires speech cache but preserves episode audio, documents and
   await completion;
   assert.deepEqual(removed,['aep-review-shell-v1.79.0','aep-review-tts-v1']);
   let result;
-  handlers.fetch({request:{method:'GET',url:'https://lbcvuztpyaapyckxmqhk.supabase.co/storage/v1/object/public/tts/old.mp3'},respondWith:p=>{result=p;}});
+  handlers.fetch({request:{method:'GET',url:'https://tehwsogihlqwqmclxcyd.supabase.co/storage/v1/object/public/tts/old.mp3'},respondWith:p=>{result=p;}});
   assert.equal((await result).status,410);
 });
 

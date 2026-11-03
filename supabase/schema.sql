@@ -1,3 +1,6 @@
+-- NOTE (2026-11): the LIVE tables now live in the shared project roy-hub (tehwsogihlqwqmclxcyd), schema `aep`,
+-- and the public bucket is `aep-transcripts` (was `transcripts`). This file is the original standalone-project
+-- SQL, kept as history; do not run it against roy-hub as is.
 -- aep-review Supabase 스키마
 -- Supabase 대시보드 → SQL Editor 에 붙여넣고 실행.
 -- api/db.py 의 SQLite SCHEMA 를 Postgres 로 포팅 + RLS + Storage 버킷.

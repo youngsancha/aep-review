@@ -18,12 +18,17 @@ from collections.abc import Sequence
 from typing import Any
 
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+
+
+# Shared roy-hub project: this app lives in schema "aep" and its public bucket is "aep-transcripts".
+DB_SCHEMA = "aep"
+BUCKET = "aep-transcripts"
 
 
 def _now() -> str:
@@ -39,7 +44,7 @@ def client() -> Client:
     key = os.environ.get("SUPABASE_SERVICE_KEY")
     if not url or not key:
         raise SystemExit("SUPABASE_URL / SUPABASE_SERVICE_KEY 가 .env 에 없습니다. supabase/README.md 참고.")
-    return create_client(url, key)
+    return create_client(url, key, options=ClientOptions(schema=DB_SCHEMA))
 
 
 # ─────────────────────────── R2 (오디오 호스팅) ───────────────────────────
@@ -84,7 +89,7 @@ def upload_audio_r2(ep_id: int, path: Any) -> int:
     return p.stat().st_size
 
 
-# 호스팅 '완료'(=R2 오디오 + 그와 일치하는 자막) 매니페스트 — Supabase transcripts 버킷의 public JSON.
+# 호스팅 '완료'(=R2 오디오 + 그와 일치하는 자막) 매니페스트 — Supabase aep-transcripts 버킷의 public JSON.
 # 앱은 이 목록의 회차만 R2 스트리밍(자막 일치 보장), 나머지는 기존 megaphone(폴백).
 HOSTED_MANIFEST = "audio_hosted.json"
 
@@ -103,7 +108,7 @@ def load_hosted(strict: bool = False) -> set[int]:
     →AEP 268개 전부 유실→앱이 AEP 를 megaphone DAI 로 재생→자막 desync. 이 가드로 재발 차단.)
     """
     try:
-        raw = client().storage.from_("transcripts").download(HOSTED_MANIFEST)
+        raw = client().storage.from_(BUCKET).download(HOSTED_MANIFEST)
         return set(json.loads(raw))
     except Exception as e:
         if _is_not_found(e):
@@ -120,7 +125,7 @@ def mark_hosted(ep_id: int) -> None:
         return
     ids.add(int(ep_id))
     body = json.dumps(sorted(ids)).encode("utf-8")
-    sb = client().storage.from_("transcripts")
+    sb = client().storage.from_(BUCKET)
     try:
         sb.update(HOSTED_MANIFEST, body, {"content-type": "application/json", "upsert": "true"})
     except Exception:
@@ -317,7 +322,7 @@ def episode_title(ep_id: int) -> str | None:
 # ─────────────────────── transcripts (Storage) ───────────────────────
 def upload_transcript(ep_id: int, data: dict[str, Any]) -> None:
     payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-    client().storage.from_("transcripts").upload(
+    client().storage.from_(BUCKET).upload(
         path=f"{ep_id}.json", file=payload,
         file_options={"content-type": "application/json", "upsert": "true"},
     )
@@ -325,7 +330,7 @@ def upload_transcript(ep_id: int, data: dict[str, Any]) -> None:
 
 def download_transcript(ep_id: int) -> dict[str, Any] | None:
     try:
-        raw = client().storage.from_("transcripts").download(f"{ep_id}.json")
+        raw = client().storage.from_(BUCKET).download(f"{ep_id}.json")
         return json.loads(raw)
     except Exception:
         log.exception("transcript 다운로드 실패 ep=%s", ep_id)

@@ -5,7 +5,7 @@
 이 스크립트는 앱이 '실제로 보여주는 문장'(Storage 자막을 episode.js 와 동일하게 resegment)
 을 연속 배치로 묶어 claude 에게 '문맥째' 자연스러운 구어체 한국어로 번역시킨다.
 
-저장: Storage `transcripts/{id}_ko.json` = { trKey(문장) : 한국어 }.
+저장: Storage `aep-transcripts/{id}_ko.json` = { trKey(문장) : 한국어 }.
   - trKey 는 episode.js 의 trKey 와 동일(소문자·공백정규화·180자) → 앱이 그 키로 즉시 조회.
   - 매칭 실패분만 런타임 MyMemory 폴백(기존 동작 유지) → 배포가 이 잡 완료에 의존하지 않음.
 
@@ -458,7 +458,7 @@ def load_existing(ep_id: int):
     (AUDIT P4/I1: 과거엔 모든 예외를 {} 로 삼켜, 일시 오류 시 전량 재번역→부분실패로 _ko.json 이
      축소될 수 있었다. 404 와 그 외 오류를 분리해 비정상 경로의 데이터 후퇴를 막는다.)"""
     try:
-        raw = store.client().storage.from_("transcripts").download(_out_path(ep_id))
+        raw = store.client().storage.from_(store.BUCKET).download(_out_path(ep_id))
     except Exception as e:
         if _is_not_found(e):
             return {}            # 정상 신규(파일 없음)
@@ -473,7 +473,7 @@ def load_existing(ep_id: int):
 
 def save_existing(ep_id: int, m: dict) -> None:
     payload = json.dumps(m, ensure_ascii=False).encode("utf-8")
-    store.client().storage.from_("transcripts").upload(
+    store.client().storage.from_(store.BUCKET).upload(
         path=_out_path(ep_id), file=payload,
         file_options={"content-type": "application/json", "upsert": "true"},
     )
@@ -482,7 +482,7 @@ def save_existing(ep_id: int, m: dict) -> None:
 def fetch_transcript(ep_id: int) -> dict | None:
     """앱과 동일하게 Storage 자막을 받는다(키 정합). 실패하면 디스크 폴백."""
     try:
-        raw = store.client().storage.from_("transcripts").download(f"{ep_id}.json")
+        raw = store.client().storage.from_(store.BUCKET).download(f"{ep_id}.json")
         return json.loads(raw)
     except Exception:
         pass

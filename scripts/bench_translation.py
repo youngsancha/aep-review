@@ -35,7 +35,7 @@ from scripts.translate_transcripts import (
 )
 
 log = logging.getLogger("bench_translation")
-PUBLIC = "https://lbcvuztpyaapyckxmqhk.supabase.co/storage/v1/object/public/transcripts"
+PUBLIC = "https://tehwsogihlqwqmclxcyd.supabase.co/storage/v1/object/public/aep-transcripts"
 
 
 def _public_json(name: str):
