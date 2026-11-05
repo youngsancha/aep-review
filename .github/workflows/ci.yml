@@ -24,6 +24,8 @@ concurrency:
 
 jobs:
   js:
+    # Skipped (0 billed minutes) while gh-ci-budget has paused CI for this repo.
+    if: github.event_name == 'workflow_dispatch' || vars.CI_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -36,6 +38,8 @@ jobs:
       - run: npm run gate
 
   python:
+    # Skipped (0 billed minutes) while gh-ci-budget has paused CI for this repo.
+    if: github.event_name == 'workflow_dispatch' || vars.CI_PAUSED != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
