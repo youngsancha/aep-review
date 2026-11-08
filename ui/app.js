@@ -3,7 +3,7 @@
 // 것만 파싱하고 episode/login(대형 모듈들)은 진입 시 로드해 초기 JS 파싱/평가를 줄인다.
 // SW SHELL 이 전부 캐시하므로 지연 로드여도 오프라인·재방문은 즉시(네트워크 아닌 파싱만 지연).
 import { supabase } from '/supabase.js';
-import { APP_NAME } from '/config.js';
+import { APP_NAME, SUPABASE_URL } from '/config.js';
 import { createUpdateReloader } from '/sw-reload.js';
 
 export const APP_VERSION = String(window.APP_VERSION || 'dev');
@@ -111,9 +111,17 @@ const SESSION_TIMEOUT_MS = 3500;
 // 오프라인 부팅 우회: 토큰이 만료돼 리프레시가 필요한데 오프라인이면 getSession 이 세션을 못
 // 돌려준다 → 저장된 세션 흔적이 있으면 입장시킨다(읽기는 SW 캐시, 쓰기는 실패해도 UI 는 graceful).
 // 온라인 복귀 후에는 onAuthStateChange(TOKEN_REFRESHED/SIGNED_OUT)가 상태를 바로잡는다.
+// Only this project's key counts. v1.81.2 moved to another Supabase project, and the old project's
+// `sb-<old ref>-auth-token` stays in localStorage on every phone that has not signed in since. Matching
+// any `sb-*-auth-token` let such a phone in through this bypass with no session at all: every read went
+// out as anon, RLS answered zero rows, and the library said "0 episodes" with the network fine
+// (reported 2026-11-08). Now that phone gets the login screen.
+export function storedSessionKey(url = SUPABASE_URL) {
+  return `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
+}
 function hasStoredSession() {
   try {
-    return Object.keys(localStorage).some((k) => k.startsWith('sb-') && k.endsWith('-auth-token'));
+    return localStorage.getItem(storedSessionKey()) != null;
   } catch (e) { return false; }
 }
 
