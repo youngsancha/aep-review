@@ -164,6 +164,8 @@ export function cleanAudioUrl(u) { return u; }
 export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }
+export async function libraryAccess() { return { state: 'ok', email: 'test@example.com' }; }
+export async function signOutForSwitch() {}
 export function transcriptKoUrl(id, transcribedAt) { return `/mock-transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`; }
 // offline.js(실 모듈) 가 db.js 에서 가져가는 이름 — v1.71.1 에 생긴 스냅샷 API. 목에 없으면 import('/offline.js')
 // 자체가 링크 오류로 죽어 OFFLINE-CHIP 검사가 조용히 idle 로 남는다(2026-09-18 실측: data-dl-err 로 드러남).
@@ -377,6 +379,8 @@ export async function listEpisodes() {
 }
 export async function audioSrcFor(id, u) { return u; }
 export async function hostedSet() { return new Set(); }
+export async function libraryAccess() { return { state: 'ok', email: 'test@example.com' }; }
+export async function signOutForSwitch() {}
 export function cleanAudioUrl(u) { return u; }
 export function transcriptUrl(id, transcribedAt) { return `/mock-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`; }
 export async function episodeNav() { return { prevId:null, nextId:null }; }

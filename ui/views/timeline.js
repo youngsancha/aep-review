@@ -1,6 +1,6 @@
 // Library — Apple Podcasts style: cover hero + grouped episode rows.
 import { escapeHtml, fmtDuration, fmtDate, toast, stripTrailingUrl } from '/app.js';
-import { listEpisodes, audioSrcFor } from '/db.js';
+import { listEpisodes, audioSrcFor, libraryAccess, signOutForSwitch } from '/db.js';
 import { player, getProgressMap, getCompleted } from '/player.js';
 import { showCover, currentShow, setCurrentShow, MULTISHOW, showOptions, showMeta } from '/config.js';
 
@@ -46,6 +46,16 @@ export async function renderTimeline(root) {
   _done = getCompleted();
 
   if (!items.length) {
+    // An empty answer is also what RLS gives an account it shuts out, so ask which one this is before
+    // telling the user that new episodes "are added automatically".
+    const access = await libraryAccess();
+    if (location.hash !== _startHash || seq !== _renderSeq) return;
+    if (access.state === 'denied' || access.state === 'signed-out') {
+      root.innerHTML = `${showSwitchHtml()}${noAccessHtml(access)}`;
+      wireShowSwitch(root);
+      root.querySelector('#lib-switch-account')?.addEventListener('click', () => signOutForSwitch());
+      return;
+    }
     root.innerHTML = `
       ${showSwitchHtml()}
       ${heroHtml({total: 0, ready: 0})}
@@ -369,6 +379,20 @@ function noEpisodesHtml() {
     title: 'No episodes yet',
     sub: 'New episodes are added automatically.',
     actionHtml: `<button class="btn secondary lib-empty-cta" id="lib-sync-cta">↻ Refresh now</button>`,
+  });
+}
+
+// The account cannot read the library: either it is not on the allowed list, or its session died and
+// the read went out as anon. Both are fixed by signing in again with an allowed account.
+function noAccessHtml({ state, email }) {
+  const denied = state === 'denied';
+  return emptyCardHtml({
+    emoji: '🔒',
+    title: denied ? '이 계정은 접근 권한이 없어요' : '로그인이 풀렸어요',
+    sub: denied
+      ? `${escapeHtml(email || '')} 계정으로는 회차를 볼 수 없어요. 허용된 계정으로 다시 로그인해 주세요.`
+      : '다시 로그인하면 회차가 보여요.',
+    actionHtml: `<button class="btn primary lib-empty-cta" id="lib-switch-account">${denied ? '다른 계정으로 로그인' : '다시 로그인'}</button>`,
   });
 }
 

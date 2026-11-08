@@ -172,6 +172,34 @@ export async function listEpisodes() {
   }
 }
 
+// Why is the library empty? (Owner report 2026-11-08: a second Google account saw "0 episodes ·
+// all ready" with the network fine.) RLS does not fail a read it forbids: it answers 200 with zero
+// rows, so "no access" and "no episodes" look identical to listEpisodes(). Asked only when the
+// current show came back empty: one id from any show settles it, because a real account can read
+// every show and an account the policy shuts out reads none.
+//   'ok'         the account reads episodes; this show is simply empty
+//   'denied'     signed in, but the policy returns nothing at all (account not allowed)
+//   'signed-out' no session (the stored one died), so the read went out as anon
+//   'unknown'    the check itself failed or timed out; say nothing new
+export async function libraryAccess() {
+  try {
+    const { data: s } = await withDeadline(supabase.auth.getSession(), 'libraryAccess session', 2500);
+    const email = s?.session?.user?.email || null;
+    if (!email) return { state: 'signed-out', email: null };
+    const { data, error } = await withDeadline(
+      supabase.from('episodes_list').select('id').limit(1), 'libraryAccess probe', 4000);
+    if (error) return { state: 'unknown', email };
+    return { state: (data || []).length ? 'ok' : 'denied', email };
+  } catch (e) {
+    return { state: 'unknown', email: null };
+  }
+}
+
+// Sign out so another account can sign in. app.js listens for SIGNED_OUT and shows the login screen.
+export async function signOutForSwitch() {
+  try { await supabase.auth.signOut(); } catch (e) { /* the listener still runs on a local sign-out */ }
+}
+
 // 이전/다음 '에피소드'(곡) id — ⏮/⏭ 트랙 이동용. 라이브러리와 같은 쇼 안에서 시간순(pub_date asc)
 // 으로 줄세워, 더 나중에 나온 화가 '다음'(다음 회차), 더 예전 화가 '이전'(이전 곡)이 된다.
 // id+pub_date 만 가볍게 받아 메모리에서 인접 회차를 찾는다(수백 행이라 단일 쿼리로 충분).
