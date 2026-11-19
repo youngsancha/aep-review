@@ -6,7 +6,8 @@
     "lint": "eslint ui scripts tests --max-warnings=0",
     "check": "node scripts/jscheck.mjs",
     "test": "node --test tests/*.mjs",
-    "gate": "npm run -s lint && npm run -s check && npm test"
+    "gate": "npm run -s lint && npm run -s check && npm test",
+    "deploy:cf": "wrangler deploy"
   },
   "devDependencies": {
     "eslint": "^10.7.0"

@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aep-review",
+  "compatibility_date": "2026-11-18",
+  "assets": {
+    "directory": "./ui",
+    "not_found_handling": "none"
+  }
+}
