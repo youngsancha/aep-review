@@ -97,9 +97,13 @@ say "=== 대상 목록 생성: 쇼별 최근 ${PER_SHOW}편 ==="
 import sys
 from itertools import chain, zip_longest
 from ingest import store
+from ingest.shows import show_slugs
 n, out = int(sys.argv[1]), sys.argv[2]
 sb, per = store.client(), []
-for show in ("aep", "allears", "wh"):
+# ⛔ Derived, never hardcoded: this was frozen at ("aep", "allears", "wh") from 2026-08-15, so cnn10
+# never got a single _ko.json and its newest episodes had no Korean offline (found 2026-11-25).
+# Same trap audit_ko_coverage.SHOWS fell into on 2026-08-26.
+for show in show_slugs():
     rows = sb.table("episodes").select("id").eq("show", show).not_.is_(
         "transcribed_at", "null").order("id", desc=True).limit(n).execute().data
     got = [r["id"] for r in rows]
