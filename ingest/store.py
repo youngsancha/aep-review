@@ -9,6 +9,7 @@ Episode vocabulary is retained; Study cards and generated speech are retired.
 from __future__ import annotations
 
 import json
+import math
 import logging
 import os
 from datetime import UTC, datetime
@@ -338,6 +339,24 @@ def download_transcript(ep_id: int) -> dict[str, Any] | None:
 
 
 # ─────────────────────────── Episode vocabulary ───────────────────────────
+def _vocab_sec(v: Any) -> float | None:
+    """A timestamp the local LLM wrote, or None when it is not a usable number.
+
+    ⛔ exaone answers "-" (and sometimes "" or "12.3s") when it cannot place a term. Sent as is,
+    PostgREST rejects the whole row with 22P02 and extract_vocab drops the episode (2026-11-25, ep 1161).
+    A term without a jump point is still a good card, so keep it and drop only the time.
+    """
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, str):
+        v = v.strip().rstrip("sS").strip()
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) and f >= 0 else None
+
+
 def insert_vocab(ep_id: int, vocab_list: list[dict[str, Any]],
                          show: str | None = None) -> int:
     """Insert episode vocabulary only; do not create Study cards or speech assets."""
@@ -351,8 +370,8 @@ def insert_vocab(ep_id: int, vocab_list: list[dict[str, Any]],
         vrow = {
             "episode_id": ep_id, "term": term, "kind": v.get("kind"),
             "definition": v.get("definition"), "example_sentence": v.get("example_sentence"),
-            "sentence_start_sec": v.get("sentence_start_sec"),
-            "sentence_end_sec": v.get("sentence_end_sec"), "created_at": now,
+            "sentence_start_sec": _vocab_sec(v.get("sentence_start_sec")),
+            "sentence_end_sec": _vocab_sec(v.get("sentence_end_sec")), "created_at": now,
         }
         if show:
             vrow["show"] = show
