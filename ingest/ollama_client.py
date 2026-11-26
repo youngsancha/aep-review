@@ -60,6 +60,27 @@ def installed_models() -> set[str]:
         return set()
 
 
+def sampling_overrides() -> dict:
+    """Optional sampling for the daily residual retry (scripts/ko_retry_residual.sh).
+
+    At temperature 0 a sentence the quality gate rejected gets the SAME rejected answer on every
+    re-run, so retrying it changes nothing (measured 2026-11-26: re-running the newest 20 episodes
+    added 1 sentence). The retry step sets AEP_OLLAMA_TEMPERATURE and a per-day AEP_OLLAMA_SEED so
+    each day draws a different candidate; the gate still decides what is kept. Unset = unchanged.
+    """
+    out: dict = {}
+    t = os.environ.get("AEP_OLLAMA_TEMPERATURE", "").strip()
+    if t:
+        try:
+            out["temperature"] = min(max(float(t), 0.0), 1.5)
+        except ValueError:
+            log.warning("AEP_OLLAMA_TEMPERATURE=%r is not a number: ignored", t)
+    seed = os.environ.get("AEP_OLLAMA_SEED", "").strip()
+    if seed.lstrip("-").isdigit():
+        out["seed"] = int(seed)
+    return out
+
+
 def call_ollama(prompt: str, timeout_sec: int = 300, max_output_tokens: int = 8192,
                 schema: dict | None = None) -> str:
     """프롬프트 → 응답 텍스트(raw). JSON 파싱은 호출부가 한다.
@@ -79,6 +100,7 @@ def call_ollama(prompt: str, timeout_sec: int = 300, max_output_tokens: int = 81
             "temperature": 0,     # 번역은 변환 작업 — 샘플링 다양성은 손해다
             "num_ctx": 8192,      # 배치 32문장 + 지침이 들어갈 컨텍스트
             "num_predict": max_output_tokens,
+            **sampling_overrides(),
         },
     }
     log.info("calling ollama model=%s prompt_chars=%d", model_name(), len(prompt))

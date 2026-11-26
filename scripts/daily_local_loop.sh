@@ -82,8 +82,10 @@ if "$PY" -c 'import sys; from ingest.ollama_client import configured as o; sys.e
   AEP_LLM_BACKEND=ollama run_step "① 문장 경계(ollama)" "$PY" -m scripts.resegment_llm --newest "$RESEG_NEWEST" --limit "$RESEG_LIMIT"
   AEP_LLM_BACKEND=ollama run_step "② vocab(ollama)"    "$PY" -m ingest.extract_vocab --limit "$VOCAB_LIMIT"
   AEP_LLM_BACKEND=ollama run_step "③ 한국어 번역(ollama)" bash "$ROOT/scripts/ko_quality_pass.sh" "$KO_PER_SHOW" "$KO_SHARDS"
+  # ④ every episode: retry the sentences still missing, with a different sample each day (see the script)
+  AEP_LLM_BACKEND=ollama run_step "④ 남은 문장 재시도(ollama)" bash "$ROOT/scripts/ko_retry_residual.sh"
 else
-  say "ollama 가 모델을 못 본다 — ①②③ 건너뜀"
+  say "ollama 가 모델을 못 본다 — ①②③④ 건너뜀"
   FAILED="$FAILED [ollama]"
 fi
 if [ -n "$FAILED" ]; then
