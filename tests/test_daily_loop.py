@@ -41,6 +41,7 @@ case "$1" in
 esac
 exit 0""")
         _stub(repo / "scripts" / "ko_quality_pass.sh", f'echo "ko_quality_pass $*" >> "{calls}"')
+        _stub(repo / "scripts" / "ko_retry_residual.sh", f'echo "ko_retry_residual" >> "{calls}"')
         _stub(home / ".local" / "bin" / "td-task", f'echo "$*" >> "{tasks}"')
         _stub(home / ".local" / "bin" / "ccsecret", "exit 1")
         env = {"HOME": str(home), "PATH": "/usr/bin:/bin"}
@@ -58,6 +59,7 @@ def test_all_steps_run_in_order_when_ollama_has_the_model(sandbox):
     assert calls[0] == "scripts.storage_guard"
     assert calls[1:3] == ["scripts.resegment_llm", "ingest.extract_vocab"]
     assert calls[3].startswith("ko_quality_pass ")
+    assert calls[4] == "ko_retry_residual"      # daily retry of still-missing sentences, after ③
     assert tasks == []
 
 
@@ -77,7 +79,7 @@ def test_missing_model_skips_llm_steps_and_files_one_task(sandbox):
 
 def test_a_failed_step_does_not_stop_the_next_and_is_reported(sandbox):
     calls, tasks, _ = sandbox(ollama_ok=True, failing="extract_vocab")
-    assert calls[-1].startswith("ko_quality_pass ")
+    assert calls[-2].startswith("ko_quality_pass ") and calls[-1] == "ko_retry_residual"
     assert len(tasks) == 1 and "vocab" in tasks[0]
 
 
