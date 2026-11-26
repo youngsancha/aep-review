@@ -233,3 +233,161 @@
   - Start with these 7 once ollama works: `1139,1089,1079,1052,556,562,589`. They are inside the newest 50 of their shows, so the daily loop re-translates them with no extra step. 1139 is the second newest cnn10. Not repaired yet on purpose: with ollama down they would lose their Korean, and 1139 sits in the offline window.
   - A batch was dispatched and cancelled on 11-01 before it rewrote anything, once the translation cost was measured.
 - [x] **P3** `ui/transcript-model.js` refactor merged 2026-11-01. The earlier smoke failure was memory pressure: on the rebooted Mac 188 JS tests, 180 pytest, the harness and all 20 smoke checks passed.
+
+## 2026-11-02 09:00 넘어옴
+
+- [x] **P1** Mac mini: click Allow so ollama can read the T5 drive (or run the Settings path)
+  - 메모: brew moved ollama to 0.40.13 on 11-01 and macOS treats it as a new app, so its launchd daemon is stuck on a permission prompt and sees zero models. The aep daily loop (translation, vocab, sentence boundaries), jamak and cnpod are all down until this is allowed. If no dialog is showing: System Settings > Privacy & Security > Files and Folders > ollama > Removable Volumes on, then launchctl kickstart -k gui/501/sh.brew.ollama. ollama is now brew-pinned so an upgrade cannot do this silently again.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:8b92a431-7be1-49a7-a7e8-86f28bc8ef03 -->
+- [ ] **P3** E-Podcast: wh show has no new briefings since 2026-07-23
+  - 메모: wh-sync cron is off because YouTube and C-SPAN block CI IPs, and the local aep-wh-ingest job was retired once the 64 discoverable briefings were in. Decide: add a local weekly ingest (about 22 CPU minutes per briefing on the Mac), or leave the show as an archive.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:7382b35d-dcf7-402c-8d22-93daacbdcb7c -->
+
+## 2026-11-03 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:8c19a2cb-2f54-45e2-9b6a-4e1476922b87 -->
+
+## 2026-11-04 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:bbe01ccb-53c5-42d6-b88a-0a588440e70e -->
+
+## 2026-11-05 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:9aec8257-62e1-4b5e-a9f5-616a1a0f0e89 -->
+
+## 2026-11-06 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:14202940-384f-4549-b684-46dc990e25fc -->
+
+## 2026-11-07 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:4b17cc03-c102-419b-bd26-88cb1c14be44 -->
+
+## 2026-11-08 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:56dedc31-e450-40f5-add6-1de3b4d63f1b -->
+
+## 2026-11-09 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:bc3b1024-3a9a-4176-832c-4453dafb802c -->
+
+## 2026-11-10 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:64ec43dd-ba1d-4b30-ac91-d0aebf3dce66 -->
+
+## 2026-11-11 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:c2a9ebdb-de79-40d3-940a-08be5717ab81 -->
+
+## 2026-11-12 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:41caac59-302c-4844-8911-298f6607949d -->
+
+## 2026-11-13 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:c5751a2b-23f4-4662-af08-75d42e0d26a5 -->
+
+## 2026-11-14 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:f9be8733-b910-4486-8774-fdabfe34a455 -->
+
+## 2026-11-15 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:b6bbbc69-b34a-4927-8461-2069e799f599 -->
+
+## 2026-11-16 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:32ca43ad-5516-48bb-b84f-b4597bc41ed5 -->
+
+## 2026-11-17 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:0af5c6d4-8cc0-4190-b87a-c90554d9dea6 -->
+
+## 2026-11-18 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:74d51ea9-b0ed-4dee-aede-99b75fc76c24 -->
+
+## 2026-11-19 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:4babe932-63d6-4f0b-8459-3caa52889ead -->
+
+## 2026-11-20 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:f3ce45fb-1c4a-4966-a8fe-4abe2f3a8411 -->
+
+## 2026-11-21 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:c6507f9f-b116-4600-9b5e-85063f0ee92f -->
+
+## 2026-11-22 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard-three-mu.vercel.app/p/aep-review
+  <!-- td:052a9663-9d40-445f-b247-927f4ffcb7da -->
+
+## 2026-11-23 09:00 넘어옴
+
+- [x] **P1** aep-daily-loop: step failed [ollama]
+  - 메모: Log: ~/Library/Logs/aep-daily-loop.log. If [ollama]: run 'curl localhost:11434/api/tags'. An empty list right after a brew upgrade means macOS is waiting to allow the new ollama binary onto the T5 volume (the model store): click Allow, or System Settings > Privacy & Security > Files and Folders. The grant is per binary, so ollama is brew-pinned.
+  - 대시보드: https://task-dashboard.roylab.workers.dev/p/aep-review
+  <!-- td:fc6dbc42-cbc0-43f3-a091-ba53625a33c6 -->
