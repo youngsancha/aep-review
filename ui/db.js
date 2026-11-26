@@ -271,21 +271,26 @@ export async function hostedSet() {
 export function transcriptUrl(id, transcribedAt) {
   return `${STORAGE_URL}/aep-transcripts/${id}.json?v=${encodeURIComponent(transcribedAt)}`;
 }
-export function transcriptKoUrl(id, transcribedAt) {
-  return `${STORAGE_URL}/aep-transcripts/${id}_ko.json?v=${encodeURIComponent(transcribedAt)}`;
+// koAt = episodes.ko_at, stamped each time the translation job rewrites _ko.json. Without it a translation
+// filled in later (same transcript, same transcribed_at) kept the old URL, so a phone that had saved the
+// episode offline never saw it (2026-11-26). Null koAt keeps the pre-ko_at URL: no needless re-download.
+export function transcriptKoUrl(id, transcribedAt, koAt) {
+  const v = koAt ? `${transcribedAt}~${koAt}` : transcribedAt;
+  return `${STORAGE_URL}/aep-transcripts/${id}_ko.json?v=${encodeURIComponent(v)}`;
 }
 
 // 자막 문장 한국어 사전번역 맵(trKey(문장) → ko). episode.js 가 재생 중 즉시 조회(직역 MyMemory 대체).
 // transcribed_at 으로 버전키 → 재싱크로 자막이 바뀌면 새 번역을 받는다. 회차별 메모리 캐시.
 const _trKoCache = new Map();
-export async function transcriptKo(id, transcribedAt) {
+export async function transcriptKo(id, transcribedAt, koAt) {
   if (!transcribedAt) return {};
-  if (_trKoCache.has(id)) return _trKoCache.get(id);
-  const p = fetch(transcriptKoUrl(id, transcribedAt), { cache: 'force-cache' })
+  const url = transcriptKoUrl(id, transcribedAt, koAt);
+  if (_trKoCache.has(url)) return _trKoCache.get(url);
+  const p = fetch(url, { cache: 'force-cache' })
     .then((r) => (r.ok ? r.json() : {}))
     .then((m) => m || {})
     .catch(() => ({}));
-  _trKoCache.set(id, p);
+  _trKoCache.set(url, p);
   return p;
 }
 
@@ -369,7 +374,7 @@ async function hydrateEpisode(ep) {
   const [manifestUrl, transcript, transcriptKoData] = await Promise.all([
     audioSrcFor(ep.id, ep.audio_url),      // 매니페스트(audio_hosted.json) 기반 결정 — 폴백용
     fetchTranscript(id, ep.transcribed_at),
-    transcriptKo(id, ep.transcribed_at),   // 문맥 인지 사전번역(있으면 직역 대체)
+    transcriptKo(id, ep.transcribed_at, ep.ko_at),   // 문맥 인지 사전번역(있으면 직역 대체)
   ]);
   // ★ SYNC 안전장치 — 재생 오디오는 반드시 '자막이 만들어진 바로 그 오디오'여야 한다. 진실원은
   //   transcript.r2_audio (재STT 가 R2 오디오로 됐는지). 매니페스트가 아니라 이 플래그로 소스를 정하면:

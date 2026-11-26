@@ -45,7 +45,7 @@ function notifyPinnedIds(ids) {
 // 이 회차의 doc 캐시(회차행 + 자막)가 이미 준비됐는가 — 준비됐으면 getEpisode() 재요청(REST 3콜)을
 // 건너뛴다. 회차행은 URL 을 손으로 재현하지 않고(postgrest-js 인코딩에 의존하지 않기 위해) 이미
 // 저장된 키들을 순회해 패턴으로 찾는다. 자막은 db.js::transcriptUrl 이 단일 출처라 안전하게 재사용.
-async function episodeDocReady(id, transcribedAt) {
+async function episodeDocReady(id, transcribedAt, koAt) {
   // ⚠ 회차 상세 스냅샷(localStorage)도 '준비됨'의 일부다. 이게 빠지면 이미 받아 둔 회차는 아래
   // 프리페치 루프가 getEpisode() 를 통째로 건너뛰어(성능 최적화) 스냅샷이 영영 안 생기고, 그
   // 회차들만 오프라인에서 여전히 32.6초를 기다린다 — 캐시는 멀쩡한데 거기 닿는 데 그만큼 든다.
@@ -71,13 +71,29 @@ async function episodeDocReady(id, transcribedAt) {
     // 받는 쪽만 몰랐던, 비대칭이 원인이다.
     // 사전번역이 아예 없는 회차는 매 세션 한 번 더 요청하게 되지만(캐시에 안 남으므로), 커버리지가
     // 99%+ 라 사실상 없고, 생기는 즉시 스스로 채워진다.
-    return !!(await cache.match(transcriptKoUrl(id, transcribedAt), { ignoreVary: true }));
+    // koAt: a newer translation has a new URL, so this is false until it is fetched (2026-11-26).
+    return !!(await cache.match(transcriptKoUrl(id, transcribedAt, koAt), { ignoreVary: true }));
   } catch (e) { return false; }
 }
 
 // 이 회차의 doc 캐시 항목(회차행 + 자막 + 한글자막)을 전부 지운다 — 오디오 삭제/재싱크와 짝을
 // 맞춰 두 캐시가 어긋나지 않게 한다(오디오만 지우고 doc 은 남으면, 다음에 그 회차를 다시 열 때
 // 낡은 자막이 새 오디오와 안 맞을 수 있다).
+// After a newer _ko.json was cached, drop the older versions of this episode's Korean file
+// (each ko_at change leaves one ~30 KB orphan otherwise). Runs only after the new one is in.
+async function pruneStaleKo(id, keepUrl) {
+  try {
+    const cache = await caches.open(DOC_CACHE);
+    const keep = new URL(keepUrl).href;
+    const keys = await cache.keys();
+    await Promise.all(keys.filter((req) => {
+      const u = new URL(req.url);
+      const m = /\/storage\/v1\/object\/public\/aep-transcripts\/(\d+)_ko\.json$/.exec(u.pathname);
+      return !!m && Number(m[1]) === Number(id) && u.href !== keep;
+    }).map((req) => cache.delete(req)));
+  } catch (e) {}
+}
+
 async function deleteEpisodeDoc(id) {
   try {
     const cache = await caches.open(DOC_CACHE);
@@ -251,7 +267,7 @@ async function runOfflineCache() {
       const listTa = e.transcribed_at || '';
       const audioCached = !!(await cache.match(url, { ignoreVary: true }));
       const metaMatches = !!(audioCached && meta[e.id] && listTa && meta[e.id] === listTa);
-      if (metaMatches && await episodeDocReady(e.id, listTa)) {
+      if (metaMatches && await episodeDocReady(e.id, listTa, e.ko_at)) {
         ok++;
         setStatus({ phase: 'running', done: ok, total: targets.length });
         continue;
@@ -262,6 +278,7 @@ async function runOfflineCache() {
         await deleteEpisodeDoc(e.id);
       }
       const ep = await getEpisode(e.id);      // REST 행+자막+한글번역 → SW DATA_CACHE + (핀이므로) DOC_CACHE 워밍
+      if (ep.transcribed_at) await pruneStaleKo(e.id, transcriptKoUrl(e.id, ep.transcribed_at, ep.ko_at));
       if (meta[e.id] && ep.transcribed_at && meta[e.id] !== ep.transcribed_at) {
         await cache.delete(url, { ignoreVary: true });    // 재싱크 → 옛 오디오 폐기
       }
@@ -286,13 +303,16 @@ async function runOfflineCache() {
   // 오디오가 이미 있는(=사용자가 실제로 받아 둔) 핀만 대상 — 오디오조차 없는 핀은 여기서 할 일이 없다
   // (cacheEpisodeAudio 가 다운로드 시점에 이미 자체적으로 doc 을 채운다).
   const targetIds = new Set(targets.map((e) => Number(e.id)));
+  const koById = new Map(items.map((e) => [Number(e.id), e.ko_at]));
   for (const pid of pins) {
     if (targetIds.has(Number(pid)) || !navigator.onLine) continue;
     try {
       const audioCached = !!(await cache.match(hostedAudioUrl(pid), { ignoreVary: true }));
       if (!audioCached) continue;
-      if (await episodeDocReady(pid, meta[pid] || '')) continue;
+      // ko_at comes from the current show's list; a pin from another show is checked by its old key only.
+      if (await episodeDocReady(pid, meta[pid] || '', koById.get(Number(pid)))) continue;
       const ep = await getEpisode(pid);       // 쇼 무관 — id 는 전역 유일(db.js 주석 참고)
+      if (ep.transcribed_at) await pruneStaleKo(pid, transcriptKoUrl(pid, ep.transcribed_at, ep.ko_at));
       meta[pid] = ep.transcribed_at || meta[pid] || '';
       saveMeta(meta);
     } catch (err) { if (!navigator.onLine) break; }

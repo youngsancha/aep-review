@@ -338,6 +338,20 @@ def download_transcript(ep_id: int) -> dict[str, Any] | None:
         return None
 
 
+def mark_ko_saved(ep_id: int) -> None:
+    """Stamp episodes.ko_at after {id}_ko.json was rewritten.
+
+    The app versions the Korean file URL with ?v=<transcribed_at>~<ko_at>. Without this stamp a translation
+    filled in later never reaches a phone that already saved the episode offline (2026-11-26).
+    A failed stamp only delays delivery, so it warns instead of failing the translation run.
+    """
+    try:
+        client().table("episodes").update({"ko_at": _now()}).eq("id", ep_id).execute()
+    except Exception:
+        log.warning("ko_at stamp failed ep=%s: phones keep the previous _ko.json until the next save", ep_id,
+                    exc_info=True)
+
+
 # ─────────────────────────── Episode vocabulary ───────────────────────────
 def _vocab_sec(v: Any) -> float | None:
     """A timestamp the local LLM wrote, or None when it is not a usable number.

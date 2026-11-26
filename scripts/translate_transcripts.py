@@ -477,6 +477,7 @@ def save_existing(ep_id: int, m: dict) -> None:
         path=_out_path(ep_id), file=payload,
         file_options={"content-type": "application/json", "upsert": "true"},
     )
+    store.mark_ko_saved(ep_id)   # new ?v= for the app, or offline phones keep the old file
 
 
 def fetch_transcript(ep_id: int) -> dict | None:

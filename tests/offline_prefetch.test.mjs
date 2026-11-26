@@ -191,3 +191,35 @@ test('a failed run does not free space it has not replaced', async () => {
   await m.ensureOfflineCache();
   assert.ok(audioCache.has(hostedAudioUrl(7)), 'the only playable episode must survive a dead zone');
 });
+
+test('a translation filled in later reaches an episode already saved offline (ko_at)', async () => {
+  // 2026-11-26: _ko.json was keyed by transcribed_at alone, so a phone that had saved an episode kept
+  // its partial translation forever. A new ko_at in the list must re-fetch, then drop the old copy.
+  const S = 'https://s/storage/v1/object/public/aep-transcripts';
+  const koUrl = (id, ta, k) => `${S}/${id}_ko.json?v=${encodeURIComponent(k ? `${ta}~${k}` : ta)}`;
+  globalThis.__db.transcriptUrl = (id, ta) => `${S}/${id}.json?v=${ta}`;
+  globalThis.__db.transcriptKoUrl = koUrl;
+  audioCache.set(hostedAudioUrl(1), ok());
+  audioCache.set('https://s/rest/v1/episodes?id=eq.1', ok());
+  audioCache.set(`${S}/1.json?v=v1`, ok());
+  audioCache.set(koUrl(1, 'v1'), ok());                  // saved before any ko_at existed
+  store.set('aep-offline-meta', JSON.stringify({ 1: 'v1' }));
+  globalThis.__db.loadEpisodeSnapshot = () => ({ id: 1 });
+  let gets = 0;
+  globalThis.__db.getEpisode = async (id) => {
+    gets++;
+    audioCache.set(koUrl(id, 'v1', 'k2'), ok());         // what the service worker mirrors
+    return { id, transcribed_at: 'v1', ko_at: 'k2' };
+  };
+
+  globalThis.__db.listEpisodes = async () => [{ id: 1, transcribed_at: 'v1', ko_at: null }];
+  await (await loadOffline()).ensureOfflineCache();
+  assert.equal(gets, 0, 'unchanged translation: nothing re-fetched');
+
+  globalThis.__db.listEpisodes = async () => [{ id: 1, transcribed_at: 'v1', ko_at: 'k2' }];
+  await (await loadOffline()).ensureOfflineCache();
+  assert.equal(gets, 1, 'new ko_at: the episode is fetched again');
+  assert.ok(audioCache.has(koUrl(1, 'v1', 'k2')));
+  assert.ok(!audioCache.has(koUrl(1, 'v1')), 'the old translation copy is dropped');
+  assert.ok(audioCache.has(hostedAudioUrl(1)), 'audio is kept: only the translation changed');
+});
